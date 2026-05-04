@@ -1,0 +1,586 @@
+:root {
+  /* Palette Lugdurum — crème / kraft / rhum ambré */
+  --bg: #f6f1e8;
+  --bg-soft: #ede2d0;
+  --paper: #fffaf1;
+  --paper-2: #fbf2e3;
+
+  --card: rgba(255, 250, 241, 0.92);
+  --card-strong: rgba(255, 255, 255, 0.98);
+
+  --text: #1f1b16;
+  --text-soft: #3a3026;
+  --muted: rgba(31, 27, 22, 0.66);
+  --muted-2: rgba(31, 27, 22, 0.45);
+
+  --kraft: #a88f68;
+  --kraft-2: #c3aa82;
+  --kraft-soft: rgba(168, 143, 104, 0.18);
+
+  --rum: #8a5a2b;
+  --rum-2: #b47a3c;
+  --amber: #d8a04f;
+  --amber-soft: rgba(216, 160, 79, 0.22);
+
+  --green: #3f6f4f;
+  --green-soft: rgba(63, 111, 79, 0.16);
+
+  --red: #b35c3a;
+  --red-soft: rgba(179, 92, 58, 0.14);
+
+  --border: rgba(86, 65, 42, 0.18);
+  --border-strong: rgba(86, 65, 42, 0.32);
+
+  --shadow: 0 18px 50px rgba(75, 48, 22, 0.13);
+  --shadow-soft: 0 10px 26px rgba(75, 48, 22, 0.09);
+
+  --radius-lg: 28px;
+  --radius-md: 20px;
+  --radius-sm: 14px;
+  --tap: 48px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--bg);
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(216, 160, 79, 0.28), transparent 26rem),
+    radial-gradient(circle at 88% 4%, rgba(168, 143, 104, 0.26), transparent 24rem),
+    linear-gradient(180deg, #fbf7ef 0%, var(--bg) 46%, #efe3d0 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(86, 65, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86, 65, 42, 0.03) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.38) 42%, transparent 70%);
+  opacity: 0.36;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+}
+
+.appShell {
+  position: relative;
+  z-index: 1;
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 18px 14px 34px;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 2px 18px;
+}
+
+.brandBlock {
+  min-width: 0;
+}
+
+.brandBlock h1,
+.sectionHeader h2,
+.statusHero h2 {
+  margin: 0;
+  line-height: 1.03;
+}
+
+.brandBlock h1 {
+  font-size: clamp(2rem, 8.5vw, 4.6rem);
+  letter-spacing: -0.055em;
+  color: var(--text);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.eyebrow,
+.sectionKicker,
+.statusTopline {
+  margin: 0 0 7px;
+  color: var(--rum);
+  font-size: 0.76rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.subtitle,
+.missionMeta,
+.tileText,
+.watchList,
+.statCard span {
+  color: var(--muted);
+}
+
+.subtitle {
+  max-width: 720px;
+  margin: 8px 0 0;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.userPill {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 14px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 250, 241, 0.68));
+  box-shadow: var(--shadow-soft);
+  font: inherit;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mainContent {
+  display: grid;
+  gap: 18px;
+}
+
+.statusHero,
+.sectionBlock,
+.watchPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(160deg, rgba(255, 250, 241, 0.96), rgba(245, 231, 208, 0.72));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.statusHero {
+  overflow: hidden;
+  position: relative;
+  padding: 22px;
+}
+
+.statusHero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(168, 143, 104, 0.14), transparent 44%),
+    radial-gradient(circle at 90% 12%, rgba(216, 160, 79, 0.28), transparent 16rem);
+}
+
+.statusHero::after {
+  content: "";
+  position: absolute;
+  width: 230px;
+  height: 230px;
+  right: -96px;
+  top: -86px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(138, 90, 43, 0.17), rgba(138, 90, 43, 0.02) 66%, transparent 70%);
+}
+
+.statusHero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.statusTopline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.liveDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 6px var(--green-soft);
+}
+
+.statusHero h2 {
+  max-width: 760px;
+  font-size: clamp(1.8rem, 7.5vw, 4rem);
+  letter-spacing: -0.055em;
+  color: var(--text);
+}
+
+.missionMeta {
+  margin: 9px 0 0;
+  font-size: 1.02rem;
+  line-height: 1.42;
+}
+
+.heroStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.statCard {
+  min-width: 0;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 250, 241, 0.52));
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+}
+
+.statCard span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.statCard strong {
+  display: block;
+  color: var(--rum);
+  font-size: clamp(1.2rem, 5.2vw, 2rem);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.statCard.warning.hasWarning {
+  border-color: rgba(179, 92, 58, 0.3);
+  background: linear-gradient(180deg, rgba(179, 92, 58, 0.11), rgba(255, 250, 241, 0.62));
+}
+
+.statCard.warning.hasWarning strong {
+  color: var(--red);
+}
+
+.heroActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.btn {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 18px;
+  border: 0;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.btnPrimary {
+  color: #fffaf1;
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+  box-shadow: 0 14px 32px rgba(138, 90, 43, 0.24);
+}
+
+.btnGhost {
+  border: 1px solid var(--border);
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+}
+
+.btn:active {
+  transform: scale(0.985);
+}
+
+.sectionBlock,
+.watchPanel {
+  padding: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.sectionHeader.compact {
+  margin-bottom: 8px;
+}
+
+.sectionHeader h2 {
+  font-size: clamp(1.35rem, 5.3vw, 2.3rem);
+  letter-spacing: -0.045em;
+}
+
+.sectionKicker {
+  margin-bottom: 5px;
+}
+
+.tileGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.tile {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "icon title"
+    "icon text";
+  column-gap: 12px;
+  row-gap: 2px;
+  min-height: 88px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 15px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  box-shadow: 0 8px 20px rgba(75, 48, 22, 0.075);
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.tile::after {
+  content: "";
+  position: absolute;
+  width: 92px;
+  height: 92px;
+  right: -38px;
+  bottom: -48px;
+  border-radius: 999px;
+  background: var(--kraft-soft);
+}
+
+.tile:active {
+  transform: scale(0.985);
+}
+
+@media (hover: hover) {
+  .tile:hover {
+    transform: translateY(-2px);
+    border-color: rgba(138, 90, 43, 0.38);
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 244, 226, 0.8));
+    box-shadow: 0 16px 34px rgba(75, 48, 22, 0.12);
+  }
+}
+
+.tilePrimary {
+  background:
+    linear-gradient(135deg, rgba(138, 90, 43, 0.94), rgba(180, 122, 60, 0.9));
+  border-color: rgba(138, 90, 43, 0.48);
+  color: #fffaf1;
+}
+
+.tilePrimary::after {
+  background: rgba(255, 250, 241, 0.12);
+}
+
+.tilePrimary .tileText {
+  color: rgba(255, 250, 241, 0.78);
+}
+
+.tilePrimary .tileIcon {
+  color: #fffaf1;
+  background: rgba(255, 250, 241, 0.16);
+  border-color: rgba(255, 250, 241, 0.18);
+}
+
+.tileIcon {
+  position: relative;
+  z-index: 1;
+  grid-area: icon;
+  width: 48px;
+  height: 48px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: 17px;
+  color: var(--rum);
+  background:
+    linear-gradient(160deg, rgba(216, 160, 79, 0.18), rgba(168, 143, 104, 0.12));
+  font-size: 1.35rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.tileTitle,
+.tileText {
+  position: relative;
+  z-index: 1;
+}
+
+.tileTitle {
+  grid-area: title;
+  align-self: end;
+  color: inherit;
+  font-weight: 950;
+  font-size: 1.03rem;
+  letter-spacing: -0.02em;
+}
+
+.tileText {
+  grid-area: text;
+  align-self: start;
+  font-size: 0.9rem;
+  line-height: 1.26;
+}
+
+.tileSoon {
+  opacity: 0.72;
+}
+
+.soonBadge {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--muted);
+  background: rgba(255, 250, 241, 0.72);
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.watchList {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+
+.watchList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(255, 250, 241, 0.5));
+}
+
+.watchList li::before {
+  content: "•";
+  color: var(--rum);
+  font-weight: 950;
+}
+
+/* Variantes facultatives pour différencier les tuiles sans casser le HTML existant */
+.tileSales .tileIcon,
+.tileVente .tileIcon {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.tileStock .tileIcon {
+  color: var(--rum);
+  background: var(--amber-soft);
+}
+
+.tileStats .tileIcon {
+  color: #5b4b82;
+  background: rgba(91, 75, 130, 0.13);
+}
+
+.tileAlert .tileIcon,
+.tileWarning .tileIcon {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.tileSettings .tileIcon {
+  color: var(--text-soft);
+  background: rgba(31, 27, 22, 0.08);
+}
+
+@media (max-width: 370px) {
+  .heroStats {
+    grid-template-columns: 1fr;
+  }
+
+  .brandBlock h1 {
+    font-size: clamp(1.8rem, 10vw, 3rem);
+  }
+
+  .tile {
+    min-height: 82px;
+    padding: 13px;
+  }
+}
+
+@media (min-width: 620px) {
+  .appShell {
+    padding: 28px 22px 48px;
+  }
+
+  .heroActions {
+    grid-template-columns: max-content max-content;
+  }
+
+  .tileGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 920px) {
+  .mainContent {
+    grid-template-columns: 1.2fr 0.8fr;
+    align-items: start;
+  }
+
+  .statusHero,
+  .sectionBlock {
+    grid-column: 1 / -1;
+  }
+
+  .tileGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
