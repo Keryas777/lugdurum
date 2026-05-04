@@ -134,6 +134,18 @@ button {
 
 .brandText {
   min-width: 0;
+  padding-top: 2px;
+}
+
+.brandName {
+  margin: 0 0 8px;
+  color: var(--rum);
+  font-family: Algerian, Copperplate, Georgia, "Times New Roman", serif;
+  font-size: clamp(1.15rem, 4.8vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .brandBlock h1,
@@ -161,19 +173,11 @@ button {
   text-transform: uppercase;
 }
 
-.subtitle,
 .missionMeta,
 .tileText,
 .watchList,
 .statCard span {
   color: var(--muted);
-}
-
-.subtitle {
-  max-width: 720px;
-  margin: 8px 0 0;
-  font-size: 1rem;
-  line-height: 1.45;
 }
 
 .userPill {
@@ -576,13 +580,15 @@ button {
     border-radius: 15px;
   }
 
+  .brandName {
+    margin-bottom: 7px;
+    font-size: clamp(1.05rem, 4.4vw, 1.45rem);
+    letter-spacing: 0.12em;
+  }
+
   .brandBlock h1 {
     font-size: clamp(1.85rem, 8vw, 3rem);
     line-height: 0.98;
-  }
-
-  .subtitle {
-    max-width: 16rem;
   }
 
   .userPill {
@@ -609,12 +615,14 @@ button {
     border-radius: 14px;
   }
 
-  .brandBlock h1 {
-    font-size: clamp(1.6rem, 7vw, 2.35rem);
+  .brandName {
+    margin-bottom: 6px;
+    font-size: clamp(1rem, 4.3vw, 1.35rem);
+    letter-spacing: 0.11em;
   }
 
-  .subtitle {
-    font-size: 0.96rem;
+  .brandBlock h1 {
+    font-size: clamp(1.6rem, 7vw, 2.35rem);
   }
 
   .userPill {
@@ -636,6 +644,11 @@ button {
     width: 46px;
     height: 46px;
     border-radius: 13px;
+  }
+
+  .brandName {
+    font-size: clamp(0.92rem, 4.1vw, 1.2rem);
+    letter-spacing: 0.1em;
   }
 
   .brandBlock h1 {
