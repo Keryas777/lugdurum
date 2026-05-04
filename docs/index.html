@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2b1116" />
+    <title>Lugdurum — Accueil</title>
+    <link rel="stylesheet" href="./style.css?v=1" />
+    <script src="./home.js?v=1" defer></script>
+  </head>
+
+  <body class="page-home">
+    <div class="appShell">
+      <header class="topbar">
+        <div class="brandBlock">
+          <p class="eyebrow">Lugdurum</p>
+          <h1>Tableau de bord</h1>
+          <p class="subtitle">Ventes, stock et clôture terrain.</p>
+        </div>
+
+        <button class="userPill" type="button" aria-label="Utilisateur connecté">
+          <span aria-hidden="true">👤</span>
+          <span id="currentUserName">Jérôme</span>
+        </button>
+      </header>
+
+      <main class="mainContent">
+        <section class="statusHero" aria-labelledby="missionTitle">
+          <div class="statusTopline">
+            <span class="liveDot" aria-hidden="true"></span>
+            <span id="activeStatusLabel">Mission active</span>
+          </div>
+
+          <h2 id="missionTitle">Chargement…</h2>
+          <p id="missionMeta" class="missionMeta">Recherche de la journée en cours.</p>
+
+          <div class="heroStats" aria-label="Résumé de la journée">
+            <article class="statCard">
+              <span>CA jour</span>
+              <strong id="todayRevenue">—</strong>
+            </article>
+
+            <article class="statCard">
+              <span>Tickets</span>
+              <strong id="todayTickets">—</strong>
+            </article>
+
+            <article class="statCard warning" id="syncStatCard">
+              <span>À synchroniser</span>
+              <strong id="pendingSync">—</strong>
+            </article>
+          </div>
+
+          <div class="heroActions">
+            <a class="btn btnPrimary" href="./vente-rapide.html">+ Nouvelle vente</a>
+            <a class="btn btnGhost" href="./cloture.html">Clôturer la journée</a>
+          </div>
+        </section>
+
+        <section class="sectionBlock" aria-labelledby="quickActionsTitle">
+          <div class="sectionHeader">
+            <div>
+              <p class="sectionKicker">Accès rapide</p>
+              <h2 id="quickActionsTitle">Que fait-on maintenant ?</h2>
+            </div>
+          </div>
+
+          <div class="tileGrid">
+            <a class="tile tilePrimary" href="./vente-rapide.html">
+              <span class="tileIcon" aria-hidden="true">🧾</span>
+              <span class="tileTitle">Vente rapide</span>
+              <span class="tileText">Saisie tactile ou code carnet.</span>
+            </a>
+
+            <a class="tile" href="./stock.html">
+              <span class="tileIcon" aria-hidden="true">📦</span>
+              <span class="tileTitle">Stock journée</span>
+              <span class="tileText">Initial, vendu, réappro, compté.</span>
+            </a>
+
+            <a class="tile" href="./frais.html">
+              <span class="tileIcon" aria-hidden="true">⛽</span>
+              <span class="tileTitle">Frais</span>
+              <span class="tileText">Emplacement, essence, repas, péage.</span>
+            </a>
+
+            <a class="tile" href="./cloture.html">
+              <span class="tileIcon" aria-hidden="true">✅</span>
+              <span class="tileTitle">Clôture</span>
+              <span class="tileText">Contrôle caisse, stock et écarts.</span>
+            </a>
+
+            <a class="tile" href="./missions.html">
+              <span class="tileIcon" aria-hidden="true">📍</span>
+              <span class="tileTitle">Missions</span>
+              <span class="tileText">Salons, marchés et journées.</span>
+            </a>
+
+            <a class="tile" href="./dashboard.html">
+              <span class="tileIcon" aria-hidden="true">📊</span>
+              <span class="tileTitle">Dashboard</span>
+              <span class="tileText">CA, parfums, formats, objectifs.</span>
+            </a>
+
+            <a class="tile" href="./revenus.html">
+              <span class="tileIcon" aria-hidden="true">💶</span>
+              <span class="tileTitle">Revenus hors salons</span>
+              <span class="tileText">Pros, commandes directes, animations.</span>
+            </a>
+
+            <a class="tile" href="./catalogue.html">
+              <span class="tileIcon" aria-hidden="true">🍹</span>
+              <span class="tileTitle">Catalogue</span>
+              <span class="tileText">Parfums, formats, prix et marges.</span>
+            </a>
+
+            <a class="tile tileSoon" href="./clients.html" data-disabled="true">
+              <span class="soonBadge">Plus tard</span>
+              <span class="tileIcon" aria-hidden="true">🤝</span>
+              <span class="tileTitle">Clients pros</span>
+              <span class="tileText">Cavistes, prospects, commandes.</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="watchPanel" aria-labelledby="watchTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Contrôle rapide</p>
+              <h2 id="watchTitle">À surveiller</h2>
+            </div>
+          </div>
+
+          <ul class="watchList" id="watchList">
+            <li>Chargement des contrôles…</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
