@@ -681,3 +681,21 @@ button {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+@media (display-mode: standalone) {
+  .appShell {
+    padding-top: 8px;
+  }
+
+  .topbar {
+    padding-top: 0;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    .appShell {
+      padding-top: 4px;
+    }
+  }
+}
