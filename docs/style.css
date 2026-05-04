@@ -599,6 +599,8 @@ button {
 
   .topbar {
     align-items: flex-start;
+    padding-top: 6px;
+    padding-bottom: 16px;
   }
 
   .brandLogo {
@@ -608,7 +610,7 @@ button {
   }
 
   .brandBlock h1 {
-    font-size: clamp(1.75rem, 7.7vw, 2.6rem);
+    font-size: clamp(1.6rem, 7vw, 2.35rem);
   }
 
   .subtitle {
@@ -616,6 +618,7 @@ button {
   }
 
   .userPill {
+    margin-top: 4px;
     font-size: 0.95rem;
   }
 }
