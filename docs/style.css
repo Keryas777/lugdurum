@@ -113,7 +113,7 @@ button {
 }
 
 .brandBlock {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -121,6 +121,7 @@ button {
   display: flex;
   align-items: flex-start;
   gap: 14px;
+  min-width: 0;
 }
 
 .brandLogo {
@@ -146,6 +147,7 @@ button {
   letter-spacing: 0.13em;
   line-height: 1;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .brandBlock h1,
@@ -156,6 +158,7 @@ button {
 }
 
 .brandBlock h1 {
+  max-width: 11ch;
   font-size: clamp(2rem, 8.5vw, 4.6rem);
   letter-spacing: -0.055em;
   color: var(--text);
