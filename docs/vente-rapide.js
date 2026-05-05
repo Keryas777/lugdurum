@@ -2,12 +2,13 @@
   "use strict";
 
   /*
-    V3 terrain :
+    V4 terrain :
     - 50 cL vendu à l’unité.
     - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
     - Un même parfum peut apparaître plusieurs fois dans un coffret.
     - Supplément PE : +1 € par coffret si au moins un PE est présent.
     - Les parfums du coffret peuvent être retirés un par un depuis la composition.
+    - Les pastilles restent cliquables, sans afficher de bouton "-" visuel.
   */
 
   const JOURNEE_ACTIVE = {
@@ -222,9 +223,9 @@
               type="button"
               data-remove-draft-code="${line.parfum_code}"
               aria-label="Retirer un ${line.parfum_code} du coffret"
+              title="Toucher pour retirer"
             >
-              <span>${line.parfum_code}${line.qty > 1 ? ` ×${line.qty}` : ""}</span>
-              <span class="draftChipMinus" aria-hidden="true">−</span>
+              ${line.parfum_code}${line.qty > 1 ? ` ×${line.qty}` : ""}
             </button>
           `)
           .join("")}
