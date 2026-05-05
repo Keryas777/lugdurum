@@ -2,13 +2,17 @@
   "use strict";
 
   /*
-    V5 terrain :
+    V7 terrain :
+    - Catalogue mocké sur la structure Google Sheets, en attendant l'API.
     - 50 cL vendu à l’unité.
     - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
-    - Un même parfum peut apparaître plusieurs fois dans un coffret.
+    - Le mode 50 cL affiche les SKU actifs / visibles en format 50.
+    - Les modes coffrets affichent les SKU actifs / visibles en format 20.
+    - VB existe uniquement en 50 cL, donc n'apparaît pas en coffret.
+    - FF et VK restent au catalogue mais ne sont pas visibles car plus commercialisés.
     - Supplément PE : +1 € par PE dans le coffret.
     - Les parfums du coffret peuvent être retirés un par un depuis la composition.
-    - Les pastilles restent cliquables, sans afficher de bouton "-" visuel.
+    - Les visuels de boutons sont chargés depuis ./assets/parfums/{code}.webp.
   */
 
   const JOURNEE_ACTIVE = {
@@ -20,26 +24,313 @@
     vendeur: "Jérôme"
   };
 
-  const PERFUMES = [
-    { parfum_code: "PE", parfum_nom: "Punch Exotique", ordre: 10 },
-    { parfum_code: "VB", parfum_nom: "Vanille Bleue", ordre: 20 },
-    { parfum_code: "VT", parfum_nom: "Vanille Tonka", ordre: 30 },
-    { parfum_code: "FP", parfum_nom: "Fraise Passion", ordre: 40 },
-    { parfum_code: "LP", parfum_nom: "Litchi Passion", ordre: 50 },
-    { parfum_code: "PR", parfum_nom: "Pomelo Romarin", ordre: 60 },
-    { parfum_code: "OC", parfum_nom: "Orange Café", ordre: 70 },
-    { parfum_code: "AT", parfum_nom: "Ananas Tonka", ordre: 80 },
-    { parfum_code: "CG", parfum_nom: "Citron Gingembre", ordre: 90 },
-    { parfum_code: "MV", parfum_nom: "Mangue Vanille", ordre: 100 },
-    { parfum_code: "FF", parfum_nom: "Fève Fumée", ordre: 110, only20: true }
+  const CATALOGUE = [
+    {
+      sku_id: "FF_50",
+      parfum_code: "FF",
+      parfum_nom: "Fraise Framboise",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: false,
+      visible_webapp: false,
+      ordre_affichage: 10
+    },
+    {
+      sku_id: "FF_20",
+      parfum_code: "FF",
+      parfum_nom: "Fraise Framboise",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: false,
+      visible_webapp: false,
+      ordre_affichage: 10
+    },
+    {
+      sku_id: "VK_50",
+      parfum_code: "VK",
+      parfum_nom: "Vanille Kiwi",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: false,
+      visible_webapp: false,
+      ordre_affichage: 20
+    },
+    {
+      sku_id: "VK_20",
+      parfum_code: "VK",
+      parfum_nom: "Vanille Kiwi",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: false,
+      visible_webapp: false,
+      ordre_affichage: 20
+    },
+    {
+      sku_id: "AT_50",
+      parfum_code: "AT",
+      parfum_nom: "Abricot Tonka",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 30
+    },
+    {
+      sku_id: "AT_20",
+      parfum_code: "AT",
+      parfum_nom: "Abricot Tonka",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 30
+    },
+    {
+      sku_id: "MV_50",
+      parfum_code: "MV",
+      parfum_nom: "Mirabelle Vanille",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 40
+    },
+    {
+      sku_id: "MV_20",
+      parfum_code: "MV",
+      parfum_nom: "Mirabelle Vanille",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 40
+    },
+    {
+      sku_id: "CG_50",
+      parfum_code: "CG",
+      parfum_nom: "Citron Gingembre",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 50
+    },
+    {
+      sku_id: "CG_20",
+      parfum_code: "CG",
+      parfum_nom: "Citron Gingembre",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 50
+    },
+    {
+      sku_id: "OC_50",
+      parfum_code: "OC",
+      parfum_nom: "Orange Cannelle",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 60
+    },
+    {
+      sku_id: "OC_20",
+      parfum_code: "OC",
+      parfum_nom: "Orange Cannelle",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 60
+    },
+    {
+      sku_id: "PR_50",
+      parfum_code: "PR",
+      parfum_nom: "Pomelo Romarin",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 70
+    },
+    {
+      sku_id: "PR_20",
+      parfum_code: "PR",
+      parfum_nom: "Pomelo Romarin",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 70
+    },
+    {
+      sku_id: "FP_50",
+      parfum_code: "FP",
+      parfum_nom: "Framboise Passion",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 80
+    },
+    {
+      sku_id: "FP_20",
+      parfum_code: "FP",
+      parfum_nom: "Framboise Passion",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 80
+    },
+    {
+      sku_id: "LP_50",
+      parfum_code: "LP",
+      parfum_nom: "Litchi Poivre de Sichuan",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 90
+    },
+    {
+      sku_id: "LP_20",
+      parfum_code: "LP",
+      parfum_nom: "Litchi Poivre de Sichuan",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 90
+    },
+    {
+      sku_id: "VT_50",
+      parfum_code: "VT",
+      parfum_nom: "Vanille Tonka",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 100
+    },
+    {
+      sku_id: "VT_20",
+      parfum_code: "VT",
+      parfum_nom: "Vanille Tonka",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 100
+    },
+    {
+      sku_id: "PE_50",
+      parfum_code: "PE",
+      parfum_nom: "Pain d'Épices",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 31,
+      prix_ht: 31,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 110
+    },
+    {
+      sku_id: "PE_20",
+      parfum_code: "PE",
+      parfum_nom: "Pain d'Épices",
+      format_cl: 20,
+      categorie: "bouteille",
+      prix_ttc: 0,
+      prix_ht: 0,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 110
+    },
+    {
+      sku_id: "VB_50",
+      parfum_code: "VB",
+      parfum_nom: "Vanille Bleue",
+      format_cl: 50,
+      categorie: "bouteille",
+      prix_ttc: 30,
+      prix_ht: 30,
+      taux_tva: 0,
+      actif: true,
+      visible_webapp: true,
+      ordre_affichage: 120
+    }
   ];
 
   const SALE_MODES = {
     BOTTLE_50: {
       label: "50 cL",
       kind: "bottle",
-      format_cl: 50,
-      unit_price: 30
+      format_cl: 50
     },
     BOX_3_20: {
       label: "Coffret 3×20 cL",
@@ -99,13 +390,21 @@
 
   const isBoxMode = () => getMode().kind === "box";
 
-  const getVisiblePerfumes = () => {
+  const getProductImageSrc = (product) =>
+    product.image_src || `./assets/parfums/${product.parfum_code.toLowerCase()}.webp`;
+
+  const getVisibleProducts = () => {
     const mode = getMode();
 
-    return PERFUMES
-      .filter((perfume) => mode.format_cl === 20 || !perfume.only20)
-      .sort((a, b) => a.ordre - b.ordre);
+    return CATALOGUE
+      .filter((product) => product.actif)
+      .filter((product) => product.visible_webapp)
+      .filter((product) => product.format_cl === mode.format_cl)
+      .sort((a, b) => a.ordre_affichage - b.ordre_affichage);
   };
+
+  const findProductBySku = (skuId) =>
+    CATALOGUE.find((product) => product.sku_id === skuId);
 
   const getPeCount = (composition) =>
     composition.filter((item) => item.parfum_code === "PE").length;
@@ -125,13 +424,17 @@
     state.ticketItems.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   const getDraftCounts = () => {
-    return state.draftPack.reduce((map, perfume) => {
-      map.set(perfume.parfum_code, (map.get(perfume.parfum_code) || 0) + 1);
+    return state.draftPack.reduce((map, product) => {
+      map.set(product.parfum_code, (map.get(product.parfum_code) || 0) + 1);
       return map;
     }, new Map());
   };
 
-  const removeOneDraftPerfume = (parfumCode) => {
+  const getDraftProductByCode = (parfumCode) =>
+    state.draftPack.find((product) => product.parfum_code === parfumCode) ||
+    CATALOGUE.find((product) => product.parfum_code === parfumCode && product.format_cl === 20);
+
+  const removeOneDraftProduct = (parfumCode) => {
     for (let i = state.draftPack.length - 1; i >= 0; i -= 1) {
       if (state.draftPack[i].parfum_code === parfumCode) {
         state.draftPack.splice(i, 1);
@@ -161,21 +464,26 @@
     const mode = getMode();
     const draftCounts = getDraftCounts();
 
-    els.productGrid.innerHTML = getVisiblePerfumes()
-      .map((perfume) => {
-        const skuId = `${perfume.parfum_code}_${mode.format_cl}`;
+    els.productGrid.innerHTML = getVisibleProducts()
+      .map((product) => {
         const qty = isBoxMode()
-          ? draftCounts.get(perfume.parfum_code) || 0
-          : getTicketBottleQty(skuId);
+          ? draftCounts.get(product.parfum_code) || 0
+          : getTicketBottleQty(product.sku_id);
 
         const meta = isBoxMode()
-          ? `${mode.format_cl} cL · dans le coffret`
-          : `${mode.format_cl} cL · ${formatCurrency(mode.unit_price)}`;
+          ? `${product.format_cl} cL · dans le coffret`
+          : `${product.format_cl} cL · ${formatCurrency(product.prix_ttc)}`;
 
         return `
-          <button class="productBtn ${qty > 0 ? "hasQty" : ""}" type="button" data-parfum="${perfume.parfum_code}">
-            <span class="productCode">${perfume.parfum_code}</span>
-            <span class="productName">${perfume.parfum_nom}</span>
+          <button
+            class="productBtn ${qty > 0 ? "hasQty" : ""}"
+            type="button"
+            data-sku="${product.sku_id}"
+            data-parfum="${product.parfum_code}"
+            style="--product-bg: url('${getProductImageSrc(product)}')"
+          >
+            <span class="productCode">${product.parfum_code}</span>
+            <span class="productName">${product.parfum_nom}</span>
             <span class="productMeta">${meta}</span>
             ${qty > 0 ? `<strong class="productQty">×${qty}</strong>` : ""}
           </button>
@@ -214,10 +522,10 @@
     const counts = getDraftCounts();
     const lines = [...counts.entries()]
       .map(([code, qty]) => {
-        const perfume = PERFUMES.find((item) => item.parfum_code === code);
-        return { ...perfume, qty };
+        const product = getDraftProductByCode(code);
+        return { ...product, qty };
       })
-      .sort((a, b) => a.ordre - b.ordre);
+      .sort((a, b) => a.ordre_affichage - b.ordre_affichage);
 
     els.draftPackList.innerHTML = `
       <div class="draftChips">
@@ -256,8 +564,8 @@
     els.ticketLines.innerHTML = state.ticketItems
       .map((item) => {
         if (item.type === "box") {
-          const counts = item.composition.reduce((map, perfume) => {
-            map.set(perfume.parfum_code, (map.get(perfume.parfum_code) || 0) + 1);
+          const counts = item.composition.reduce((map, product) => {
+            map.set(product.parfum_code, (map.get(product.parfum_code) || 0) + 1);
             return map;
           }, new Map());
 
@@ -317,11 +625,10 @@
     renderPayment();
   };
 
-  const findPerfume = (code) => PERFUMES.find((perfume) => perfume.parfum_code === code);
-
-  const addBottle50 = (perfume) => {
-    const skuId = `${perfume.parfum_code}_50`;
-    const existing = state.ticketItems.find((item) => item.type === "bottle" && item.sku_id === skuId);
+  const addBottle = (product) => {
+    const existing = state.ticketItems.find(
+      (item) => item.type === "bottle" && item.sku_id === product.sku_id
+    );
 
     if (existing) {
       existing.quantite += 1;
@@ -329,18 +636,18 @@
       state.ticketItems.push({
         item_id: `ITEM_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "bottle",
-        sku_id: skuId,
-        parfum_code: perfume.parfum_code,
-        parfum_nom: perfume.parfum_nom,
-        format_cl: 50,
+        sku_id: product.sku_id,
+        parfum_code: product.parfum_code,
+        parfum_nom: product.parfum_nom,
+        format_cl: product.format_cl,
         quantite: 1,
-        prix_unitaire_ttc: SALE_MODES.BOTTLE_50.unit_price,
-        prix_unitaire_ht: SALE_MODES.BOTTLE_50.unit_price
+        prix_unitaire_ttc: product.prix_ttc,
+        prix_unitaire_ht: product.prix_ht
       });
     }
   };
 
-  const addPerfumeToDraftPack = (perfume) => {
+  const addProductToDraftPack = (product) => {
     const mode = getMode();
 
     if (state.draftPack.length >= mode.box_size) {
@@ -349,7 +656,7 @@
       return;
     }
 
-    state.draftPack.push(perfume);
+    state.draftPack.push({ ...product });
   };
 
   const addPackToTicket = () => {
@@ -357,7 +664,7 @@
 
     if (!isBoxMode() || state.draftPack.length !== mode.box_size) return;
 
-    const composition = state.draftPack.map((perfume) => ({ ...perfume }));
+    const composition = state.draftPack.map((product) => ({ ...product }));
     const price = getPackPrice(composition, mode);
     const peCount = getPeCount(composition);
 
@@ -366,7 +673,7 @@
       type: "box",
       label: mode.label,
       conditionnement: state.selectedMode,
-      format_cl: 20,
+      format_cl: mode.format_cl,
       box_size: mode.box_size,
       prix_ttc: price,
       prix_ht: price,
@@ -462,17 +769,25 @@
       }
 
       if (item.type === "box") {
-        const counts = item.composition.reduce((map, perfume) => {
-          map.set(perfume.parfum_code, (map.get(perfume.parfum_code) || 0) + 1);
+        const counts = item.composition.reduce((map, product) => {
+          const current = map.get(product.sku_id) || {
+            product,
+            qty: 0
+          };
+
+          current.qty += 1;
+          map.set(product.sku_id, current);
           return map;
         }, new Map());
 
-        const peCount = counts.get("PE") || 0;
+        const peCount = getPeCount(item.composition);
         const baseUnitPrice = item.base_price / item.box_size;
         const surchargePerPE = peCount > 0 ? item.supplement_pe_ttc / peCount : 0;
 
-        [...counts.entries()].forEach(([code, qty]) => {
-          const unitPrice = baseUnitPrice + (code === "PE" ? surchargePerPE : 0);
+        [...counts.values()].forEach(({ product, qty }) => {
+          const unitPrice =
+            baseUnitPrice + (product.parfum_code === "PE" ? surchargePerPE : 0);
+
           const totalLine = unitPrice * qty;
 
           lines.push({
@@ -480,7 +795,7 @@
             transaction_id: transactionId,
             mission_id: JOURNEE_ACTIVE.mission_id,
             journee_id: JOURNEE_ACTIVE.journee_id,
-            sku_id: `${code}_20`,
+            sku_id: product.sku_id,
             quantite: qty,
             prix_unitaire_ttc: unitPrice,
             prix_unitaire_ht: unitPrice,
@@ -558,7 +873,7 @@
   document.addEventListener("click", (event) => {
     const draftRemoveButton = event.target.closest("[data-remove-draft-code]");
     if (draftRemoveButton) {
-      removeOneDraftPerfume(draftRemoveButton.dataset.removeDraftCode);
+      removeOneDraftProduct(draftRemoveButton.dataset.removeDraftCode);
       return;
     }
 
@@ -573,13 +888,13 @@
 
     const productButton = event.target.closest(".productBtn");
     if (productButton) {
-      const perfume = findPerfume(productButton.dataset.parfum);
-      if (!perfume) return;
+      const product = findProductBySku(productButton.dataset.sku);
+      if (!product) return;
 
       if (isBoxMode()) {
-        addPerfumeToDraftPack(perfume);
+        addProductToDraftPack(product);
       } else {
-        addBottle50(perfume);
+        addBottle(product);
       }
 
       els.saveStatus.textContent = "";
