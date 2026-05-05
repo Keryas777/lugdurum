@@ -1,0 +1,372 @@
+/* ==============================
+   Page Vente rapide
+   ============================== */
+
+.page-sale .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.saleShell {
+  max-width: 780px;
+}
+
+.saleTopbar {
+  align-items: flex-start;
+}
+
+.backBtn {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 250, 241, 0.68));
+  box-shadow: var(--shadow-soft);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.page-sale .brandLogo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.page-sale .brandName {
+  margin-bottom: 5px;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+}
+
+.page-sale .brandBlock h1 {
+  max-width: none;
+  font-size: clamp(1.55rem, 6vw, 2.2rem);
+  white-space: nowrap;
+}
+
+.saleLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.saleSummary,
+.salePanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(160deg, rgba(255, 250, 241, 0.96), rgba(245, 231, 208, 0.72));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.saleSummary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+}
+
+.saleSummary h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.35rem, 6vw, 2.2rem);
+  letter-spacing: -0.045em;
+  line-height: 1.03;
+}
+
+.ticketTotalBox {
+  min-width: 112px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 250, 241, 0.56));
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+}
+
+.ticketTotalBox span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.ticketTotalBox strong {
+  color: var(--rum);
+  font-size: clamp(1.35rem, 6vw, 2.2rem);
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.salePanel {
+  padding: 16px;
+}
+
+.formatTabs,
+.paymentTabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.paymentTabs {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.formatTab,
+.paymentBtn {
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+  font-weight: 900;
+}
+
+.formatTab.isActive,
+.paymentBtn.isActive {
+  color: #fffaf1;
+  border-color: rgba(138, 90, 43, 0.48);
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+  box-shadow: 0 12px 26px rgba(138, 90, 43, 0.2);
+}
+
+.productGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.productBtn {
+  position: relative;
+  min-height: 98px;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 13px;
+  text-align: left;
+  color: var(--text);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  box-shadow: 0 8px 20px rgba(75, 48, 22, 0.075);
+}
+
+.productBtn.hasQty {
+  border-color: rgba(63, 111, 79, 0.34);
+  background:
+    linear-gradient(145deg, rgba(63, 111, 79, 0.12), rgba(255, 250, 241, 0.66));
+}
+
+.productCode {
+  color: var(--rum);
+  font-size: 1.4rem;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+}
+
+.productName {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.productMeta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.productQty {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fffaf1;
+  background: var(--green);
+  font-size: 0.82rem;
+}
+
+.ticketPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.ticketLines {
+  display: grid;
+  gap: 10px;
+}
+
+.emptyTicket {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 250, 241, 0.48);
+}
+
+.ticketLine {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+}
+
+.ticketLine div:first-child {
+  min-width: 0;
+}
+
+.ticketLine strong {
+  display: block;
+  color: var(--text);
+}
+
+.ticketLine span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+
+.qtyControls {
+  display: inline-grid;
+  grid-template-columns: 36px 28px 36px;
+  align-items: center;
+  justify-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(255, 250, 241, 0.65);
+}
+
+.qtyControls button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  color: #fffaf1;
+  background: var(--rum);
+  font-weight: 950;
+}
+
+.qtyControls span {
+  color: var(--text);
+  font-weight: 950;
+}
+
+.lineTotal {
+  grid-column: 1 / -1;
+  justify-self: end;
+  color: var(--rum) !important;
+  font-size: 1.05rem;
+}
+
+.smallTextBtn {
+  border: 0;
+  color: var(--rum);
+  background: transparent;
+  font-weight: 900;
+}
+
+.paymentBlock {
+  display: grid;
+  gap: 10px;
+}
+
+.amountOverride {
+  display: grid;
+  gap: 7px;
+}
+
+.amountOverride span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.amountOverride input {
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  font: inherit;
+  font-weight: 850;
+  outline: none;
+}
+
+.saleActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.saveStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.saveStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.saveStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+@media (min-width: 620px) {
+  .productGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .saleActions {
+    grid-template-columns: 1fr 1.4fr;
+  }
+}
+
+@media (max-width: 370px) {
+  .saleSummary {
+    display: grid;
+  }
+
+  .ticketTotalBox {
+    justify-items: start;
+  }
+
+  .productGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .paymentTabs {
+    grid-template-columns: 1fr;
+  }
+}
