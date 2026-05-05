@@ -241,27 +241,19 @@
 }
 
 .draftChip {
-  gap: 8px;
+  min-width: 54px;
+  justify-content: center;
   border: 0;
   cursor: pointer;
   font: inherit;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
 }
 
 .draftChip:active {
-  transform: scale(0.96);
-}
-
-.draftChipMinus {
-  width: 20px;
-  height: 20px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 999px;
-  color: #fffaf1;
-  background: var(--rum);
-  font-size: 0.95rem;
-  font-weight: 950;
-  line-height: 1;
+  transform: scale(0.94);
+  background: rgba(138, 90, 43, 0.18);
 }
 
 .packHint {
@@ -269,6 +261,11 @@
   color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.35;
+}
+
+.addPackBtn {
+  width: min(100%, 520px);
+  margin: 0 auto;
 }
 
 .addPackBtn:disabled {
