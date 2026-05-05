@@ -2,11 +2,11 @@
   "use strict";
 
   /*
-    V4 terrain :
+    V5 terrain :
     - 50 cL vendu à l’unité.
     - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
     - Un même parfum peut apparaître plusieurs fois dans un coffret.
-    - Supplément PE : +1 € par coffret si au moins un PE est présent.
+    - Supplément PE : +1 € par PE dans le coffret.
     - Les parfums du coffret peuvent être retirés un par un depuis la composition.
     - Les pastilles restent cliquables, sans afficher de bouton "-" visuel.
   */
@@ -107,9 +107,12 @@
       .sort((a, b) => a.ordre - b.ordre);
   };
 
+  const getPeCount = (composition) =>
+    composition.filter((item) => item.parfum_code === "PE").length;
+
   const getPackPrice = (composition, mode = getMode()) => {
-    const hasPE = composition.some((item) => item.parfum_code === "PE");
-    return mode.base_price + (hasPE ? mode.pe_surcharge : 0);
+    const peCount = getPeCount(composition);
+    return mode.base_price + peCount * mode.pe_surcharge;
   };
 
   const getItemTotal = (item) => {
@@ -193,6 +196,8 @@
 
     const current = state.draftPack.length;
     const max = mode.box_size;
+    const peCount = getPeCount(state.draftPack);
+    const peSurchargeTotal = peCount * mode.pe_surcharge;
     const price = getPackPrice(state.draftPack, mode);
 
     els.packProgressLabel.textContent = `${current} / ${max} parfums`;
@@ -231,8 +236,8 @@
           .join("")}
       </div>
       <p class="packHint">
-        ${state.draftPack.some((item) => item.parfum_code === "PE")
-          ? "Supplément PE appliqué : +1 €"
+        ${peCount > 0
+          ? `Supplément PE appliqué : +${formatCurrency(peSurchargeTotal)}`
           : "Aucun supplément PE pour ce coffret."}
       </p>
     `;
@@ -354,6 +359,7 @@
 
     const composition = state.draftPack.map((perfume) => ({ ...perfume }));
     const price = getPackPrice(composition, mode);
+    const peCount = getPeCount(composition);
 
     state.ticketItems.push({
       item_id: `BOX_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -365,9 +371,7 @@
       prix_ttc: price,
       prix_ht: price,
       base_price: mode.base_price,
-      supplement_pe_ttc: composition.some((item) => item.parfum_code === "PE")
-        ? mode.pe_surcharge
-        : 0,
+      supplement_pe_ttc: peCount * mode.pe_surcharge,
       composition
     });
 
