@@ -2,11 +2,12 @@
   "use strict";
 
   /*
-    V2 terrain :
+    V3 terrain :
     - 50 cL vendu à l’unité.
     - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
     - Un même parfum peut apparaître plusieurs fois dans un coffret.
     - Supplément PE : +1 € par coffret si au moins un PE est présent.
+    - Les parfums du coffret peuvent être retirés un par un depuis la composition.
   */
 
   const JOURNEE_ACTIVE = {
@@ -126,17 +127,22 @@
     }, new Map());
   };
 
+  const removeOneDraftPerfume = (parfumCode) => {
+    for (let i = state.draftPack.length - 1; i >= 0; i -= 1) {
+      if (state.draftPack[i].parfum_code === parfumCode) {
+        state.draftPack.splice(i, 1);
+        break;
+      }
+    }
+
+    els.saveStatus.textContent = "";
+    renderAll();
+  };
+
   const getTicketBottleQty = (skuId) => {
     return state.ticketItems
       .filter((item) => item.type === "bottle" && item.sku_id === skuId)
       .reduce((sum, item) => sum + item.quantite, 0);
-  };
-
-  const getTicketBoxPerfumeQty = (parfumCode) => {
-    return state.ticketItems
-      .filter((item) => item.type === "box")
-      .flatMap((item) => item.composition)
-      .filter((perfume) => perfume.parfum_code === parfumCode).length;
   };
 
   const renderModes = () => {
@@ -211,10 +217,15 @@
       <div class="draftChips">
         ${lines
           .map((line) => `
-            <span class="draftChip">
-              ${line.parfum_code}
-              ${line.qty > 1 ? `×${line.qty}` : ""}
-            </span>
+            <button
+              class="draftChip"
+              type="button"
+              data-remove-draft-code="${line.parfum_code}"
+              aria-label="Retirer un ${line.parfum_code} du coffret"
+            >
+              <span>${line.parfum_code}${line.qty > 1 ? ` ×${line.qty}` : ""}</span>
+              <span class="draftChipMinus" aria-hidden="true">−</span>
+            </button>
           `)
           .join("")}
       </div>
@@ -327,7 +338,7 @@
     const mode = getMode();
 
     if (state.draftPack.length >= mode.box_size) {
-      els.saveStatus.textContent = `Le coffret est complet. Ajoute-le au ticket ou vide la composition.`;
+      els.saveStatus.textContent = "Le coffret est complet. Ajoute-le au ticket ou vide la composition.";
       els.saveStatus.className = "saveStatus isError";
       return;
     }
@@ -456,7 +467,6 @@
         const surchargePerPE = peCount > 0 ? item.supplement_pe_ttc / peCount : 0;
 
         [...counts.entries()].forEach(([code, qty]) => {
-          const perfume = findPerfume(code);
           const unitPrice = baseUnitPrice + (code === "PE" ? surchargePerPE : 0);
           const totalLine = unitPrice * qty;
 
@@ -541,6 +551,12 @@
   };
 
   document.addEventListener("click", (event) => {
+    const draftRemoveButton = event.target.closest("[data-remove-draft-code]");
+    if (draftRemoveButton) {
+      removeOneDraftPerfume(draftRemoveButton.dataset.removeDraftCode);
+      return;
+    }
+
     const modeButton = event.target.closest(".saleModeBtn");
     if (modeButton) {
       state.selectedMode = modeButton.dataset.saleMode;
