@@ -281,44 +281,57 @@
 
 .productBtn {
   position: relative;
-  min-height: 98px;
+  min-height: 108px;
   display: grid;
-  align-content: start;
+  align-content: center;
   gap: 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 13px;
+  padding: 14px;
   text-align: left;
   color: var(--text);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  background-image: var(--product-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   box-shadow: 0 8px 20px rgba(75, 48, 22, 0.075);
+  overflow: hidden;
 }
 
 .productBtn.hasQty {
-  border-color: rgba(63, 111, 79, 0.34);
-  background:
-    linear-gradient(145deg, rgba(63, 111, 79, 0.12), rgba(255, 250, 241, 0.66));
+  border-color: rgba(63, 111, 79, 0.42);
+  box-shadow:
+    0 8px 20px rgba(75, 48, 22, 0.075),
+    inset 0 0 0 2px rgba(63, 111, 79, 0.18);
+}
+
+.productCode,
+.productName,
+.productMeta {
+  position: relative;
+  z-index: 1;
+  max-width: 64%;
 }
 
 .productCode {
   color: var(--rum);
-  font-size: 1.4rem;
+  font-size: 1.45rem;
   font-weight: 950;
   letter-spacing: -0.04em;
+  line-height: 1;
 }
 
 .productName {
   color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 800;
-  line-height: 1.1;
+  font-size: 0.92rem;
+  font-weight: 850;
+  line-height: 1.08;
 }
 
 .productMeta {
-  color: var(--muted);
+  color: rgba(31, 27, 22, 0.68);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .productQty {
@@ -333,6 +346,8 @@
   color: #fffaf1;
   background: var(--green);
   font-size: 0.82rem;
+  font-weight: 900;
+  z-index: 2;
 }
 
 .ticketPanel {
