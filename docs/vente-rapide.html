@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Vente rapide</title>
+    <link rel="stylesheet" href="./style.css?v=9" />
+    <link rel="stylesheet" href="./vente-rapide.css?v=2" />
+    <script src="./vente-rapide.js?v=2" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-sale">
+    <div class="appShell saleShell">
+      <header class="topbar saleTopbar">
+        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">
+          ←
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Vente rapide</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="saleLayout">
+        <section class="saleSummary" aria-labelledby="saleSummaryTitle">
+          <div>
+            <p class="sectionKicker">Ticket en cours</p>
+            <h2 id="saleSummaryTitle">Salagnon — J2</h2>
+            <p class="missionMeta">lundi 04 mai 2026</p>
+          </div>
+
+          <div class="ticketTotalBox">
+            <span>Total</span>
+            <strong id="ticketTotal">0 €</strong>
+          </div>
+        </section>
+
+        <section class="salePanel" aria-labelledby="saleModeTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Type de vente</p>
+              <h2 id="saleModeTitle">Choisir le format</h2>
+            </div>
+          </div>
+
+          <div class="saleModeTabs" role="tablist" aria-label="Type de vente">
+            <button
+              class="saleModeBtn isActive"
+              type="button"
+              data-sale-mode="BOTTLE_50"
+              aria-pressed="true"
+            >
+              <span>50 cL</span>
+              <small>à l’unité</small>
+            </button>
+
+            <button
+              class="saleModeBtn"
+              type="button"
+              data-sale-mode="BOX_3_20"
+              aria-pressed="false"
+            >
+              <span>3×20 cL</span>
+              <small>coffret</small>
+            </button>
+
+            <button
+              class="saleModeBtn"
+              type="button"
+              data-sale-mode="BOX_6_20"
+              aria-pressed="false"
+            >
+              <span>6×20 cL</span>
+              <small>coffret</small>
+            </button>
+          </div>
+        </section>
+
+        <section class="salePanel packComposer" id="packComposer" aria-labelledby="packComposerTitle" hidden>
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Composition</p>
+              <h2 id="packComposerTitle">Composer le coffret</h2>
+            </div>
+
+            <button class="smallTextBtn" type="button" id="clearDraftPackBtn">
+              Vider
+            </button>
+          </div>
+
+          <div class="packProgress">
+            <div>
+              <span id="packProgressLabel">0 / 3 parfums</span>
+              <strong id="packPricePreview">45,99 €</strong>
+            </div>
+            <progress id="packProgressBar" value="0" max="3"></progress>
+          </div>
+
+          <div class="draftPackList" id="draftPackList">
+            <p class="emptyTicket">Choisis les parfums du coffret.</p>
+          </div>
+
+          <button class="btn btnPrimary addPackBtn" type="button" id="addPackBtn" disabled>
+            Ajouter le coffret au ticket
+          </button>
+        </section>
+
+        <section class="salePanel" aria-labelledby="catalogTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Catalogue</p>
+              <h2 id="catalogTitle">Ajouter un parfum</h2>
+            </div>
+          </div>
+
+          <div class="productGrid" id="productGrid" aria-live="polite"></div>
+        </section>
+
+        <section class="salePanel ticketPanel" aria-labelledby="ticketTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Panier</p>
+              <h2 id="ticketTitle">Ticket</h2>
+            </div>
+            <button class="smallTextBtn" type="button" id="clearTicketBtn">
+              Vider
+            </button>
+          </div>
+
+          <div class="ticketLines" id="ticketLines">
+            <p class="emptyTicket">Aucun produit ajouté.</p>
+          </div>
+
+          <div class="paymentBlock">
+            <p class="sectionKicker">Paiement</p>
+
+            <div class="paymentTabs" role="group" aria-label="Mode de paiement">
+              <button class="paymentBtn isActive" type="button" data-payment="ESP">
+                Espèces
+              </button>
+              <button class="paymentBtn" type="button" data-payment="CB">
+                CB
+              </button>
+              <button class="paymentBtn" type="button" data-payment="CHQ">
+                Chèque
+              </button>
+            </div>
+          </div>
+
+          <label class="amountOverride">
+            <span>Montant encaissé</span>
+            <input
+              id="amountPaidInput"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="Identique au total"
+            />
+          </label>
+
+          <div class="saleActions">
+            <button class="btn btnGhost" type="button" id="undoBtn">
+              Annuler dernier
+            </button>
+            <button class="btn btnPrimary" type="button" id="saveTicketBtn">
+              Enregistrer le ticket
+            </button>
+          </div>
+
+          <p class="saveStatus" id="saveStatus" role="status"></p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
