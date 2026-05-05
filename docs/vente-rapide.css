@@ -240,6 +240,30 @@
   font-weight: 950;
 }
 
+.draftChip {
+  gap: 8px;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.draftChip:active {
+  transform: scale(0.96);
+}
+
+.draftChipMinus {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fffaf1;
+  background: var(--rum);
+  font-size: 0.95rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
 .packHint {
   margin: 0;
   color: var(--muted);
