@@ -1,22 +1,6 @@
-const CACHE_NAME = "lugdurum-pwa-clean-final-v1";
-
-const APP_SHELL = [
-  "./",
-  "./index.html",
-  "./style.css",
-  "./home.js",
-  "./pwa.js",
-  "./manifest.webmanifest",
-  "./assets/icons/icon-180.png",
-  "./assets/icons/icon-192.png",
-  "./assets/icons/icon-512.png",
-  "./assets/icons/icon-maskable.png"
-];
+const CACHE_NAME = "lugdurum-dev-cache-v4";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
-  );
   self.skipWaiting();
 });
 
@@ -30,6 +14,7 @@ self.addEventListener("activate", (event) => {
       )
     )
   );
+
   self.clients.claim();
 });
 
@@ -37,8 +22,16 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).catch(() => caches.match("./index.html"));
-    })
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, copy);
+        });
+
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
