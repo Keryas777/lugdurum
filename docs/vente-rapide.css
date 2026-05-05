@@ -114,13 +114,13 @@
 }
 
 .saleModeBtn {
-  min-height: 62px;
+  min-height: 54px;
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 2px;
+  gap: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 18px;
   color: var(--text);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
@@ -128,13 +128,13 @@
 }
 
 .saleModeBtn span {
-  font-size: 1.1rem;
+  font-size: 1rem;
   letter-spacing: -0.03em;
 }
 
 .saleModeBtn small {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 850;
 }
 
