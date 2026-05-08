@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    V7 terrain :
+    V8 terrain :
     - Catalogue mocké sur la structure Google Sheets, en attendant l'API.
     - 50 cL vendu à l’unité.
     - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
@@ -13,6 +13,8 @@
     - Supplément PE : +1 € par PE dans le coffret.
     - Les parfums du coffret peuvent être retirés un par un depuis la composition.
     - Les visuels de boutons sont chargés depuis ./assets/parfums/{code}.webp.
+    - Le montant encaissé se remplit automatiquement avec le total du ticket.
+    - Le montant encaissé reste modifiable manuellement.
   */
 
   const JOURNEE_ACTIVE = {
@@ -357,13 +359,15 @@
     selectedMode: "BOTTLE_50",
     paymentMode: "ESP",
     ticketItems: [],
-    draftPack: []
+    draftPack: [],
+    amountManuallyEdited: false
   };
 
   const els = {
     productGrid: document.getElementById("productGrid"),
     ticketLines: document.getElementById("ticketLines"),
     ticketTotal: document.getElementById("ticketTotal"),
+    ticketPanelTotal: document.getElementById("ticketPanelTotal"),
     packComposer: document.getElementById("packComposer"),
     packProgressLabel: document.getElementById("packProgressLabel"),
     packPricePreview: document.getElementById("packPricePreview"),
@@ -385,6 +389,15 @@
       minimumFractionDigits: value % 1 === 0 ? 0 : 2,
       maximumFractionDigits: 2
     }).format(value || 0);
+
+  const formatAmountInput = (value) =>
+    (Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2);
+
+  const syncAmountPaidInput = (total) => {
+    if (state.amountManuallyEdited) return;
+
+    els.amountPaidInput.value = total > 0 ? formatAmountInput(total) : "";
+  };
 
   const getMode = () => SALE_MODES[state.selectedMode];
 
@@ -461,7 +474,6 @@
   };
 
   const renderProducts = () => {
-    const mode = getMode();
     const draftCounts = getDraftCounts();
 
     els.productGrid.innerHTML = getVisibleProducts()
@@ -553,13 +565,21 @@
 
   const renderCart = () => {
     const total = getTicketTotal();
+
     els.ticketTotal.textContent = formatCurrency(total);
+
+    if (els.ticketPanelTotal) {
+      els.ticketPanelTotal.textContent = formatCurrency(total);
+    }
 
     if (state.ticketItems.length === 0) {
       els.ticketLines.innerHTML = `<p class="emptyTicket">Aucun produit ajouté.</p>`;
       els.amountPaidInput.value = "";
+      state.amountManuallyEdited = false;
       return;
     }
+
+    syncAmountPaidInput(total);
 
     els.ticketLines.innerHTML = state.ticketItems
       .map((item) => {
@@ -707,6 +727,7 @@
     state.ticketItems = [];
     state.draftPack = [];
     els.amountPaidInput.value = "";
+    state.amountManuallyEdited = false;
     els.saveStatus.textContent = "";
     renderAll();
   };
@@ -867,6 +888,7 @@
     state.ticketItems = [];
     state.draftPack = [];
     els.amountPaidInput.value = "";
+    state.amountManuallyEdited = false;
     renderAll();
   };
 
@@ -925,6 +947,10 @@
       els.saveStatus.textContent = "";
       renderAll();
     }
+  });
+
+  els.amountPaidInput.addEventListener("input", () => {
+    state.amountManuallyEdited = els.amountPaidInput.value.trim() !== "";
   });
 
   els.clearDraftPackBtn.addEventListener("click", () => {
