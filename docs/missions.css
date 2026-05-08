@@ -1,1 +1,417 @@
-placeholder
+/* ==============================
+   Page Missions
+   ============================== */
+
+.page-missions .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.missionsShell {
+  max-width: 860px;
+}
+
+.missionsTopbar {
+  align-items: flex-start;
+}
+
+.backBtn {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 250, 241, 0.68));
+  box-shadow: var(--shadow-soft);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.page-missions .brandLogo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.page-missions .brandName {
+  margin-bottom: 5px;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+}
+
+.page-missions .brandBlock h1 {
+  max-width: none;
+  font-size: clamp(1.55rem, 6vw, 2.2rem);
+  white-space: nowrap;
+}
+
+.missionsLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.missionHero,
+.missionPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(160deg, rgba(255, 250, 241, 0.96), rgba(245, 231, 208, 0.72));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.missionHero {
+  padding: 20px;
+}
+
+.missionHero h2,
+.missionPanel h2 {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.missionHero h2 {
+  font-size: clamp(1.8rem, 7vw, 3.2rem);
+}
+
+.missionHero p:not(.sectionKicker) {
+  max-width: 42rem;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.missionPanel {
+  padding: 16px;
+}
+
+.missionForm {
+  display: grid;
+  gap: 16px;
+}
+
+.eventTypeGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.eventTypeCard {
+  min-height: 112px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  text-align: left;
+  color: var(--text);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  box-shadow: 0 8px 20px rgba(75, 48, 22, 0.075);
+}
+
+.eventTypeCard.isActive {
+  color: #fffaf1;
+  border-color: rgba(138, 90, 43, 0.52);
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+  box-shadow: 0 14px 32px rgba(138, 90, 43, 0.22);
+}
+
+.eventTypeCard strong {
+  font-size: 1.1rem;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.eventTypeCard small {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.eventTypeCard.isActive small {
+  color: rgba(255, 250, 241, 0.8);
+}
+
+.eventTypeIcon {
+  font-size: 1.35rem;
+}
+
+.missionFields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.missionField {
+  display: grid;
+  gap: 7px;
+}
+
+.missionField span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.missionField input,
+.missionField select,
+.missionField textarea {
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  font: inherit;
+  font-size: 16px;
+  font-weight: 850;
+  outline: none;
+}
+
+.missionField textarea {
+  min-height: 94px;
+  padding-top: 12px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.dayPreviewBox {
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: rgba(255, 250, 241, 0.46);
+}
+
+.dayPreviewList {
+  display: grid;
+  gap: 8px;
+}
+
+.dayPreviewItem,
+.missionListItem {
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 241, 0.56));
+}
+
+.dayPreviewItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dayPreviewItem strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.dayPreviewItem span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.dayBadge {
+  min-width: 42px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fffaf1;
+  background: var(--rum);
+  font-weight: 950;
+}
+
+.missionEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 250, 241, 0.42);
+}
+
+.missionActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.missionStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.missionStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.missionStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+.missionCreatedPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.missionCreatedPanel[hidden] {
+  display: none;
+}
+
+.missionCreatedPanel p:not(.sectionKicker) {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.missionsList {
+  display: grid;
+  gap: 10px;
+}
+
+.missionListItem {
+  display: grid;
+  gap: 12px;
+}
+
+.missionListHeader {
+  display: grid;
+  gap: 5px;
+}
+
+.missionListTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.missionListTitle strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.missionStatusBadge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--rum);
+  background: var(--amber-soft);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.missionListMeta {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.missionDayChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.missionDayChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--text-soft);
+  background: rgba(168, 143, 104, 0.16);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.missionListActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.missionSmallBtn {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+  font-weight: 900;
+}
+
+.missionSmallBtn.primary {
+  border: 0;
+  color: #fffaf1;
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+}
+
+@media (min-width: 620px) {
+  .eventTypeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .missionFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .missionFieldFull {
+    grid-column: 1 / -1;
+  }
+
+  .missionActions {
+    grid-template-columns: 1fr 1.4fr;
+  }
+
+  .missionCreatedPanel {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .missionListActions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 370px) {
+  .dayPreviewItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .missionListTitle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
