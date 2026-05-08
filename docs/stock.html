@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Stock journée</title>
+    <link rel="stylesheet" href="./style.css?v=10" />
+    <link rel="stylesheet" href="./stock.css?v=1" />
+
+    <script src="./stock.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-stock">
+    <div class="appShell stockShell">
+      <header class="topbar stockTopbar">
+        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">
+          ←
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Stock journée</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="stockLayout">
+        <section class="stockHero" aria-labelledby="stockHeroTitle">
+          <div>
+            <p class="sectionKicker">Mission active</p>
+            <h2 id="stockHeroTitle">Salagnon — J2</h2>
+            <p class="missionMeta">lundi 04 mai 2026</p>
+          </div>
+
+          <div class="stockHeroStatus">
+            <span class="stockStatusDot" aria-hidden="true"></span>
+            <span id="stockGlobalStatus">Stock en cours</span>
+          </div>
+        </section>
+
+        <section class="stockSummaryGrid" aria-label="Résumé du stock">
+          <article class="stockSummaryCard">
+            <span>Initial</span>
+            <strong id="summaryInitial">0</strong>
+          </article>
+
+          <article class="stockSummaryCard">
+            <span>Vendu</span>
+            <strong id="summarySold">0</strong>
+          </article>
+
+          <article class="stockSummaryCard">
+            <span>Réappro</span>
+            <strong id="summaryReappro">0</strong>
+          </article>
+
+          <article class="stockSummaryCard">
+            <span>Ajust.</span>
+            <strong id="summaryAdjustments">0</strong>
+          </article>
+
+          <article class="stockSummaryCard">
+            <span>Théorique</span>
+            <strong id="summaryTheoretical">0</strong>
+          </article>
+
+          <article class="stockSummaryCard warning" id="summaryGapCard">
+            <span>Écart</span>
+            <strong id="summaryGap">0</strong>
+          </article>
+        </section>
+
+        <section class="stockPanel" aria-labelledby="stockActionsTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Actions</p>
+              <h2 id="stockActionsTitle">Fin de journée</h2>
+            </div>
+          </div>
+
+          <div class="stockActions">
+            <button class="btn btnGhost" type="button" id="saveStockBtn">
+              Enregistrer le stock
+            </button>
+
+            <button class="btn btnGhost" type="button" id="reuseTomorrowBtn">
+              Conserver pour demain
+            </button>
+
+            <button class="btn btnPrimary" type="button" id="closeDayBtn">
+              Clôturer la journée
+            </button>
+          </div>
+
+          <p class="stockStatusMessage" id="stockStatusMessage" role="status"></p>
+        </section>
+
+        <section class="stockPanel" aria-labelledby="stockFilterTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Affichage</p>
+              <h2 id="stockFilterTitle">Produits</h2>
+            </div>
+          </div>
+
+          <div class="stockTabs" role="group" aria-label="Filtrer les produits">
+            <button class="stockTab isActive" type="button" data-filter="ALL">
+              Tous
+            </button>
+            <button class="stockTab" type="button" data-filter="50">
+              50 cL
+            </button>
+            <button class="stockTab" type="button" data-filter="20">
+              20 cL
+            </button>
+            <button class="stockTab" type="button" data-filter="GAPS">
+              Écarts
+            </button>
+          </div>
+        </section>
+
+        <section class="stockList" id="stockList" aria-label="Stock par produit">
+          <p class="emptyStock">Chargement du stock…</p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
