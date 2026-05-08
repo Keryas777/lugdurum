@@ -2,11 +2,13 @@
   "use strict";
 
   /*
-    Missions V2 :
+    Missions V3 :
     - Page planning + création d’évènements.
     - Un évènement peut être créé plusieurs mois à l’avance.
     - Journée unique = mission + J1.
     - Plusieurs jours = mission + J1, J2, J3...
+    - Date de fin masquée en journée unique.
+    - Champ "autre personne" visible uniquement si Autre est sélectionné.
     - Les frais pourront être liés à une mission même sans journée active.
     - Vendeurs/opérateurs prévus : Jérôme, Antho, Will, Autre.
     - Stockage localStorage provisoire avant connexion Google Sheets.
@@ -242,9 +244,11 @@
       button.setAttribute("aria-pressed", String(isActive));
     });
 
-    els.otherOperatorField.hidden = !state.selectedOperators.has("AUTRE");
+    const hasOther = state.selectedOperators.has("AUTRE");
 
-    if (!state.selectedOperators.has("AUTRE")) {
+    els.otherOperatorField.hidden = !hasOther;
+
+    if (!hasOther) {
       els.otherOperatorInput.value = "";
     }
   };
