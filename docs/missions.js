@@ -2,13 +2,21 @@
   "use strict";
 
   /*
-    Missions V1 :
-    - Crée toujours une mission + une ou plusieurs journées.
-    - Journée unique = mission avec J1.
-    - Événement multi-jours = mission avec J1, J2, J3...
-    - Données stockées en localStorage pour préparer la connexion Google Sheets.
-    - Prochaine étape : preparation-stock.html.
+    Missions V2 :
+    - Page planning + création d’évènements.
+    - Un évènement peut être créé plusieurs mois à l’avance.
+    - Journée unique = mission + J1.
+    - Plusieurs jours = mission + J1, J2, J3...
+    - Les frais pourront être liés à une mission même sans journée active.
+    - Vendeurs/opérateurs prévus : Jérôme, Antho, Will, Autre.
+    - Stockage localStorage provisoire avant connexion Google Sheets.
   */
+
+  const OPERATORS = {
+    U_JEROME: "Jérôme",
+    U_ANTHO: "Antho",
+    U_WILL: "Will"
+  };
 
   const CURRENT_USER = {
     user_id: "U_JEROME",
@@ -20,12 +28,14 @@
     journees: "lugdurum_journees",
     activeMissionId: "lugdurum_active_mission_id",
     activeJourneeId: "lugdurum_active_journee_id",
-    preparationContext: "lugdurum_preparation_context"
+    preparationContext: "lugdurum_preparation_context",
+    fraisContext: "lugdurum_frais_context"
   };
 
   const state = {
     eventMode: "single",
-    lastCreatedMissionId: ""
+    selectedOperators: new Set(["U_JEROME"]),
+    submitAction: "save"
   };
 
   const els = {
@@ -39,13 +49,31 @@
     endDateField: document.getElementById("endDateField"),
     startDateLabel: document.getElementById("startDateLabel"),
     noteInput: document.getElementById("noteInput"),
+    otherOperatorField: document.getElementById("otherOperatorField"),
+    otherOperatorInput: document.getElementById("otherOperatorInput"),
     dayPreviewList: document.getElementById("dayPreviewList"),
     resetMissionBtn: document.getElementById("resetMissionBtn"),
     missionStatus: document.getElementById("missionStatus"),
-    missionCreatedPanel: document.getElementById("missionCreatedPanel"),
-    missionCreatedText: document.getElementById("missionCreatedText"),
-    prepareStockLink: document.getElementById("prepareStockLink"),
     missionsList: document.getElementById("missionsList")
+  };
+
+  const EVENT_KIND_LABELS = {
+    MARCHE_ARTISANAL: "Marché artisanal",
+    SALON_DES_VINS: "Salon des vins",
+    MARCHE_DE_NOEL: "Marché de Noël",
+    FOIRE: "Foire",
+    AUTRE: "Autre"
+  };
+
+  const STATUS_LABELS = {
+    brouillon: "Brouillon",
+    prevu: "Prévu",
+    stock_a_preparer: "Stock à préparer",
+    pret: "Prêt",
+    en_cours: "En cours",
+    termine: "Terminé",
+    cloture: "Clôturé",
+    annule: "Annulé"
   };
 
   const readJson = (key, fallback) => {
@@ -75,7 +103,7 @@
       .toUpperCase()
       .replace(/[^A-Z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "")
-      .slice(0, 26) || "MISSION";
+      .slice(0, 26) || "EVENEMENT";
 
   const parseLocalDate = (value) => {
     if (!value) return null;
@@ -114,6 +142,23 @@
     return copy;
   };
 
+  const getMissions = () => readJson(STORAGE_KEYS.missions, []);
+
+  const getJournees = () => readJson(STORAGE_KEYS.journees, []);
+
+  const setMissions = (missions) => writeJson(STORAGE_KEYS.missions, missions);
+
+  const setJournees = (journees) => writeJson(STORAGE_KEYS.journees, journees);
+
+  const setStatus = (message, type = "") => {
+    els.missionStatus.textContent = message;
+    els.missionStatus.className = "missionStatus";
+
+    if (type) {
+      els.missionStatus.classList.add(type);
+    }
+  };
+
   const getDateRange = () => {
     const start = parseLocalDate(els.startDateInput.value);
     const end =
@@ -136,17 +181,39 @@
     return dates;
   };
 
-  const getMissions = () => readJson(STORAGE_KEYS.missions, []);
+  const getOperatorLabels = (mission) => {
+    const values = Array.isArray(mission.vendeurs_prevus)
+      ? mission.vendeurs_prevus
+      : [];
 
-  const getJournees = () => readJson(STORAGE_KEYS.journees, []);
+    return values
+      .map((operator) => {
+        if (typeof operator === "string") return OPERATORS[operator] || operator;
+        return operator.nom || OPERATORS[operator.user_id] || operator.user_id || "";
+      })
+      .filter(Boolean);
+  };
 
-  const setStatus = (message, type = "") => {
-    els.missionStatus.textContent = message;
-    els.missionStatus.className = "missionStatus";
+  const getSelectedOperatorsPayload = () => {
+    const payload = [...state.selectedOperators]
+      .filter((operatorId) => operatorId !== "AUTRE")
+      .map((operatorId) => ({
+        user_id: operatorId,
+        nom: OPERATORS[operatorId] || operatorId
+      }));
 
-    if (type) {
-      els.missionStatus.classList.add(type);
+    if (state.selectedOperators.has("AUTRE")) {
+      const otherName = els.otherOperatorInput.value.trim();
+
+      if (otherName) {
+        payload.push({
+          user_id: "AUTRE",
+          nom: otherName
+        });
+      }
     }
+
+    return payload;
   };
 
   const renderEventMode = () => {
@@ -164,6 +231,21 @@
 
     if (!isMulti) {
       els.endDateInput.value = "";
+    }
+  };
+
+  const renderOperators = () => {
+    document.querySelectorAll("[data-operator]").forEach((button) => {
+      const isActive = state.selectedOperators.has(button.dataset.operator);
+
+      button.classList.toggle("isActive", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+
+    els.otherOperatorField.hidden = !state.selectedOperators.has("AUTRE");
+
+    if (!state.selectedOperators.has("AUTRE")) {
+      els.otherOperatorInput.value = "";
     }
   };
 
@@ -190,7 +272,7 @@
 
     if (dates.length >= 15) {
       els.dayPreviewList.innerHTML =
-        `<p class="missionEmpty">Événement trop long pour cette V1. Limite provisoire : 14 jours.</p>`;
+        `<p class="missionEmpty">Évènement trop long pour cette V1. Limite provisoire : 14 jours.</p>`;
       return;
     }
 
@@ -198,7 +280,7 @@
       .map((date, index) => `
         <article class="dayPreviewItem">
           <div>
-            <strong>${formatDisplayDate(date)}</strong>
+            <strong>${escapeHtml(formatDisplayDate(date))}</strong>
             <span>${index === 0 ? "Première journée" : `Journée ${index + 1}`}</span>
           </div>
           <span class="dayBadge">J${index + 1}</span>
@@ -219,6 +301,17 @@
     });
   };
 
+  const setFraisContext = (missionId) => {
+    localStorage.setItem(STORAGE_KEYS.activeMissionId, missionId);
+
+    writeJson(STORAGE_KEYS.fraisContext, {
+      mission_id: missionId,
+      journee_id: "",
+      source: "missions",
+      updated_at: new Date().toISOString()
+    });
+  };
+
   const getMissionJournees = (missionId) =>
     getJournees()
       .filter((journee) => journee.mission_id === missionId)
@@ -233,43 +326,51 @@
     );
   };
 
-  const renderCreatedPanel = (mission, jours) => {
-    const firstDay = jours[0];
+  const getMissionStatusClass = (statut) => {
+    if (statut === "pret") return "isReady";
+    if (statut === "en_cours") return "isActive";
+    return "";
+  };
 
-    if (!firstDay) return;
+  const getDateLabel = (mission) => {
+    if (mission.date_debut === mission.date_fin) {
+      return formatDisplayDate(mission.date_debut);
+    }
 
-    setPreparationContext(mission.mission_id, firstDay.journee_id);
-
-    els.missionCreatedText.textContent =
-      `${mission.nom} est prêt : ${jours.length} journée${jours.length > 1 ? "s" : ""} créée${jours.length > 1 ? "s" : ""}.`;
-
-    els.prepareStockLink.href = "./preparation-stock.html";
-    els.missionCreatedPanel.hidden = false;
+    return `${formatDisplayDate(mission.date_debut)} → ${formatDisplayDate(mission.date_fin)}`;
   };
 
   const createMission = () => {
     const name = els.missionNameInput.value.trim();
     const startDate = els.startDateInput.value;
     const dates = getDateRange();
+    const operators = getSelectedOperatorsPayload();
 
     if (!name) {
-      setStatus("Indique le nom de l’événement.", "isError");
-      return;
+      setStatus("Indique le nom de l’évènement.", "isError");
+      return null;
     }
 
     if (!startDate || dates.length === 0) {
       setStatus("Indique une date valide.", "isError");
-      return;
+      return null;
     }
 
     if (dates.length >= 15) {
-      setStatus("Événement trop long pour cette V1. Limite provisoire : 14 jours.", "isError");
-      return;
+      setStatus("Évènement trop long pour cette V1. Limite provisoire : 14 jours.", "isError");
+      return null;
+    }
+
+    if (operators.length === 0) {
+      setStatus("Indique au moins une personne prévue sur l’évènement.", "isError");
+      return null;
     }
 
     const now = new Date().toISOString();
     const slug = slugify(name);
-    const missionId = `M_${dates[0].replaceAll("-", "")}_${slug}_${Date.now().toString(36).toUpperCase()}`;
+    const stamp = Date.now().toString(36).toUpperCase();
+
+    const missionId = `M_${dates[0].replaceAll("-", "")}_${slug}_${stamp}`;
 
     const mission = {
       mission_id: missionId,
@@ -279,8 +380,11 @@
       lieu: els.locationInput.value.trim(),
       ville: els.cityInput.value.trim(),
       type_evenement: els.eventKindInput.value,
+      type_evenement_label: EVENT_KIND_LABELS[els.eventKindInput.value],
       type_parcours: state.eventMode === "multi" ? "PLUSIEURS_JOURS" : "JOURNEE_UNIQUE",
-      statut: "en_preparation",
+      statut: "stock_a_preparer",
+      stock_prepare: false,
+      vendeurs_prevus: operators,
       responsable_user_id: CURRENT_USER.user_id,
       objectif_ca: "",
       note: els.noteInput.value.trim(),
@@ -289,7 +393,7 @@
     };
 
     const jours = dates.map((date, index) => ({
-      journee_id: `J_${date.replaceAll("-", "")}_${slug}_J${index + 1}_${Date.now().toString(36).toUpperCase()}`,
+      journee_id: `J_${date.replaceAll("-", "")}_${slug}_J${index + 1}_${stamp}`,
       mission_id: missionId,
       date,
       jour_label: `J${index + 1}`,
@@ -307,24 +411,40 @@
     missions.push(mission);
     journees.push(...jours);
 
-    writeJson(STORAGE_KEYS.missions, missions);
-    writeJson(STORAGE_KEYS.journees, journees);
+    setMissions(missions);
+    setJournees(journees);
 
-    state.lastCreatedMissionId = missionId;
+    const firstDay = jours[0];
 
-    setStatus("Mission créée. Tu peux maintenant préparer le stock.", "isSuccess");
-    renderCreatedPanel(mission, jours);
+    if (firstDay) {
+      setPreparationContext(mission.mission_id, firstDay.journee_id);
+    }
+
+    setStatus("Évènement enregistré.", "isSuccess");
     renderMissionsList();
+
+    return {
+      mission,
+      jours
+    };
   };
 
   const renderMissionsList = () => {
+    const today = formatIsoDate(new Date());
+
     const missions = getMissions()
       .slice()
-      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      .filter((mission) => mission.statut !== "annule")
+      .filter((mission) => mission.statut !== "cloture" || mission.date_fin >= today)
+      .sort((a, b) => {
+        const byDate = String(a.date_debut).localeCompare(String(b.date_debut));
+        if (byDate !== 0) return byDate;
+        return String(a.created_at).localeCompare(String(b.created_at));
+      });
 
     if (missions.length === 0) {
       els.missionsList.innerHTML =
-        `<p class="missionEmpty">Aucune mission enregistrée pour l’instant.</p>`;
+        `<p class="missionEmpty">Aucun évènement enregistré pour l’instant.</p>`;
       return;
     }
 
@@ -332,26 +452,39 @@
       .map((mission) => {
         const jours = getMissionJournees(mission.mission_id);
         const firstOpenDay = getFirstOpenDay(mission.mission_id);
-        const dateLabel =
-          mission.date_debut === mission.date_fin
-            ? formatDisplayDate(mission.date_debut)
-            : `${formatDisplayDate(mission.date_debut)} → ${formatDisplayDate(mission.date_fin)}`;
-
         const place = [mission.lieu, mission.ville].filter(Boolean).join(" · ");
+        const operatorLabels = getOperatorLabels(mission);
+        const statusClass = getMissionStatusClass(mission.statut);
+        const statusLabel = STATUS_LABELS[mission.statut] || mission.statut;
 
         return `
           <article class="missionListItem">
             <div class="missionListHeader">
               <div class="missionListTitle">
                 <strong>${escapeHtml(mission.nom)}</strong>
-                <span class="missionStatusBadge">${escapeHtml(mission.statut)}</span>
+                <span class="missionStatusBadge ${escapeHtml(statusClass)}">
+                  ${escapeHtml(statusLabel)}
+                </span>
               </div>
 
               <div class="missionListMeta">
-                ${escapeHtml(dateLabel)}
+                ${escapeHtml(EVENT_KIND_LABELS[mission.type_evenement] || mission.type_evenement_label || "Évènement")}
+                · ${escapeHtml(getDateLabel(mission))}
                 ${place ? `<br />${escapeHtml(place)}` : ""}
               </div>
             </div>
+
+            ${
+              operatorLabels.length > 0
+                ? `
+                  <div class="missionOperatorLine" aria-label="Personnes prévues">
+                    ${operatorLabels
+                      .map((name) => `<span class="missionOperatorChip">${escapeHtml(name)}</span>`)
+                      .join("")}
+                  </div>
+                `
+                : ""
+            }
 
             <div class="missionDayChips">
               ${jours
@@ -365,21 +498,20 @@
 
             <div class="missionListActions">
               <button
-                class="missionSmallBtn"
+                class="missionSmallBtn primary"
                 type="button"
-                data-activate-mission="${escapeHtml(mission.mission_id)}"
-                data-activate-day="${escapeHtml(firstOpenDay ? firstOpenDay.journee_id : "")}"
+                data-resume-mission="${escapeHtml(mission.mission_id)}"
+                data-resume-day="${escapeHtml(firstOpenDay ? firstOpenDay.journee_id : "")}"
               >
-                Activer
+                Reprendre
               </button>
 
               <button
-                class="missionSmallBtn primary"
+                class="missionSmallBtn"
                 type="button"
-                data-prepare-mission="${escapeHtml(mission.mission_id)}"
-                data-prepare-day="${escapeHtml(firstOpenDay ? firstOpenDay.journee_id : "")}"
+                data-expense-mission="${escapeHtml(mission.mission_id)}"
               >
-                Préparer le stock
+                Ajouter un frais
               </button>
             </div>
           </article>
@@ -390,12 +522,15 @@
 
   const resetForm = () => {
     state.eventMode = "single";
+    state.selectedOperators = new Set(["U_JEROME"]);
+    state.submitAction = "save";
 
     els.form.reset();
-    els.missionCreatedPanel.hidden = true;
-
+    setDefaultDate();
     setStatus("");
+
     renderEventMode();
+    renderOperators();
     renderDayPreview();
   };
 
@@ -416,33 +551,71 @@
       return;
     }
 
-    const activateButton = event.target.closest("[data-activate-mission]");
-    if (activateButton) {
-      const missionId = activateButton.dataset.activateMission;
-      const journeeId = activateButton.dataset.activateDay;
+    const operatorButton = event.target.closest("[data-operator]");
+    if (operatorButton) {
+      const operatorId = operatorButton.dataset.operator;
 
-      if (!missionId || !journeeId) return;
+      if (state.selectedOperators.has(operatorId)) {
+        state.selectedOperators.delete(operatorId);
+      } else {
+        state.selectedOperators.add(operatorId);
+      }
 
-      setPreparationContext(missionId, journeeId);
-      setStatus("Mission activée.", "isSuccess");
+      if (state.selectedOperators.size === 0) {
+        state.selectedOperators.add("U_JEROME");
+      }
+
+      renderOperators();
       return;
     }
 
-    const prepareButton = event.target.closest("[data-prepare-mission]");
-    if (prepareButton) {
-      const missionId = prepareButton.dataset.prepareMission;
-      const journeeId = prepareButton.dataset.prepareDay;
+    const submitButton = event.target.closest("[data-submit-action]");
+    if (submitButton) {
+      state.submitAction = submitButton.dataset.submitAction;
+      return;
+    }
+
+    const resumeButton = event.target.closest("[data-resume-mission]");
+    if (resumeButton) {
+      const missionId = resumeButton.dataset.resumeMission;
+      const journeeId = resumeButton.dataset.resumeDay;
 
       if (!missionId || !journeeId) return;
 
       setPreparationContext(missionId, journeeId);
+
+      const mission = getMissions().find((item) => item.mission_id === missionId);
+
+      if (mission && mission.statut === "en_cours") {
+        window.location.href = "./index.html";
+        return;
+      }
+
       window.location.href = "./preparation-stock.html";
+      return;
+    }
+
+    const expenseButton = event.target.closest("[data-expense-mission]");
+    if (expenseButton) {
+      const missionId = expenseButton.dataset.expenseMission;
+
+      if (!missionId) return;
+
+      setFraisContext(missionId);
+      window.location.href = "./frais.html";
     }
   });
 
   els.form.addEventListener("submit", (event) => {
     event.preventDefault();
-    createMission();
+
+    const result = createMission();
+
+    if (!result) return;
+
+    if (state.submitAction === "prepare") {
+      window.location.href = "./preparation-stock.html";
+    }
   });
 
   els.resetMissionBtn.addEventListener("click", resetForm);
@@ -456,6 +629,7 @@
 
   setDefaultDate();
   renderEventMode();
+  renderOperators();
   renderDayPreview();
   renderMissionsList();
 })();
