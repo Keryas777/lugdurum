@@ -108,26 +108,43 @@ body {
     linear-gradient(180deg, #fbf7ef 0%, var(--bg) 46%, #efe3d0 100%);
 }
 
+/* ===== Cache fixe sous la barre d’état iPhone en PWA ===== */
 body::before {
   content: "";
   position: fixed;
-  inset: 0;
+  z-index: 2147483647;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
   pointer-events: none;
-  background-image:
-    linear-gradient(rgba(86, 65, 42, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(86, 65, 42, 0.03) 1px, transparent 1px);
-  background-size: 34px 34px;
-  mask-image: linear-gradient(to bottom, black, transparent 72%);
+
+  background:
+    radial-gradient(circle at 12% 0%, rgba(216, 160, 79, 0.24), transparent 22rem),
+    radial-gradient(circle at 88% 4%, rgba(168, 143, 104, 0.22), transparent 20rem),
+    linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
 }
 
+/* ===== Texture de fond globale ===== */
 body::after {
   content: "";
   position: fixed;
+  z-index: 0;
   inset: 0;
   pointer-events: none;
-  background:
+
+  background-image:
+    linear-gradient(rgba(86, 65, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86, 65, 42, 0.03) 1px, transparent 1px),
     linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.38) 42%, transparent 70%);
-  opacity: 0.36;
+
+  background-size:
+    34px 34px,
+    34px 34px,
+    auto;
+
+  opacity: 0.72;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
 }
 
 a {
@@ -149,7 +166,10 @@ button {
   z-index: 1;
   width: min(1120px, 100%);
   margin: 0 auto;
-  padding: 18px 14px 34px;
+  padding:
+    calc(18px + env(safe-area-inset-top))
+    14px
+    calc(34px + env(safe-area-inset-bottom));
 }
 
 .topbar {
@@ -720,7 +740,10 @@ button {
 
 @media (min-width: 620px) {
   .appShell {
-    padding: 28px 22px 48px;
+    padding:
+      calc(28px + env(safe-area-inset-top))
+      22px
+      calc(48px + env(safe-area-inset-bottom));
   }
 
   .heroActions {
@@ -748,50 +771,8 @@ button {
   }
 }
 
-/* ===== PWA iPhone : respecte la barre d’état et la zone Home Indicator ===== */
 @media (display-mode: standalone) {
-  .appShell {
-    padding-top: calc(14px + env(safe-area-inset-top));
-    padding-bottom: calc(34px + env(safe-area-inset-bottom));
-  }
-
   .topbar {
     padding-top: 0;
-  }
-}
-
-@supports (-webkit-touch-callout: none) {
-  @media (display-mode: standalone) {
-    .appShell {
-      padding-top: calc(14px + env(safe-area-inset-top));
-      padding-bottom: calc(34px + env(safe-area-inset-bottom));
-    }
-  }
-}
-
-/* ===== Cache fixe sous la barre d’état iPhone en PWA ===== */
-@media (display-mode: standalone) {
-  html::before {
-    content: "";
-    position: fixed;
-    z-index: 9999;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: env(safe-area-inset-top);
-    pointer-events: none;
-
-    background:
-      radial-gradient(circle at 12% 0%, rgba(216, 160, 79, 0.22), transparent 22rem),
-      radial-gradient(circle at 88% 4%, rgba(168, 143, 104, 0.2), transparent 20rem),
-      linear-gradient(180deg, #fbf7ef 0%, #f6f1e8 100%);
-  }
-}
-
-@supports (-webkit-touch-callout: none) {
-  @media (display-mode: standalone) {
-    html::before {
-      height: env(safe-area-inset-top);
-    }
   }
 }
