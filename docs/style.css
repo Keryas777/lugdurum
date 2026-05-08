@@ -40,8 +40,56 @@
   --tap: 48px;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+/* ===== Verrouillage global : pas de scroll horizontal, pas de zoom parasite ===== */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: manipulation;
+}
+
+body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
+  font-size: 16px;
+}
+
+.appShell,
+.mainContent,
+.saleShell,
+.saleLayout,
+.salePanel,
+.sectionBlock,
+.statusHero,
+.watchPanel,
+.tileGrid,
+.productGrid,
+.ticketPanel,
+.ticketLines {
+  max-width: 100%;
+  min-width: 0;
 }
 
 html {
@@ -626,9 +674,9 @@ button {
   }
 
   .brandBlock h1 {
-  font-size: clamp(1.35rem, 5.8vw, 2rem);
-  white-space: nowrap;
-}
+    font-size: clamp(1.35rem, 5.8vw, 2rem);
+    white-space: nowrap;
+  }
 
   .userPill {
     margin-top: 4px;
