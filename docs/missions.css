@@ -148,6 +148,13 @@
   gap: 7px;
 }
 
+.page-missions [hidden],
+.missionField[hidden],
+#endDateField[hidden],
+#otherOperatorField[hidden] {
+  display: none !important;
+}
+
 .missionField span {
   color: var(--muted);
   font-size: 0.82rem;
