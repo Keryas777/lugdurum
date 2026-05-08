@@ -1,1 +1,220 @@
-placeholder
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Missions</title>
+
+    <link rel="stylesheet" href="./style.css?v=11" />
+    <link rel="stylesheet" href="./missions.css?v=1" />
+
+    <script src="./missions.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-missions">
+    <div class="appShell missionsShell">
+      <header class="topbar missionsTopbar">
+        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">
+          ←
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Missions</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="missionsLayout">
+        <section class="missionHero" aria-labelledby="missionHeroTitle">
+          <p class="sectionKicker">Préparation</p>
+          <h2 id="missionHeroTitle">Préparer un marché / salon</h2>
+          <p>
+            Crée l’événement, choisis s’il dure un ou plusieurs jours, puis passe à
+            la préparation du stock emmené.
+          </p>
+        </section>
+
+        <section class="missionPanel missionWizard" aria-labelledby="missionWizardTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Nouvelle mission</p>
+              <h2 id="missionWizardTitle">Type d’événement</h2>
+            </div>
+          </div>
+
+          <form id="missionForm" class="missionForm">
+            <div class="eventTypeGrid" role="group" aria-label="Type d’événement">
+              <button
+                class="eventTypeCard isActive"
+                type="button"
+                data-event-mode="single"
+                aria-pressed="true"
+              >
+                <span class="eventTypeIcon" aria-hidden="true">☀️</span>
+                <strong>Journée unique</strong>
+                <small>Marché ou salon sur une seule journée.</small>
+              </button>
+
+              <button
+                class="eventTypeCard"
+                type="button"
+                data-event-mode="multi"
+                aria-pressed="false"
+              >
+                <span class="eventTypeIcon" aria-hidden="true">📆</span>
+                <strong>Plusieurs jours</strong>
+                <small>Mission avec J1, J2, J3…</small>
+              </button>
+            </div>
+
+            <div class="missionFields">
+              <label class="missionField">
+                <span>Nom de l’événement</span>
+                <input
+                  id="missionNameInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Salagnon"
+                  required
+                />
+              </label>
+
+              <label class="missionField">
+                <span>Type</span>
+                <select id="eventKindInput">
+                  <option value="MARCHE">Marché</option>
+                  <option value="SALON">Salon</option>
+                  <option value="MARCHE_NOEL">Marché de Noël</option>
+                  <option value="FOIRE">Foire</option>
+                  <option value="ANIMATION">Animation</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="missionField">
+                <span>Lieu</span>
+                <input
+                  id="locationInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Salle des fêtes"
+                />
+              </label>
+
+              <label class="missionField">
+                <span>Ville</span>
+                <input
+                  id="cityInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Salagnon"
+                />
+              </label>
+
+              <label class="missionField">
+                <span id="startDateLabel">Date</span>
+                <input id="startDateInput" type="date" required />
+              </label>
+
+              <label class="missionField" id="endDateField" hidden>
+                <span>Date de fin</span>
+                <input id="endDateInput" type="date" />
+              </label>
+
+              <label class="missionField missionFieldFull">
+                <span>Note</span>
+                <textarea
+                  id="noteInput"
+                  rows="3"
+                  placeholder="Optionnel : horaires, emplacement, particularité..."
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="dayPreviewBox" aria-live="polite">
+              <div class="sectionHeader compact">
+                <div>
+                  <p class="sectionKicker">Aperçu</p>
+                  <h2>Journées créées</h2>
+                </div>
+              </div>
+
+              <div class="dayPreviewList" id="dayPreviewList">
+                <p class="missionEmpty">Choisis une date pour générer J1.</p>
+              </div>
+            </div>
+
+            <div class="missionActions">
+              <button class="btn btnGhost" type="button" id="resetMissionBtn">
+                Réinitialiser
+              </button>
+
+              <button class="btn btnPrimary" type="submit">
+                Créer la mission
+              </button>
+            </div>
+
+            <p class="missionStatus" id="missionStatus" role="status"></p>
+          </form>
+        </section>
+
+        <section
+          class="missionPanel missionCreatedPanel"
+          id="missionCreatedPanel"
+          hidden
+          aria-labelledby="missionCreatedTitle"
+        >
+          <div>
+            <p class="sectionKicker">Mission créée</p>
+            <h2 id="missionCreatedTitle">Prête pour le stock</h2>
+            <p id="missionCreatedText">
+              La mission est enregistrée en local. Prochaine étape : préparer le
+              stock emmené.
+            </p>
+          </div>
+
+          <a class="btn btnPrimary" id="prepareStockLink" href="./preparation-stock.html">
+            Préparer le stock
+          </a>
+        </section>
+
+        <section class="missionPanel" aria-labelledby="missionsListTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Historique local</p>
+              <h2 id="missionsListTitle">Missions enregistrées</h2>
+            </div>
+          </div>
+
+          <div class="missionsList" id="missionsList">
+            <p class="missionEmpty">Aucune mission enregistrée pour l’instant.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
