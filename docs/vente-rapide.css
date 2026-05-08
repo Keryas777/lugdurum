@@ -360,6 +360,32 @@
   gap: 10px;
 }
 
+.ticketTotalRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  background:
+    linear-gradient(135deg, rgba(138, 90, 43, 0.1), rgba(255, 250, 241, 0.68));
+}
+
+.ticketTotalRow span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.ticketTotalRow strong {
+  color: var(--rum);
+  font-size: 1.35rem;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
 .emptyTicket {
   margin: 0;
   border: 1px dashed var(--border-strong);
