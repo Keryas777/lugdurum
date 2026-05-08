@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    V8 terrain :
+    V9 terrain :
     - Catalogue mocké sur la structure Google Sheets, en attendant l'API.
     - 50 cL vendu à l’unité.
     - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
@@ -15,6 +15,8 @@
     - Les visuels de boutons sont chargés depuis ./assets/parfums/{code}.webp.
     - Le montant encaissé se remplit automatiquement avec le total du ticket.
     - Le montant encaissé reste modifiable manuellement.
+    - LP reçoit une classe spéciale pour mieux gérer son nom long.
+    - MV et PE reçoivent une classe spéciale pour texte clair sur fond sombre.
   */
 
   const JOURNEE_ACTIVE = {
@@ -395,7 +397,6 @@
 
   const syncAmountPaidInput = (total) => {
     if (state.amountManuallyEdited) return;
-
     els.amountPaidInput.value = total > 0 ? formatAmountInput(total) : "";
   };
 
@@ -475,6 +476,8 @@
 
   const renderProducts = () => {
     const draftCounts = getDraftCounts();
+    const lightTextCodes = ["MV", "PE"];
+    const longNameCodes = ["LP"];
 
     els.productGrid.innerHTML = getVisibleProducts()
       .map((product) => {
@@ -486,9 +489,16 @@
           ? `${product.format_cl} cL · dans le coffret`
           : `${product.format_cl} cL · ${formatCurrency(product.prix_ttc)}`;
 
+        const buttonClasses = [
+          "productBtn",
+          qty > 0 ? "hasQty" : "",
+          lightTextCodes.includes(product.parfum_code) ? "isLightText" : "",
+          longNameCodes.includes(product.parfum_code) ? "isLongName" : ""
+        ].filter(Boolean).join(" ");
+
         return `
           <button
-            class="productBtn ${qty > 0 ? "hasQty" : ""}"
+            class="${buttonClasses}"
             type="button"
             data-sku="${product.sku_id}"
             data-parfum="${product.parfum_code}"
