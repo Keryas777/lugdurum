@@ -748,9 +748,11 @@ button {
   }
 }
 
+/* ===== PWA iPhone : respecte la barre d’état et la zone Home Indicator ===== */
 @media (display-mode: standalone) {
   .appShell {
-    padding-top: 8px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    padding-bottom: calc(34px + env(safe-area-inset-bottom));
   }
 
   .topbar {
@@ -761,7 +763,8 @@ button {
 @supports (-webkit-touch-callout: none) {
   @media (display-mode: standalone) {
     .appShell {
-      padding-top: 4px;
+      padding-top: calc(14px + env(safe-area-inset-top));
+      padding-bottom: calc(34px + env(safe-area-inset-bottom));
     }
   }
 }
