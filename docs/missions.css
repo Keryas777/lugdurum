@@ -1,5 +1,5 @@
 /* ==============================
-   Page Missions
+   Page Missions / Évènements
    ============================== */
 
 .page-missions .appShell {
@@ -75,15 +75,7 @@
 }
 
 .missionHero h2 {
-  font-size: clamp(1.8rem, 7vw, 3.2rem);
-}
-
-.missionHero p:not(.sectionKicker) {
-  max-width: 42rem;
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 1rem;
-  line-height: 1.4;
+  font-size: clamp(1.9rem, 7.2vw, 3.4rem);
 }
 
 .missionPanel {
@@ -97,18 +89,18 @@
 
 .eventTypeGrid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .eventTypeCard {
-  min-height: 112px;
+  min-height: 118px;
   display: grid;
   align-content: center;
   gap: 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: 14px;
   text-align: left;
   color: var(--text);
   background:
@@ -125,16 +117,16 @@
 }
 
 .eventTypeCard strong {
-  font-size: 1.1rem;
+  font-size: clamp(0.98rem, 4vw, 1.14rem);
   line-height: 1.05;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.035em;
 }
 
 .eventTypeCard small {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: clamp(0.75rem, 3.2vw, 0.88rem);
   font-weight: 750;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 
 .eventTypeCard.isActive small {
@@ -142,7 +134,7 @@
 }
 
 .eventTypeIcon {
-  font-size: 1.35rem;
+  font-size: 1.32rem;
 }
 
 .missionFields {
@@ -184,6 +176,33 @@
   padding-top: 12px;
   resize: vertical;
   line-height: 1.35;
+}
+
+.operatorGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.operatorChip {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.operatorChip.isActive {
+  color: #fffaf1;
+  border-color: rgba(138, 90, 43, 0.48);
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+  box-shadow: 0 10px 22px rgba(138, 90, 43, 0.18);
 }
 
 .dayPreviewBox {
@@ -271,21 +290,6 @@
   font-weight: 850;
 }
 
-.missionCreatedPanel {
-  display: grid;
-  gap: 14px;
-}
-
-.missionCreatedPanel[hidden] {
-  display: none;
-}
-
-.missionCreatedPanel p:not(.sectionKicker) {
-  margin: 8px 0 0;
-  color: var(--muted);
-  line-height: 1.35;
-}
-
 .missionsList {
   display: grid;
   gap: 10px;
@@ -303,7 +307,7 @@
 
 .missionListTitle {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
@@ -328,6 +332,16 @@
   letter-spacing: 0.04em;
 }
 
+.missionStatusBadge.isReady {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.missionStatusBadge.isActive {
+  color: #fffaf1;
+  background: var(--green);
+}
+
 .missionListMeta {
   color: var(--muted);
   font-size: 0.88rem;
@@ -335,12 +349,13 @@
   line-height: 1.3;
 }
 
-.missionDayChips {
+.missionOperatorLine {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
+.missionOperatorChip,
 .missionDayChip {
   display: inline-flex;
   align-items: center;
@@ -353,6 +368,17 @@
   font-weight: 900;
 }
 
+.missionOperatorChip {
+  color: var(--rum);
+  background: var(--amber-soft);
+}
+
+.missionDayChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .missionListActions {
   display: grid;
   grid-template-columns: 1fr;
@@ -361,6 +387,9 @@
 
 .missionSmallBtn {
   min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0 12px;
@@ -368,6 +397,7 @@
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
   font-weight: 900;
+  text-align: center;
 }
 
 .missionSmallBtn.primary {
@@ -378,10 +408,6 @@
 }
 
 @media (min-width: 620px) {
-  .eventTypeGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .missionFields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -391,12 +417,7 @@
   }
 
   .missionActions {
-    grid-template-columns: 1fr 1.4fr;
-  }
-
-  .missionCreatedPanel {
-    grid-template-columns: 1fr auto;
-    align-items: center;
+    grid-template-columns: 1fr 1fr 1.4fr;
   }
 
   .missionListActions {
@@ -404,12 +425,31 @@
   }
 }
 
-@media (max-width: 370px) {
-  .dayPreviewItem {
-    align-items: flex-start;
-    flex-direction: column;
+@media (max-width: 430px) {
+  .missionHero {
+    padding: 18px;
   }
 
+  .missionPanel {
+    padding: 14px;
+  }
+
+  .operatorGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 370px) {
+  .eventTypeGrid {
+    gap: 8px;
+  }
+
+  .eventTypeCard {
+    min-height: 112px;
+    padding: 12px;
+  }
+
+  .dayPreviewItem,
   .missionListTitle {
     align-items: flex-start;
     flex-direction: column;
