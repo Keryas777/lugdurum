@@ -2,14 +2,15 @@
   "use strict";
 
   /*
-    V9 terrain :
-    - Catalogue mocké sur la structure Google Sheets, en attendant l'API.
+    V10 terrain :
+    - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
+    - Fallback sur le dernier catalogue chargé en localStorage si l’API est indisponible.
     - 50 cL vendu à l’unité.
     - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
     - Le mode 50 cL affiche les SKU actifs / visibles en format 50.
     - Les modes coffrets affichent les SKU actifs / visibles en format 20.
-    - VB existe uniquement en 50 cL, donc n'apparaît pas en coffret.
-    - FF et VK restent au catalogue mais ne sont pas visibles car plus commercialisés.
+    - VB existe uniquement en 50 cL, donc n'apparaît pas en coffret si aucun SKU VB_20 n’existe dans le Sheet.
+    - FF et VK restent au catalogue mais ne sont pas visibles si actif = false.
     - Supplément PE : +1 € par PE dans le coffret.
     - Les parfums du coffret peuvent être retirés un par un depuis la composition.
     - Les visuels de boutons sont chargés depuis ./assets/parfums/{code}.webp.
@@ -27,308 +28,6 @@
     user_id: "U_JEROME",
     vendeur: "Jérôme"
   };
-
-  const CATALOGUE = [
-    {
-      sku_id: "FF_50",
-      parfum_code: "FF",
-      parfum_nom: "Fraise Framboise",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: false,
-      visible_webapp: false,
-      ordre_affichage: 10
-    },
-    {
-      sku_id: "FF_20",
-      parfum_code: "FF",
-      parfum_nom: "Fraise Framboise",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: false,
-      visible_webapp: false,
-      ordre_affichage: 10
-    },
-    {
-      sku_id: "VK_50",
-      parfum_code: "VK",
-      parfum_nom: "Vanille Kiwi",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: false,
-      visible_webapp: false,
-      ordre_affichage: 20
-    },
-    {
-      sku_id: "VK_20",
-      parfum_code: "VK",
-      parfum_nom: "Vanille Kiwi",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: false,
-      visible_webapp: false,
-      ordre_affichage: 20
-    },
-    {
-      sku_id: "AT_50",
-      parfum_code: "AT",
-      parfum_nom: "Abricot Tonka",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 30
-    },
-    {
-      sku_id: "AT_20",
-      parfum_code: "AT",
-      parfum_nom: "Abricot Tonka",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 30
-    },
-    {
-      sku_id: "MV_50",
-      parfum_code: "MV",
-      parfum_nom: "Mirabelle Vanille",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 40
-    },
-    {
-      sku_id: "MV_20",
-      parfum_code: "MV",
-      parfum_nom: "Mirabelle Vanille",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 40
-    },
-    {
-      sku_id: "CG_50",
-      parfum_code: "CG",
-      parfum_nom: "Citron Gingembre",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 50
-    },
-    {
-      sku_id: "CG_20",
-      parfum_code: "CG",
-      parfum_nom: "Citron Gingembre",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 50
-    },
-    {
-      sku_id: "OC_50",
-      parfum_code: "OC",
-      parfum_nom: "Orange Cannelle",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 60
-    },
-    {
-      sku_id: "OC_20",
-      parfum_code: "OC",
-      parfum_nom: "Orange Cannelle",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 60
-    },
-    {
-      sku_id: "PR_50",
-      parfum_code: "PR",
-      parfum_nom: "Pomelo Romarin",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 70
-    },
-    {
-      sku_id: "PR_20",
-      parfum_code: "PR",
-      parfum_nom: "Pomelo Romarin",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 70
-    },
-    {
-      sku_id: "FP_50",
-      parfum_code: "FP",
-      parfum_nom: "Framboise Passion",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 80
-    },
-    {
-      sku_id: "FP_20",
-      parfum_code: "FP",
-      parfum_nom: "Framboise Passion",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 80
-    },
-    {
-      sku_id: "LP_50",
-      parfum_code: "LP",
-      parfum_nom: "Litchi Poivre de Sichuan",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 90
-    },
-    {
-      sku_id: "LP_20",
-      parfum_code: "LP",
-      parfum_nom: "Litchi Poivre de Sichuan",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 90
-    },
-    {
-      sku_id: "VT_50",
-      parfum_code: "VT",
-      parfum_nom: "Vanille Tonka",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 100
-    },
-    {
-      sku_id: "VT_20",
-      parfum_code: "VT",
-      parfum_nom: "Vanille Tonka",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 100
-    },
-    {
-      sku_id: "PE_50",
-      parfum_code: "PE",
-      parfum_nom: "Pain d'Épices",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 31,
-      prix_ht: 31,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 110
-    },
-    {
-      sku_id: "PE_20",
-      parfum_code: "PE",
-      parfum_nom: "Pain d'Épices",
-      format_cl: 20,
-      categorie: "bouteille",
-      prix_ttc: 0,
-      prix_ht: 0,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 110
-    },
-    {
-      sku_id: "VB_50",
-      parfum_code: "VB",
-      parfum_nom: "Vanille Bleue",
-      format_cl: 50,
-      categorie: "bouteille",
-      prix_ttc: 30,
-      prix_ht: 30,
-      taux_tva: 0,
-      actif: true,
-      visible_webapp: true,
-      ordre_affichage: 120
-    }
-  ];
 
   const SALE_MODES = {
     BOTTLE_50: {
@@ -356,13 +55,16 @@
 
   const STORAGE_KEY = "lugdurum_pending_transactions";
   const LAST_TICKET_KEY = "lugdurum_last_ticket";
+  const CATALOGUE_CACHE_KEY = "lugdurum_catalogue_cache";
 
   const state = {
     selectedMode: "BOTTLE_50",
     paymentMode: "ESP",
     ticketItems: [],
     draftPack: [],
-    amountManuallyEdited: false
+    amountManuallyEdited: false,
+    catalogue: [],
+    catalogueLoaded: false
   };
 
   const els = {
@@ -395,6 +97,122 @@
   const formatAmountInput = (value) =>
     (Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2);
 
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  const escapeAttr = (value) =>
+    escapeHtml(value).replaceAll("`", "&#096;");
+
+  const toNumber = (value, fallback = 0) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(",", ".");
+
+    if (!normalized) return fallback;
+
+    const number = Number(normalized);
+
+    return Number.isFinite(number) ? number : fallback;
+  };
+
+  const toBoolean = (value, fallback = false) => {
+    if (value === true) return true;
+    if (value === false) return false;
+
+    if (typeof value === "number") return value !== 0;
+
+    const normalized = String(value ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!normalized) return fallback;
+
+    if (["true", "vrai", "oui", "yes", "1", "x", "actif"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "faux", "non", "no", "0", "inactif"].includes(normalized)) {
+      return false;
+    }
+
+    return fallback;
+  };
+
+  const getFallbackProductPrice = (product) => {
+    if (product.format_cl === 50 && product.parfum_code === "PE") return 31;
+    if (product.format_cl === 50) return 30;
+    return 0;
+  };
+
+  const normalizeProduct = (rawProduct, index) => {
+    const parfumCode = String(rawProduct.parfum_code || "")
+      .trim()
+      .toUpperCase();
+
+    const formatCl = toNumber(rawProduct.format_cl, 0);
+    const fallbackPrice = getFallbackProductPrice({
+      parfum_code: parfumCode,
+      format_cl: formatCl
+    });
+
+    const hasVisibleWebappColumn = Object.prototype.hasOwnProperty.call(
+      rawProduct,
+      "visible_webapp"
+    );
+
+    return {
+      sku_id: String(rawProduct.sku_id || `${parfumCode}_${formatCl}`).trim(),
+      parfum_code: parfumCode,
+      parfum_nom: String(rawProduct.parfum_nom || parfumCode).trim(),
+      format_cl: formatCl,
+      categorie: String(rawProduct.categorie || "bouteille").trim(),
+      prix_ttc: toNumber(rawProduct.prix_ttc, fallbackPrice),
+      prix_ht: toNumber(rawProduct.prix_ht, toNumber(rawProduct.prix_ttc, fallbackPrice)),
+      taux_tva: toNumber(rawProduct.taux_tva, 0),
+      regime_tva: String(rawProduct.regime_tva || "").trim(),
+      cout_revient: toNumber(rawProduct.cout_revient, 0),
+      marge_unitaire: toNumber(rawProduct.marge_unitaire, 0),
+      actif: toBoolean(rawProduct.actif, false),
+      visible_webapp: hasVisibleWebappColumn
+        ? toBoolean(rawProduct.visible_webapp, true)
+        : true,
+      ordre_affichage: toNumber(rawProduct.ordre_affichage, 1000 + index),
+      note: String(rawProduct.note || "").trim(),
+      image_src: String(rawProduct.image_src || "").trim()
+    };
+  };
+
+  const readCachedCatalogue = () => {
+    try {
+      return JSON.parse(localStorage.getItem(CATALOGUE_CACHE_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  };
+
+  const writeCachedCatalogue = (catalogue) => {
+    localStorage.setItem(CATALOGUE_CACHE_KEY, JSON.stringify(catalogue));
+  };
+
+  const setStatus = (message, type = "") => {
+    if (!els.saveStatus) return;
+
+    els.saveStatus.textContent = message;
+    els.saveStatus.className = "saveStatus";
+
+    if (type) {
+      els.saveStatus.classList.add(type);
+    }
+  };
+
   const syncAmountPaidInput = (total) => {
     if (state.amountManuallyEdited) return;
     els.amountPaidInput.value = total > 0 ? formatAmountInput(total) : "";
@@ -410,15 +228,20 @@
   const getVisibleProducts = () => {
     const mode = getMode();
 
-    return CATALOGUE
+    return state.catalogue
       .filter((product) => product.actif)
-      .filter((product) => product.visible_webapp)
+      .filter((product) => product.visible_webapp !== false)
       .filter((product) => product.format_cl === mode.format_cl)
-      .sort((a, b) => a.ordre_affichage - b.ordre_affichage);
+      .sort((a, b) => {
+        const byOrder = a.ordre_affichage - b.ordre_affichage;
+        if (byOrder !== 0) return byOrder;
+
+        return String(a.parfum_code).localeCompare(String(b.parfum_code));
+      });
   };
 
   const findProductBySku = (skuId) =>
-    CATALOGUE.find((product) => product.sku_id === skuId);
+    state.catalogue.find((product) => product.sku_id === skuId);
 
   const getPeCount = (composition) =>
     composition.filter((item) => item.parfum_code === "PE").length;
@@ -446,7 +269,9 @@
 
   const getDraftProductByCode = (parfumCode) =>
     state.draftPack.find((product) => product.parfum_code === parfumCode) ||
-    CATALOGUE.find((product) => product.parfum_code === parfumCode && product.format_cl === 20);
+    state.catalogue.find(
+      (product) => product.parfum_code === parfumCode && product.format_cl === 20
+    );
 
   const removeOneDraftProduct = (parfumCode) => {
     for (let i = state.draftPack.length - 1; i >= 0; i -= 1) {
@@ -456,7 +281,7 @@
       }
     }
 
-    els.saveStatus.textContent = "";
+    setStatus("");
     renderAll();
   };
 
@@ -478,8 +303,21 @@
     const draftCounts = getDraftCounts();
     const lightTextCodes = ["MV", "PE"];
     const longNameCodes = ["LP"];
+    const visibleProducts = getVisibleProducts();
 
-    els.productGrid.innerHTML = getVisibleProducts()
+    if (!state.catalogueLoaded && state.catalogue.length === 0) {
+      els.productGrid.innerHTML =
+        `<p class="emptyTicket">Chargement du catalogue...</p>`;
+      return;
+    }
+
+    if (visibleProducts.length === 0) {
+      els.productGrid.innerHTML =
+        `<p class="emptyTicket">Aucun parfum actif pour ce format.</p>`;
+      return;
+    }
+
+    els.productGrid.innerHTML = visibleProducts
       .map((product) => {
         const qty = isBoxMode()
           ? draftCounts.get(product.parfum_code) || 0
@@ -494,19 +332,21 @@
           qty > 0 ? "hasQty" : "",
           lightTextCodes.includes(product.parfum_code) ? "isLightText" : "",
           longNameCodes.includes(product.parfum_code) ? "isLongName" : ""
-        ].filter(Boolean).join(" ");
+        ]
+          .filter(Boolean)
+          .join(" ");
 
         return `
           <button
             class="${buttonClasses}"
             type="button"
-            data-sku="${product.sku_id}"
-            data-parfum="${product.parfum_code}"
-            style="--product-bg: url('${getProductImageSrc(product)}')"
+            data-sku="${escapeAttr(product.sku_id)}"
+            data-parfum="${escapeAttr(product.parfum_code)}"
+            style="--product-bg: url('${escapeAttr(getProductImageSrc(product))}')"
           >
-            <span class="productCode">${product.parfum_code}</span>
-            <span class="productName">${product.parfum_nom}</span>
-            <span class="productMeta">${meta}</span>
+            <span class="productCode">${escapeHtml(product.parfum_code)}</span>
+            <span class="productName">${escapeHtml(product.parfum_nom)}</span>
+            <span class="productMeta">${escapeHtml(meta)}</span>
             ${qty > 0 ? `<strong class="productQty">×${qty}</strong>` : ""}
           </button>
         `;
@@ -537,7 +377,8 @@
     els.addPackBtn.disabled = current !== max;
 
     if (current === 0) {
-      els.draftPackList.innerHTML = `<p class="emptyTicket">Choisis les ${max} parfums du coffret.</p>`;
+      els.draftPackList.innerHTML =
+        `<p class="emptyTicket">Choisis les ${max} parfums du coffret.</p>`;
       return;
     }
 
@@ -545,7 +386,12 @@
     const lines = [...counts.entries()]
       .map(([code, qty]) => {
         const product = getDraftProductByCode(code);
-        return { ...product, qty };
+        return {
+          parfum_code: code,
+          parfum_nom: product ? product.parfum_nom : code,
+          ordre_affichage: product ? product.ordre_affichage : 9999,
+          qty
+        };
       })
       .sort((a, b) => a.ordre_affichage - b.ordre_affichage);
 
@@ -556,19 +402,21 @@
             <button
               class="draftChip"
               type="button"
-              data-remove-draft-code="${line.parfum_code}"
-              aria-label="Retirer un ${line.parfum_code} du coffret"
+              data-remove-draft-code="${escapeAttr(line.parfum_code)}"
+              aria-label="Retirer un ${escapeAttr(line.parfum_code)} du coffret"
               title="Toucher pour retirer"
             >
-              ${line.parfum_code}${line.qty > 1 ? ` ×${line.qty}` : ""}
+              ${escapeHtml(line.parfum_code)}${line.qty > 1 ? ` ×${line.qty}` : ""}
             </button>
           `)
           .join("")}
       </div>
       <p class="packHint">
-        ${peCount > 0
-          ? `Supplément PE appliqué : +${formatCurrency(peSurchargeTotal)}`
-          : "Aucun supplément PE pour ce coffret."}
+        ${
+          peCount > 0
+            ? `Supplément PE appliqué : +${formatCurrency(peSurchargeTotal)}`
+            : "Aucun supplément PE pour ce coffret."
+        }
       </p>
     `;
   };
@@ -600,17 +448,20 @@
           }, new Map());
 
           const chips = [...counts.entries()]
-            .map(([code, qty]) => `<span class="ticketChip">${code}${qty > 1 ? ` ×${qty}` : ""}</span>`)
+            .map(
+              ([code, qty]) =>
+                `<span class="ticketChip">${escapeHtml(code)}${qty > 1 ? ` ×${qty}` : ""}</span>`
+            )
             .join("");
 
           return `
             <article class="ticketLine ticketLineBox">
               <div>
-                <strong>${item.label}</strong>
+                <strong>${escapeHtml(item.label)}</strong>
                 <span>${chips}</span>
               </div>
 
-              <button class="removeLineBtn" type="button" data-remove-item="${item.item_id}">
+              <button class="removeLineBtn" type="button" data-remove-item="${escapeAttr(item.item_id)}">
                 Retirer
               </button>
 
@@ -624,14 +475,14 @@
         return `
           <article class="ticketLine">
             <div>
-              <strong>${item.parfum_code} ${item.format_cl} cL</strong>
-              <span>${item.parfum_nom} · ${formatCurrency(item.prix_unitaire_ttc)}</span>
+              <strong>${escapeHtml(item.parfum_code)} ${escapeHtml(item.format_cl)} cL</strong>
+              <span>${escapeHtml(item.parfum_nom)} · ${formatCurrency(item.prix_unitaire_ttc)}</span>
             </div>
 
-            <div class="qtyControls" aria-label="Quantité ${item.parfum_code}">
-              <button type="button" data-action="decrement" data-item="${item.item_id}">−</button>
+            <div class="qtyControls" aria-label="Quantité ${escapeAttr(item.parfum_code)}">
+              <button type="button" data-action="decrement" data-item="${escapeAttr(item.item_id)}">−</button>
               <span>${item.quantite}</span>
-              <button type="button" data-action="increment" data-item="${item.item_id}">+</button>
+              <button type="button" data-action="increment" data-item="${escapeAttr(item.item_id)}">+</button>
             </div>
 
             <strong class="lineTotal">${formatCurrency(lineTotal)}</strong>
@@ -681,8 +532,7 @@
     const mode = getMode();
 
     if (state.draftPack.length >= mode.box_size) {
-      els.saveStatus.textContent = "Le coffret est complet. Ajoute-le au ticket ou vide la composition.";
-      els.saveStatus.className = "saveStatus isError";
+      setStatus("Le coffret est complet. Ajoute-le au ticket ou vide la composition.", "isError");
       return;
     }
 
@@ -713,8 +563,7 @@
     });
 
     state.draftPack = [];
-    els.saveStatus.textContent = `${mode.label} ajouté au ticket.`;
-    els.saveStatus.className = "saveStatus isSuccess";
+    setStatus(`${mode.label} ajouté au ticket.`, "isSuccess");
     renderAll();
   };
 
@@ -738,7 +587,7 @@
     state.draftPack = [];
     els.amountPaidInput.value = "";
     state.amountManuallyEdited = false;
-    els.saveStatus.textContent = "";
+    setStatus("");
     renderAll();
   };
 
@@ -749,7 +598,7 @@
       state.ticketItems.pop();
     }
 
-    els.saveStatus.textContent = "";
+    setStatus("");
     renderAll();
   };
 
@@ -848,9 +697,8 @@
     const transactionId = `TX_${Date.now()}`;
     const totalCatalogue = getTicketTotal();
     const amountInput = Number(String(els.amountPaidInput.value).replace(",", "."));
-    const totalEncaisse = Number.isFinite(amountInput) && amountInput > 0
-      ? amountInput
-      : totalCatalogue;
+    const totalEncaisse =
+      Number.isFinite(amountInput) && amountInput > 0 ? amountInput : totalCatalogue;
 
     return {
       transaction_id: transactionId,
@@ -878,28 +726,67 @@
 
   const saveTicket = () => {
     if (state.ticketItems.length === 0) {
-      els.saveStatus.textContent = "Ajoute au moins un produit avant d’enregistrer.";
-      els.saveStatus.className = "saveStatus isError";
+      setStatus("Ajoute au moins un produit avant d’enregistrer.", "isError");
       return;
     }
 
     if (state.draftPack.length > 0) {
-      els.saveStatus.textContent = "Tu as un coffret en cours non ajouté au ticket.";
-      els.saveStatus.className = "saveStatus isError";
+      setStatus("Tu as un coffret en cours non ajouté au ticket.", "isError");
       return;
     }
 
     const transaction = buildTransaction();
     savePendingTransaction(transaction);
 
-    els.saveStatus.textContent = `Ticket enregistré en local · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`;
-    els.saveStatus.className = "saveStatus isSuccess";
+    setStatus(
+      `Ticket enregistré en local · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
+      "isSuccess"
+    );
 
     state.ticketItems = [];
     state.draftPack = [];
     els.amountPaidInput.value = "";
     state.amountManuallyEdited = false;
     renderAll();
+  };
+
+  const loadCatalogue = async () => {
+    renderProducts();
+
+    try {
+      if (!window.LugdurumAPI || typeof window.LugdurumAPI.getCatalogue !== "function") {
+        throw new Error("lugdurum-api.js n’est pas chargé.");
+      }
+
+      const rows = await window.LugdurumAPI.getCatalogue();
+
+      state.catalogue = rows
+        .map((row, index) => normalizeProduct(row, index))
+        .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
+
+      state.catalogueLoaded = true;
+      writeCachedCatalogue(state.catalogue);
+
+      setStatus("");
+      renderAll();
+    } catch (error) {
+      const cached = readCachedCatalogue();
+
+      if (cached.length > 0) {
+        state.catalogue = cached.map((row, index) => normalizeProduct(row, index));
+        state.catalogueLoaded = true;
+
+        setStatus("Catalogue chargé depuis le cache local.", "isError");
+        renderAll();
+        return;
+      }
+
+      state.catalogueLoaded = true;
+      state.catalogue = [];
+
+      setStatus(`Impossible de charger le catalogue : ${error.message}`, "isError");
+      renderAll();
+    }
   };
 
   document.addEventListener("click", (event) => {
@@ -913,7 +800,7 @@
     if (modeButton) {
       state.selectedMode = modeButton.dataset.saleMode;
       state.draftPack = [];
-      els.saveStatus.textContent = "";
+      setStatus("");
       renderAll();
       return;
     }
@@ -929,7 +816,7 @@
         addBottle(product);
       }
 
-      els.saveStatus.textContent = "";
+      setStatus("");
       renderAll();
       return;
     }
@@ -937,7 +824,7 @@
     const paymentButton = event.target.closest(".paymentBtn");
     if (paymentButton) {
       state.paymentMode = paymentButton.dataset.payment;
-      els.saveStatus.textContent = "";
+      setStatus("");
       renderPayment();
       return;
     }
@@ -946,7 +833,7 @@
     if (qtyButton) {
       const delta = qtyButton.dataset.action === "increment" ? 1 : -1;
       changeBottleQty(qtyButton.dataset.item, delta);
-      els.saveStatus.textContent = "";
+      setStatus("");
       renderAll();
       return;
     }
@@ -954,7 +841,7 @@
     const removeButton = event.target.closest("[data-remove-item]");
     if (removeButton) {
       removeTicketItem(removeButton.dataset.removeItem);
-      els.saveStatus.textContent = "";
+      setStatus("");
       renderAll();
     }
   });
@@ -965,7 +852,7 @@
 
   els.clearDraftPackBtn.addEventListener("click", () => {
     state.draftPack = [];
-    els.saveStatus.textContent = "";
+    setStatus("");
     renderAll();
   });
 
@@ -975,4 +862,5 @@
   els.saveTicketBtn.addEventListener("click", saveTicket);
 
   renderAll();
+  loadCatalogue();
 })();
