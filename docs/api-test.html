@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Test API Lugdurum</title>
+    <script src="./lugdurum-api.js?v=1" defer></script>
+  </head>
+
+  <body style="font-family: system-ui; padding: 20px;">
+    <h1>Test API Lugdurum</h1>
+
+    <button id="pingBtn">Tester ping</button>
+    <button id="catalogueBtn">Tester catalogue</button>
+
+    <pre
+      id="result"
+      style="margin-top: 20px; white-space: pre-wrap; background: #f3f3f3; padding: 12px; border-radius: 8px;"
+    >En attente...</pre>
+
+    <script>
+      const result = document.getElementById("result");
+
+      const show = (data) => {
+        result.textContent = JSON.stringify(data, null, 2);
+      };
+
+      const showError = (error) => {
+        result.textContent = "ERREUR : " + error.message;
+      };
+
+      document.getElementById("pingBtn").addEventListener("click", async () => {
+        result.textContent = "Test ping en cours...";
+
+        try {
+          const data = await window.LugdurumAPI.ping();
+          show(data);
+        } catch (error) {
+          showError(error);
+        }
+      });
+
+      document.getElementById("catalogueBtn").addEventListener("click", async () => {
+        result.textContent = "Chargement catalogue...";
+
+        try {
+          const data = await window.LugdurumAPI.getCatalogue();
+          show({
+            total_lignes: data.length,
+            premiere_ligne: data[0],
+            toutes_les_lignes: data
+          });
+        } catch (error) {
+          showError(error);
+        }
+      });
+    </script>
+  </body>
+</html>
