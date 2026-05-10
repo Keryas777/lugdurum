@@ -3,7 +3,7 @@
 (() => {
   "use strict";
 
-  const API_URL = "COLLE_ICI_TON_URL_APPS_SCRIPT_EXEC";
+  const API_URL = "https://script.google.com/macros/s/AKfycbzPnUPJsS-cdZk15j8J1cp_jSeE4yv0ki-I9mKt6sO9iPTsAsLMyeY7EBt_Uv954NXd/exec";
 
   const buildUrl = (action, params = {}) => {
     const url = new URL(API_URL);
