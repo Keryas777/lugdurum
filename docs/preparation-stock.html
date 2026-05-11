@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Préparation stock</title>
+
+    <link rel="stylesheet" href="./style.css?v=11" />
+    <link rel="stylesheet" href="./preparation-stock.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=2" defer></script>
+    <script src="./preparation-stock.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-stock-prep">
+    <div class="appShell stockPrepShell">
+      <header class="topbar stockPrepTopbar">
+        <a class="backBtn" href="./missions.html" aria-label="Retour aux évènements">
+          ←
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Préparation stock</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="stockPrepLayout">
+        <section class="stockPrepHero" aria-labelledby="stockPrepTitle">
+          <div>
+            <p class="sectionKicker">Mission de stock</p>
+            <h2 id="stockPrepTitle">Stock à emporter</h2>
+            <p class="stockPrepMeta" id="stockMissionMeta">
+              Chargement de la mission…
+            </p>
+          </div>
+
+          <div class="stockPrepSummary">
+            <span>Total emmené</span>
+            <strong id="stockTotalCount">0</strong>
+            <small>bouteilles</small>
+          </div>
+        </section>
+
+        <section class="stockPrepPanel" aria-labelledby="stockDaysTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Journées liées</p>
+              <h2 id="stockDaysTitle">Cette mission couvre</h2>
+            </div>
+          </div>
+
+          <div class="stockDayChips" id="stockDayChips">
+            <p class="stockEmpty">Aucune journée trouvée.</p>
+          </div>
+        </section>
+
+        <section class="stockPrepPanel stockPrepControls" aria-labelledby="stockControlsTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Saisie rapide</p>
+              <h2 id="stockControlsTitle">Stock initial</h2>
+            </div>
+          </div>
+
+          <div class="stockPrepStats">
+            <article>
+              <span>50 cL</span>
+              <strong id="stockTotal50">0</strong>
+            </article>
+
+            <article>
+              <span>20 cL</span>
+              <strong id="stockTotal20">0</strong>
+            </article>
+
+            <article>
+              <span>Parfums</span>
+              <strong id="stockFlavourCount">0</strong>
+            </article>
+          </div>
+
+          <div class="stockToolbar">
+            <button class="smallTextBtn" type="button" id="clearStockBtn">
+              Tout remettre à zéro
+            </button>
+          </div>
+
+          <div class="stockRows" id="stockRows" aria-live="polite">
+            <p class="stockEmpty">Chargement du catalogue…</p>
+          </div>
+        </section>
+
+        <section class="stockPrepPanel" aria-labelledby="stockNoteTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Note</p>
+              <h2 id="stockNoteTitle">Infos de préparation</h2>
+            </div>
+          </div>
+
+          <label class="stockNoteField">
+            <span>Note optionnelle</span>
+            <textarea
+              id="stockNoteInput"
+              rows="3"
+              placeholder="Ex : stock préparé la veille, cartons séparés, réassort prévu..."
+            ></textarea>
+          </label>
+
+          <div class="stockActions">
+            <button class="btn btnGhost" type="button" id="saveDraftBtn">
+              Enregistrer brouillon
+            </button>
+
+            <button class="btn btnGhost" type="button" id="validateStockBtn">
+              Valider le stock
+            </button>
+
+            <button class="btn btnPrimary" type="button" id="startDayBtn">
+              Valider et démarrer
+            </button>
+          </div>
+
+          <p class="stockStatus" id="stockStatus" role="status"></p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
