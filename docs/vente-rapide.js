@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    V11 terrain :
+    V12 terrain :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
     - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
     - Fallback sur le dernier catalogue + les dernières offres chargées en localStorage si l’API est indisponible.
@@ -21,6 +21,8 @@
     - Le montant encaissé reste modifiable manuellement.
     - LP reçoit une classe spéciale pour mieux gérer son nom long.
     - MV et PE reçoivent une classe spéciale pour texte clair sur fond sombre.
+    - Optimisation rendu : la grille produits n’est plus reconstruite à chaque ajout.
+      Seules les pastilles quantité sont mises à jour.
   */
 
   const JOURNEE_ACTIVE = {
@@ -280,11 +282,6 @@
     });
   };
 
-  const getBoxOffer = () => {
-    if (!isBoxMode()) return null;
-    return findBoxOfferForMode(getMode());
-  };
-
   const getSupplementCount = (composition, offer) => {
     if (!offer || !offer.supplement_parfum_code) return 0;
 
@@ -323,9 +320,6 @@
       totalHt: offer.prix_ht + supplementTotalTtc
     };
   };
-
-  const getPackPrice = (composition, mode = getMode()) =>
-    getPackPricing(composition, mode).totalTtc;
 
   const getItemTotal = (item) => {
     if (item.type === "bottle") return item.quantite * item.prix_unitaire_ttc;
@@ -456,6 +450,35 @@
         `;
       })
       .join("");
+  };
+
+  const updateProductQuantities = () => {
+    const draftCounts = getDraftCounts();
+
+    document.querySelectorAll(".productBtn[data-sku]").forEach((button) => {
+      const product = findProductBySku(button.dataset.sku);
+      if (!product) return;
+
+      const qty = isBoxMode()
+        ? draftCounts.get(product.parfum_code) || 0
+        : getTicketBottleQty(product.sku_id);
+
+      button.classList.toggle("hasQty", qty > 0);
+
+      let badge = button.querySelector(".productQty");
+
+      if (qty > 0) {
+        if (!badge) {
+          badge = document.createElement("strong");
+          badge.className = "productQty";
+          button.appendChild(badge);
+        }
+
+        badge.textContent = `×${qty}`;
+      } else if (badge) {
+        badge.remove();
+      }
+    });
   };
 
   const renderPackComposer = () => {
@@ -608,10 +631,16 @@
     });
   };
 
-  const renderAll = () => {
+  const renderAll = ({ refreshProducts = false } = {}) => {
     renderModes();
     renderPackComposer();
-    renderProducts();
+
+    if (refreshProducts || els.productGrid.children.length === 0) {
+      renderProducts();
+    } else {
+      updateProductQuantities();
+    }
+
     renderCart();
     renderPayment();
   };
@@ -937,7 +966,7 @@
         setStatus("");
       }
 
-      renderAll();
+      renderAll({ refreshProducts: true });
     } catch (error) {
       const cachedCatalogue = readCachedArray(CATALOGUE_CACHE_KEY);
       const cachedOffres = readCachedArray(OFFRES_VENTE_CACHE_KEY);
@@ -948,7 +977,7 @@
         state.dataLoaded = true;
 
         setStatus("Données chargées depuis le cache local.", "isError");
-        renderAll();
+        renderAll({ refreshProducts: true });
         return;
       }
 
@@ -957,7 +986,7 @@
       state.offresVente = [];
 
       setStatus(`Impossible de charger les données : ${error.message}`, "isError");
-      renderAll();
+      renderAll({ refreshProducts: true });
     }
   };
 
@@ -973,7 +1002,7 @@
       state.selectedMode = modeButton.dataset.saleMode;
       state.draftPack = [];
       setStatus("");
-      renderAll();
+      renderAll({ refreshProducts: true });
       return;
     }
 
