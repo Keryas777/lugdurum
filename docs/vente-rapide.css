@@ -370,6 +370,17 @@
   font-size: 0.82rem;
   font-weight: 900;
   z-index: 2;
+  opacity: 0;
+  transform: scale(0.92);
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.productBtn.hasQty .productQty {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .ticketPanel {
