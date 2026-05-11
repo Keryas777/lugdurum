@@ -75,7 +75,16 @@
 }
 
 .missionHero h2 {
-  font-size: clamp(1.9rem, 7.2vw, 3.4rem);
+  font-size: clamp(1.75rem, 7vw, 3.2rem);
+}
+
+.missionHero p {
+  max-width: 680px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 720;
+  line-height: 1.38;
 }
 
 .missionPanel {
@@ -85,6 +94,18 @@
 .missionForm {
   display: grid;
   gap: 16px;
+}
+
+.missionHelp {
+  margin: 0;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 13px 14px;
+  color: var(--muted);
+  background: rgba(255, 250, 241, 0.48);
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.36;
 }
 
 .eventTypeGrid {
@@ -212,14 +233,17 @@
   box-shadow: 0 10px 22px rgba(138, 90, 43, 0.18);
 }
 
-.dayPreviewBox {
+.dayPreviewBox,
+.stockDaysBox,
+.stockMissionPreview {
   border: 1px solid rgba(86, 65, 42, 0.14);
   border-radius: var(--radius-md);
   padding: 14px;
   background: rgba(255, 250, 241, 0.46);
 }
 
-.dayPreviewList {
+.dayPreviewList,
+.stockDayList {
   display: grid;
   gap: 8px;
 }
@@ -349,6 +373,11 @@
   background: var(--green);
 }
 
+.missionStatusBadge.isWarning {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
 .missionListMeta {
   color: var(--muted);
   font-size: 0.88rem;
@@ -378,6 +407,11 @@
 .missionOperatorChip {
   color: var(--rum);
   background: var(--amber-soft);
+}
+
+.missionDayChip.isLinked {
+  color: var(--green);
+  background: var(--green-soft);
 }
 
 .missionDayChips {
@@ -412,6 +446,91 @@
   color: #fffaf1;
   background:
     linear-gradient(135deg, var(--rum-2), var(--rum));
+}
+
+.stockDayOption {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.8), rgba(255, 250, 241, 0.56));
+}
+
+.stockDayOption.isSelected {
+  border-color: rgba(63, 111, 79, 0.42);
+  box-shadow: inset 0 0 0 2px rgba(63, 111, 79, 0.12);
+}
+
+.stockDayOption.isLinked:not(.isSelected) {
+  opacity: 0.76;
+}
+
+.stockDayOption input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stockDayCheck {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 250, 241, 0.72);
+}
+
+.stockDayOption.isSelected .stockDayCheck {
+  border-color: rgba(63, 111, 79, 0.42);
+  background: var(--green);
+}
+
+.stockDayOption.isSelected .stockDayCheck::after {
+  content: "✓";
+  color: #fffaf1;
+  font-weight: 950;
+}
+
+.stockDayText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.stockDayText strong {
+  color: var(--text);
+  font-size: 0.98rem;
+  line-height: 1.15;
+}
+
+.stockDayText small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.stockPreviewHeader {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.stockPreviewHeader strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.stockPreviewHeader span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 @media (min-width: 620px) {
