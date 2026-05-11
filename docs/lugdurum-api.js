@@ -38,15 +38,18 @@
     return payload.data ?? payload;
   };
 
+  const ping = () => request("ping");
+
   const getCatalogue = () => request("getCatalogue");
 
-  const getMissions = () => request("getMissions");
+  const getOffresVente = () => request("getOffresVente");
 
-  const ping = () => request("ping");
+  const getMissions = () => request("getMissions");
 
   window.LugdurumAPI = {
     ping,
     getCatalogue,
+    getOffresVente,
     getMissions
   };
 })();
