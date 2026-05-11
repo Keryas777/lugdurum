@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    V12 terrain :
+    V13 terrain :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
     - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
     - Fallback sur le dernier catalogue + les dernières offres chargées en localStorage si l’API est indisponible.
@@ -22,7 +22,7 @@
     - LP reçoit une classe spéciale pour mieux gérer son nom long.
     - MV et PE reçoivent une classe spéciale pour texte clair sur fond sombre.
     - Optimisation rendu : la grille produits n’est plus reconstruite à chaque ajout.
-      Seules les pastilles quantité sont mises à jour.
+    - Optimisation pastilles : les pastilles quantité existent dès le rendu initial, invisibles à ×0.
   */
 
   const JOURNEE_ACTIVE = {
@@ -445,7 +445,9 @@
             <span class="productCode">${escapeHtml(product.parfum_code)}</span>
             <span class="productName">${escapeHtml(product.parfum_nom)}</span>
             <span class="productMeta">${escapeHtml(meta)}</span>
-            ${qty > 0 ? `<strong class="productQty">×${qty}</strong>` : ""}
+            <strong class="productQty" aria-hidden="${qty > 0 ? "false" : "true"}">
+              ${qty > 0 ? `×${qty}` : "×0"}
+            </strong>
           </button>
         `;
       })
@@ -465,19 +467,11 @@
 
       button.classList.toggle("hasQty", qty > 0);
 
-      let badge = button.querySelector(".productQty");
+      const badge = button.querySelector(".productQty");
+      if (!badge) return;
 
-      if (qty > 0) {
-        if (!badge) {
-          badge = document.createElement("strong");
-          badge.className = "productQty";
-          button.appendChild(badge);
-        }
-
-        badge.textContent = `×${qty}`;
-      } else if (badge) {
-        badge.remove();
-      }
+      badge.textContent = qty > 0 ? `×${qty}` : "×0";
+      badge.setAttribute("aria-hidden", qty > 0 ? "false" : "true");
     });
   };
 
