@@ -2,16 +2,19 @@
   "use strict";
 
   /*
-    V10 terrain :
+    V11 terrain :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
-    - Fallback sur le dernier catalogue chargé en localStorage si l’API est indisponible.
-    - 50 cL vendu à l’unité.
-    - 20 cL vendu uniquement en coffrets 3×20 ou 6×20.
-    - Le mode 50 cL affiche les SKU actifs / visibles en format 50.
-    - Les modes coffrets affichent les SKU actifs / visibles en format 20.
+    - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
+    - Fallback sur le dernier catalogue + les dernières offres chargées en localStorage si l’API est indisponible.
+    - catalogue = produits physiques / SKU.
+    - offres_vente = prix, gammes, coffrets, suppléments.
+    - 50 cL vendu à l’unité via offres_vente :
+      produit.gamme_tarif → offre type bouteille + format 50 + même gamme_tarif.
+    - 20 cL vendu uniquement en coffrets 3×20 ou 6×20 via offres_vente.
+    - Les modes coffrets affichent les SKU actifs / composables en format 20.
     - VB existe uniquement en 50 cL, donc n'apparaît pas en coffret si aucun SKU VB_20 n’existe dans le Sheet.
     - FF et VK restent au catalogue mais ne sont pas visibles si actif = false.
-    - Supplément PE : +1 € par PE dans le coffret.
+    - Supplément PE : géré depuis offres_vente.
     - Les parfums du coffret peuvent être retirés un par un depuis la composition.
     - Les visuels de boutons sont chargés depuis ./assets/parfums/{code}.webp.
     - Le montant encaissé se remplit automatiquement avec le total du ticket.
@@ -40,22 +43,21 @@
       kind: "box",
       format_cl: 20,
       box_size: 3,
-      base_price: 45.99,
-      pe_surcharge: 1
+      offer_id: "COFFRET_3_20"
     },
     BOX_6_20: {
       label: "Coffret 6×20 cL",
       kind: "box",
       format_cl: 20,
       box_size: 6,
-      base_price: 87.99,
-      pe_surcharge: 1
+      offer_id: "COFFRET_6_20"
     }
   };
 
   const STORAGE_KEY = "lugdurum_pending_transactions";
   const LAST_TICKET_KEY = "lugdurum_last_ticket";
   const CATALOGUE_CACHE_KEY = "lugdurum_catalogue_cache";
+  const OFFRES_VENTE_CACHE_KEY = "lugdurum_offres_vente_cache";
 
   const state = {
     selectedMode: "BOTTLE_50",
@@ -64,7 +66,8 @@
     draftPack: [],
     amountManuallyEdited: false,
     catalogue: [],
-    catalogueLoaded: false
+    offresVente: [],
+    dataLoaded: false
   };
 
   const els = {
@@ -108,6 +111,13 @@
   const escapeAttr = (value) =>
     escapeHtml(value).replaceAll("`", "&#096;");
 
+  const normalizeKey = (value) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
   const toNumber = (value, fallback = 0) => {
     if (typeof value === "number" && Number.isFinite(value)) return value;
 
@@ -146,22 +156,12 @@
     return fallback;
   };
 
-  const getFallbackProductPrice = (product) => {
-    if (product.format_cl === 50 && product.parfum_code === "PE") return 31;
-    if (product.format_cl === 50) return 30;
-    return 0;
-  };
-
   const normalizeProduct = (rawProduct, index) => {
     const parfumCode = String(rawProduct.parfum_code || "")
       .trim()
       .toUpperCase();
 
     const formatCl = toNumber(rawProduct.format_cl, 0);
-    const fallbackPrice = getFallbackProductPrice({
-      parfum_code: parfumCode,
-      format_cl: formatCl
-    });
 
     const hasVisibleWebappColumn = Object.prototype.hasOwnProperty.call(
       rawProduct,
@@ -173,13 +173,10 @@
       parfum_code: parfumCode,
       parfum_nom: String(rawProduct.parfum_nom || parfumCode).trim(),
       format_cl: formatCl,
-      categorie: String(rawProduct.categorie || "bouteille").trim(),
-      prix_ttc: toNumber(rawProduct.prix_ttc, fallbackPrice),
-      prix_ht: toNumber(rawProduct.prix_ht, toNumber(rawProduct.prix_ttc, fallbackPrice)),
-      taux_tva: toNumber(rawProduct.taux_tva, 0),
-      regime_tva: String(rawProduct.regime_tva || "").trim(),
+      gamme_tarif: String(rawProduct.gamme_tarif || "").trim(),
+      vendable_seul: toBoolean(rawProduct.vendable_seul, false),
+      composable_coffret: toBoolean(rawProduct.composable_coffret, false),
       cout_revient: toNumber(rawProduct.cout_revient, 0),
-      marge_unitaire: toNumber(rawProduct.marge_unitaire, 0),
       actif: toBoolean(rawProduct.actif, false),
       visible_webapp: hasVisibleWebappColumn
         ? toBoolean(rawProduct.visible_webapp, true)
@@ -190,16 +187,45 @@
     };
   };
 
-  const readCachedCatalogue = () => {
+  const normalizeOffer = (rawOffer, index) => {
+    const typeOffre = String(rawOffer.type_offre || "")
+      .trim()
+      .toLowerCase();
+
+    const supplementCode = String(rawOffer.supplement_parfum_code || "")
+      .trim()
+      .toUpperCase();
+
+    return {
+      offre_id: String(rawOffer.offre_id || "").trim(),
+      libelle: String(rawOffer.libelle || rawOffer.offre_id || "").trim(),
+      type_offre: typeOffre,
+      format_cl: toNumber(rawOffer.format_cl, 0),
+      gamme_tarif: String(rawOffer.gamme_tarif || "").trim(),
+      quantite_bouteilles: toNumber(rawOffer.quantite_bouteilles, 0),
+      prix_ttc: toNumber(rawOffer.prix_ttc, 0),
+      prix_ht: toNumber(rawOffer.prix_ht, toNumber(rawOffer.prix_ttc, 0)),
+      taux_tva: toNumber(rawOffer.taux_tva, 0),
+      regime_tva: String(rawOffer.regime_tva || "").trim(),
+      actif: toBoolean(rawOffer.actif, false),
+      ordre_affichage: toNumber(rawOffer.ordre_affichage, 1000 + index),
+      supplement_parfum_code: supplementCode,
+      supplement_unitaire_ttc: toNumber(rawOffer.supplement_unitaire_ttc, 0),
+      note: String(rawOffer.note || "").trim()
+    };
+  };
+
+  const readCachedArray = (key) => {
     try {
-      return JSON.parse(localStorage.getItem(CATALOGUE_CACHE_KEY) || "[]");
+      const value = JSON.parse(localStorage.getItem(key) || "[]");
+      return Array.isArray(value) ? value : [];
     } catch {
       return [];
     }
   };
 
-  const writeCachedCatalogue = (catalogue) => {
-    localStorage.setItem(CATALOGUE_CACHE_KEY, JSON.stringify(catalogue));
+  const writeCachedArray = (key, value) => {
+    localStorage.setItem(key, JSON.stringify(value));
   };
 
   const setStatus = (message, type = "") => {
@@ -225,6 +251,91 @@
   const getProductImageSrc = (product) =>
     product.image_src || `./assets/parfums/${product.parfum_code.toLowerCase()}.webp`;
 
+  const getActiveOffers = () =>
+    state.offresVente.filter((offer) => offer.actif);
+
+  const findBottleOfferForProduct = (product) => {
+    const productGamme = normalizeKey(product.gamme_tarif);
+
+    return getActiveOffers().find((offer) => {
+      return (
+        offer.type_offre === "bouteille" &&
+        offer.format_cl === product.format_cl &&
+        normalizeKey(offer.gamme_tarif) === productGamme
+      );
+    });
+  };
+
+  const findBoxOfferForMode = (mode = getMode()) => {
+    const byId = getActiveOffers().find((offer) => offer.offre_id === mode.offer_id);
+
+    if (byId) return byId;
+
+    return getActiveOffers().find((offer) => {
+      return (
+        offer.type_offre === "coffret" &&
+        offer.format_cl === mode.format_cl &&
+        offer.quantite_bouteilles === mode.box_size
+      );
+    });
+  };
+
+  const getBoxOffer = () => {
+    if (!isBoxMode()) return null;
+    return findBoxOfferForMode(getMode());
+  };
+
+  const getSupplementCount = (composition, offer) => {
+    if (!offer || !offer.supplement_parfum_code) return 0;
+
+    return composition.filter(
+      (item) => item.parfum_code === offer.supplement_parfum_code
+    ).length;
+  };
+
+  const getPackPricing = (composition, mode = getMode()) => {
+    const offer = findBoxOfferForMode(mode);
+
+    if (!offer) {
+      return {
+        offer: null,
+        basePriceTtc: 0,
+        basePriceHt: 0,
+        supplementCount: 0,
+        supplementTotalTtc: 0,
+        supplementUnitTtc: 0,
+        totalTtc: 0,
+        totalHt: 0
+      };
+    }
+
+    const supplementCount = getSupplementCount(composition, offer);
+    const supplementTotalTtc = supplementCount * offer.supplement_unitaire_ttc;
+
+    return {
+      offer,
+      basePriceTtc: offer.prix_ttc,
+      basePriceHt: offer.prix_ht,
+      supplementCount,
+      supplementTotalTtc,
+      supplementUnitTtc: offer.supplement_unitaire_ttc,
+      totalTtc: offer.prix_ttc + supplementTotalTtc,
+      totalHt: offer.prix_ht + supplementTotalTtc
+    };
+  };
+
+  const getPackPrice = (composition, mode = getMode()) =>
+    getPackPricing(composition, mode).totalTtc;
+
+  const getItemTotal = (item) => {
+    if (item.type === "bottle") return item.quantite * item.prix_unitaire_ttc;
+    if (item.type === "box") return item.prix_ttc;
+    return 0;
+  };
+
+  const getTicketTotal = () =>
+    state.ticketItems.reduce((sum, item) => sum + getItemTotal(item), 0);
+
   const getVisibleProducts = () => {
     const mode = getMode();
 
@@ -232,6 +343,10 @@
       .filter((product) => product.actif)
       .filter((product) => product.visible_webapp !== false)
       .filter((product) => product.format_cl === mode.format_cl)
+      .filter((product) => {
+        if (isBoxMode()) return product.composable_coffret;
+        return product.vendable_seul;
+      })
       .sort((a, b) => {
         const byOrder = a.ordre_affichage - b.ordre_affichage;
         if (byOrder !== 0) return byOrder;
@@ -242,23 +357,6 @@
 
   const findProductBySku = (skuId) =>
     state.catalogue.find((product) => product.sku_id === skuId);
-
-  const getPeCount = (composition) =>
-    composition.filter((item) => item.parfum_code === "PE").length;
-
-  const getPackPrice = (composition, mode = getMode()) => {
-    const peCount = getPeCount(composition);
-    return mode.base_price + peCount * mode.pe_surcharge;
-  };
-
-  const getItemTotal = (item) => {
-    if (item.type === "bottle") return item.quantite * item.prix_unitaire_ttc;
-    if (item.type === "box") return item.prix_ttc;
-    return 0;
-  };
-
-  const getTicketTotal = () =>
-    state.ticketItems.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   const getDraftCounts = () => {
     return state.draftPack.reduce((map, product) => {
@@ -305,7 +403,7 @@
     const longNameCodes = ["LP"];
     const visibleProducts = getVisibleProducts();
 
-    if (!state.catalogueLoaded && state.catalogue.length === 0) {
+    if (!state.dataLoaded && state.catalogue.length === 0) {
       els.productGrid.innerHTML =
         `<p class="emptyTicket">Chargement du catalogue...</p>`;
       return;
@@ -323,13 +421,19 @@
           ? draftCounts.get(product.parfum_code) || 0
           : getTicketBottleQty(product.sku_id);
 
+        const offer = isBoxMode() ? null : findBottleOfferForProduct(product);
+        const missingPrice = !isBoxMode() && !offer;
+
         const meta = isBoxMode()
           ? `${product.format_cl} cL · dans le coffret`
-          : `${product.format_cl} cL · ${formatCurrency(product.prix_ttc)}`;
+          : missingPrice
+            ? `${product.format_cl} cL · prix à définir`
+            : `${product.format_cl} cL · ${formatCurrency(offer.prix_ttc)}`;
 
         const buttonClasses = [
           "productBtn",
           qty > 0 ? "hasQty" : "",
+          missingPrice ? "hasMissingPrice" : "",
           lightTextCodes.includes(product.parfum_code) ? "isLightText" : "",
           longNameCodes.includes(product.parfum_code) ? "isLongName" : ""
         ]
@@ -366,15 +470,16 @@
 
     const current = state.draftPack.length;
     const max = mode.box_size;
-    const peCount = getPeCount(state.draftPack);
-    const peSurchargeTotal = peCount * mode.pe_surcharge;
-    const price = getPackPrice(state.draftPack, mode);
+    const pricing = getPackPricing(state.draftPack, mode);
+    const offer = pricing.offer;
 
     els.packProgressLabel.textContent = `${current} / ${max} parfums`;
-    els.packPricePreview.textContent = formatCurrency(price);
+    els.packPricePreview.textContent = offer
+      ? formatCurrency(pricing.totalTtc)
+      : "Offre manquante";
     els.packProgressBar.max = max;
     els.packProgressBar.value = current;
-    els.addPackBtn.disabled = current !== max;
+    els.addPackBtn.disabled = current !== max || !offer;
 
     if (current === 0) {
       els.draftPackList.innerHTML =
@@ -386,6 +491,7 @@
     const lines = [...counts.entries()]
       .map(([code, qty]) => {
         const product = getDraftProductByCode(code);
+
         return {
           parfum_code: code,
           parfum_nom: product ? product.parfum_nom : code,
@@ -413,9 +519,13 @@
       </div>
       <p class="packHint">
         ${
-          peCount > 0
-            ? `Supplément PE appliqué : +${formatCurrency(peSurchargeTotal)}`
-            : "Aucun supplément PE pour ce coffret."
+          !offer
+            ? "Offre de coffret introuvable dans le Sheet."
+            : pricing.supplementCount > 0
+              ? `Supplément ${escapeHtml(offer.supplement_parfum_code)} appliqué : +${formatCurrency(pricing.supplementTotalTtc)}`
+              : offer.supplement_parfum_code
+                ? `Aucun supplément ${escapeHtml(offer.supplement_parfum_code)} pour ce coffret.`
+                : "Aucun supplément pour ce coffret."
         }
       </p>
     `;
@@ -507,6 +617,16 @@
   };
 
   const addBottle = (product) => {
+    const offer = findBottleOfferForProduct(product);
+
+    if (!offer) {
+      setStatus(
+        `Aucune offre de vente trouvée pour ${product.parfum_code} ${product.format_cl} cL / gamme ${product.gamme_tarif || "non renseignée"}.`,
+        "isError"
+      );
+      return;
+    }
+
     const existing = state.ticketItems.find(
       (item) => item.type === "bottle" && item.sku_id === product.sku_id
     );
@@ -517,13 +637,18 @@
       state.ticketItems.push({
         item_id: `ITEM_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "bottle",
+        offre_id: offer.offre_id,
+        offre_libelle: offer.libelle,
         sku_id: product.sku_id,
         parfum_code: product.parfum_code,
         parfum_nom: product.parfum_nom,
         format_cl: product.format_cl,
+        gamme_tarif: product.gamme_tarif,
         quantite: 1,
-        prix_unitaire_ttc: product.prix_ttc,
-        prix_unitaire_ht: product.prix_ht
+        prix_unitaire_ttc: offer.prix_ttc,
+        prix_unitaire_ht: offer.prix_ht,
+        taux_tva: offer.taux_tva,
+        regime_tva: offer.regime_tva
       });
     }
   };
@@ -532,7 +657,10 @@
     const mode = getMode();
 
     if (state.draftPack.length >= mode.box_size) {
-      setStatus("Le coffret est complet. Ajoute-le au ticket ou vide la composition.", "isError");
+      setStatus(
+        "Le coffret est complet. Ajoute-le au ticket ou vide la composition.",
+        "isError"
+      );
       return;
     }
 
@@ -545,25 +673,35 @@
     if (!isBoxMode() || state.draftPack.length !== mode.box_size) return;
 
     const composition = state.draftPack.map((product) => ({ ...product }));
-    const price = getPackPrice(composition, mode);
-    const peCount = getPeCount(composition);
+    const pricing = getPackPricing(composition, mode);
+
+    if (!pricing.offer) {
+      setStatus("Impossible d’ajouter le coffret : offre de vente introuvable.", "isError");
+      return;
+    }
 
     state.ticketItems.push({
       item_id: `BOX_${Date.now()}_${Math.random().toString(16).slice(2)}`,
       type: "box",
-      label: mode.label,
+      offre_id: pricing.offer.offre_id,
+      label: pricing.offer.libelle || mode.label,
       conditionnement: state.selectedMode,
       format_cl: mode.format_cl,
       box_size: mode.box_size,
-      prix_ttc: price,
-      prix_ht: price,
-      base_price: mode.base_price,
-      supplement_pe_ttc: peCount * mode.pe_surcharge,
+      prix_ttc: pricing.totalTtc,
+      prix_ht: pricing.totalHt,
+      base_price: pricing.basePriceTtc,
+      base_price_ht: pricing.basePriceHt,
+      taux_tva: pricing.offer.taux_tva,
+      regime_tva: pricing.offer.regime_tva,
+      supplement_parfum_code: pricing.offer.supplement_parfum_code,
+      supplement_unitaire_ttc: pricing.offer.supplement_unitaire_ttc,
+      supplement_ttc: pricing.supplementTotalTtc,
       composition
     });
 
     state.draftPack = [];
-    setStatus(`${mode.label} ajouté au ticket.`, "isSuccess");
+    setStatus(`${pricing.offer.libelle || mode.label} ajouté au ticket.`, "isSuccess");
     renderAll();
   };
 
@@ -638,12 +776,12 @@
           quantite: item.quantite,
           prix_unitaire_ttc: item.prix_unitaire_ttc,
           prix_unitaire_ht: item.prix_unitaire_ht,
-          taux_tva: 0,
+          taux_tva: item.taux_tva || 0,
           montant_tva_ligne: 0,
           total_catalogue_ligne_ttc: item.quantite * item.prix_unitaire_ttc,
           total_catalogue_ligne_ht: item.quantite * item.prix_unitaire_ht,
           source: getSourceForPayment(),
-          note: ""
+          note: item.offre_id ? `Offre : ${item.offre_id}` : ""
         });
         return;
       }
@@ -660,15 +798,24 @@
           return map;
         }, new Map());
 
-        const peCount = getPeCount(item.composition);
-        const baseUnitPrice = item.base_price / item.box_size;
-        const surchargePerPE = peCount > 0 ? item.supplement_pe_ttc / peCount : 0;
+        const supplementCode = item.supplement_parfum_code || "";
+        const supplementCount = supplementCode
+          ? item.composition.filter((product) => product.parfum_code === supplementCode).length
+          : 0;
+
+        const baseUnitPriceTtc = item.base_price / item.box_size;
+        const baseUnitPriceHt = item.base_price_ht / item.box_size;
+
+        const surchargePerSupplement =
+          supplementCount > 0 ? item.supplement_ttc / supplementCount : 0;
 
         [...counts.values()].forEach(({ product, qty }) => {
-          const unitPrice =
-            baseUnitPrice + (product.parfum_code === "PE" ? surchargePerPE : 0);
+          const hasSupplement = product.parfum_code === supplementCode;
+          const unitPriceTtc = baseUnitPriceTtc + (hasSupplement ? surchargePerSupplement : 0);
+          const unitPriceHt = baseUnitPriceHt + (hasSupplement ? surchargePerSupplement : 0);
 
-          const totalLine = unitPrice * qty;
+          const totalLineTtc = unitPriceTtc * qty;
+          const totalLineHt = unitPriceHt * qty;
 
           lines.push({
             ligne_id: `${transactionId}_L${String(lines.length + 1).padStart(2, "0")}`,
@@ -677,12 +824,12 @@
             journee_id: JOURNEE_ACTIVE.journee_id,
             sku_id: product.sku_id,
             quantite: qty,
-            prix_unitaire_ttc: unitPrice,
-            prix_unitaire_ht: unitPrice,
-            taux_tva: 0,
+            prix_unitaire_ttc: unitPriceTtc,
+            prix_unitaire_ht: unitPriceHt,
+            taux_tva: item.taux_tva || 0,
             montant_tva_ligne: 0,
-            total_catalogue_ligne_ttc: totalLine,
-            total_catalogue_ligne_ht: totalLine,
+            total_catalogue_ligne_ttc: totalLineTtc,
+            total_catalogue_ligne_ht: totalLineHt,
             source: getSourceForPayment(),
             note: `${item.label} · ${item.composition.map((p) => p.parfum_code).join(" ")}`
           });
@@ -750,41 +897,66 @@
     renderAll();
   };
 
-  const loadCatalogue = async () => {
+  const loadData = async () => {
     renderProducts();
 
     try {
-      if (!window.LugdurumAPI || typeof window.LugdurumAPI.getCatalogue !== "function") {
+      if (!window.LugdurumAPI) {
         throw new Error("lugdurum-api.js n’est pas chargé.");
       }
 
-      const rows = await window.LugdurumAPI.getCatalogue();
+      if (typeof window.LugdurumAPI.getCatalogue !== "function") {
+        throw new Error("getCatalogue() est introuvable dans lugdurum-api.js.");
+      }
 
-      state.catalogue = rows
+      if (typeof window.LugdurumAPI.getOffresVente !== "function") {
+        throw new Error("getOffresVente() est introuvable dans lugdurum-api.js.");
+      }
+
+      const [catalogueRows, offresRows] = await Promise.all([
+        window.LugdurumAPI.getCatalogue(),
+        window.LugdurumAPI.getOffresVente()
+      ]);
+
+      state.catalogue = catalogueRows
         .map((row, index) => normalizeProduct(row, index))
         .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
 
-      state.catalogueLoaded = true;
-      writeCachedCatalogue(state.catalogue);
+      state.offresVente = offresRows
+        .map((row, index) => normalizeOffer(row, index))
+        .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
 
-      setStatus("");
+      state.dataLoaded = true;
+
+      writeCachedArray(CATALOGUE_CACHE_KEY, state.catalogue);
+      writeCachedArray(OFFRES_VENTE_CACHE_KEY, state.offresVente);
+
+      if (state.offresVente.length === 0) {
+        setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
+      } else {
+        setStatus("");
+      }
+
       renderAll();
     } catch (error) {
-      const cached = readCachedCatalogue();
+      const cachedCatalogue = readCachedArray(CATALOGUE_CACHE_KEY);
+      const cachedOffres = readCachedArray(OFFRES_VENTE_CACHE_KEY);
 
-      if (cached.length > 0) {
-        state.catalogue = cached.map((row, index) => normalizeProduct(row, index));
-        state.catalogueLoaded = true;
+      if (cachedCatalogue.length > 0 || cachedOffres.length > 0) {
+        state.catalogue = cachedCatalogue.map((row, index) => normalizeProduct(row, index));
+        state.offresVente = cachedOffres.map((row, index) => normalizeOffer(row, index));
+        state.dataLoaded = true;
 
-        setStatus("Catalogue chargé depuis le cache local.", "isError");
+        setStatus("Données chargées depuis le cache local.", "isError");
         renderAll();
         return;
       }
 
-      state.catalogueLoaded = true;
+      state.dataLoaded = true;
       state.catalogue = [];
+      state.offresVente = [];
 
-      setStatus(`Impossible de charger le catalogue : ${error.message}`, "isError");
+      setStatus(`Impossible de charger les données : ${error.message}`, "isError");
       renderAll();
     }
   };
@@ -816,7 +988,6 @@
         addBottle(product);
       }
 
-      setStatus("");
       renderAll();
       return;
     }
@@ -862,5 +1033,5 @@
   els.saveTicketBtn.addEventListener("click", saveTicket);
 
   renderAll();
-  loadCatalogue();
+  loadData();
 })();
