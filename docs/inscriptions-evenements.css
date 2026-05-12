@@ -1,0 +1,499 @@
+/* ==============================
+   Page Inscriptions évènements
+   ============================== */
+
+.page-event-tracking .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.eventTrackingShell {
+  max-width: 920px;
+}
+
+.eventTrackingTopbar {
+  align-items: flex-start;
+}
+
+.backBtn {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 250, 241, 0.68));
+  box-shadow: var(--shadow-soft);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.page-event-tracking .brandLogo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.page-event-tracking .brandName {
+  margin-bottom: 5px;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+}
+
+.page-event-tracking .brandBlock h1 {
+  max-width: none;
+  font-size: clamp(1.55rem, 6vw, 2.2rem);
+  white-space: nowrap;
+}
+
+.eventTrackingLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.trackingHero,
+.trackingPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(160deg, rgba(255, 250, 241, 0.96), rgba(245, 231, 208, 0.72));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.trackingHero {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.trackingHero h2,
+.trackingPanel h2 {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.trackingHero h2 {
+  font-size: clamp(1.85rem, 7.2vw, 3.4rem);
+}
+
+.trackingHeroText {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 760;
+  line-height: 1.38;
+}
+
+.trackingStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.trackingStats article {
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.52));
+}
+
+.trackingStats span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.trackingStats strong {
+  display: block;
+  color: var(--rum);
+  font-size: 1.6rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.trackingPanel {
+  padding: 16px;
+}
+
+.trackingForm {
+  display: grid;
+  gap: 16px;
+}
+
+.trackingFields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.trackingField {
+  display: grid;
+  gap: 7px;
+}
+
+.trackingField span,
+.trackingSearch span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.trackingField input,
+.trackingField select,
+.trackingField textarea,
+.trackingSearch input {
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  font: inherit;
+  font-size: 16px;
+  font-weight: 850;
+  outline: none;
+}
+
+.trackingField textarea {
+  min-height: 94px;
+  padding-top: 12px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.checkGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.checkPill {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+  font-weight: 900;
+}
+
+.checkPill input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
+.trackingActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.trackingStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.trackingStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.trackingStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+.trackingFilters {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.trackingSearch {
+  display: grid;
+  gap: 7px;
+}
+
+.statusFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.statusFilter {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.statusFilter.isActive {
+  color: #fffaf1;
+  border-color: rgba(138, 90, 43, 0.48);
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+  box-shadow: 0 10px 22px rgba(138, 90, 43, 0.18);
+}
+
+.inscriptionsList {
+  display: grid;
+  gap: 10px;
+}
+
+.inscriptionCard {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 241, 0.56));
+}
+
+.inscriptionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inscriptionHeader strong {
+  display: block;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.inscriptionHeader span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.trackingStatusBadge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--rum);
+  background: var(--amber-soft);
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trackingStatusBadge.isAccepted {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.trackingStatusBadge.isWarning {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.trackingStatusBadge.isWaiting {
+  color: var(--rum);
+  background: var(--amber-soft);
+}
+
+.trackingStatusBadge.isRefused {
+  color: var(--muted);
+  background: rgba(31, 27, 22, 0.08);
+}
+
+.inscriptionMeta {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 780;
+  line-height: 1.3;
+}
+
+.trackingChips,
+.inscriptionFlags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trackingChips span,
+.inscriptionFlags span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 9px;
+  color: var(--text-soft);
+  background: rgba(168, 143, 104, 0.16);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.inscriptionFlags .flagOk {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.inscriptionFlags .flagWarning {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.contactBox {
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(86, 65, 42, 0.12);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  color: var(--muted);
+  background: rgba(255, 250, 241, 0.46);
+  font-size: 0.82rem;
+  font-weight: 780;
+  line-height: 1.3;
+}
+
+.inscriptionComment {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.inscriptionActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.trackingSmallBtn {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+  font: inherit;
+  font-weight: 900;
+  text-align: center;
+}
+
+.trackingSmallBtn.primary {
+  border: 0;
+  color: #fffaf1;
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+}
+
+.trackingSmallBtn.danger {
+  color: var(--red);
+}
+
+.trackingSmallBtn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.trackingEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 250, 241, 0.42);
+}
+
+@media (min-width: 620px) {
+  .trackingHero {
+    grid-template-columns: 1fr 0.8fr;
+    align-items: end;
+  }
+
+  .trackingFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trackingFieldFull {
+    grid-column: 1 / -1;
+  }
+
+  .trackingActions {
+    grid-template-columns: 1fr 1.4fr;
+  }
+
+  .inscriptionActions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 430px) {
+  .trackingPanel,
+  .trackingHero {
+    padding: 14px;
+  }
+
+  .trackingStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .trackingStats article {
+    padding: 10px;
+  }
+
+  .trackingStats strong {
+    font-size: 1.35rem;
+  }
+
+  .checkGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .inscriptionHeader {
+    display: grid;
+  }
+
+  .trackingStatusBadge {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 370px) {
+  .trackingStats {
+    grid-template-columns: 1fr;
+  }
+}
