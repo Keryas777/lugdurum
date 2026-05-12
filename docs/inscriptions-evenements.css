@@ -265,6 +265,7 @@
 }
 
 .inscriptionCard {
+  position: relative;
   display: grid;
   gap: 12px;
   border: 1px solid rgba(86, 65, 42, 0.14);
@@ -272,6 +273,45 @@
   padding: 12px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 241, 0.56));
+  overflow: hidden;
+}
+
+.inscriptionCard::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  background: transparent;
+}
+
+.inscriptionCard.isAcceptedCard {
+  border-color: rgba(63, 111, 79, 0.28);
+  background:
+    linear-gradient(145deg, rgba(230, 246, 235, 0.88), rgba(255, 250, 241, 0.62));
+}
+
+.inscriptionCard.isAcceptedCard::before {
+  background: var(--green);
+}
+
+.inscriptionCard.isTodoCard {
+  border-color: rgba(179, 92, 58, 0.3);
+  background:
+    linear-gradient(145deg, rgba(252, 232, 224, 0.9), rgba(255, 250, 241, 0.62));
+}
+
+.inscriptionCard.isTodoCard::before {
+  background: var(--red);
+}
+
+.inscriptionCard.isWaitingCard {
+  border-color: rgba(216, 160, 79, 0.38);
+  background:
+    linear-gradient(145deg, rgba(255, 244, 216, 0.95), rgba(255, 250, 241, 0.62));
+}
+
+.inscriptionCard.isWaitingCard::before {
+  background: var(--amber);
 }
 
 .inscriptionHeader {
@@ -315,6 +355,7 @@
   background: var(--green-soft);
 }
 
+.trackingStatusBadge.isTodo,
 .trackingStatusBadge.isWarning {
   color: var(--red);
   background: var(--red-soft);
@@ -330,6 +371,24 @@
   background: rgba(31, 27, 22, 0.08);
 }
 
+.eventDayPreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.eventDayPreview span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 9px;
+  color: var(--rum);
+  background: var(--amber-soft);
+  font-size: 0.76rem;
+  font-weight: 950;
+}
+
 .inscriptionMeta {
   display: grid;
   gap: 5px;
@@ -337,6 +396,21 @@
   font-size: 0.86rem;
   font-weight: 780;
   line-height: 1.3;
+}
+
+.wazeLink {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(63, 111, 79, 0.25);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 0.86rem;
+  font-weight: 950;
+  text-decoration: none;
 }
 
 .trackingChips,
