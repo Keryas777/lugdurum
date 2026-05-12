@@ -2,11 +2,15 @@
   "use strict";
 
   /*
-    Inscriptions évènements V1 :
-    - Suivi administratif des candidatures marchés / salons.
-    - Stockage localStorage provisoire avant connexion Google Sheets.
-    - Création d’un évènement confirmé dans lugdurum_evenements + lugdurum_journees.
-    - Préparation d’un payload calendrier en attendant le branchement Apps Script.
+    Inscriptions évènements V2 :
+    - Suppression du statut "Dossier envoyé" pour éviter le doublon avec "En attente de réponse".
+    - "Dossier envoyé" devient uniquement une case de suivi.
+    - Ajout adresse visible + lien Waze.
+    - Ajout électricité dans le matériel fourni.
+    - Date de fin conservée en modification, même si égale à la date de début.
+    - Création automatique de J1/J2/J3 si l’évènement dure plusieurs jours.
+    - Cartes colorées selon le statut :
+      accepté = vert, dossier à envoyer = rouge, dossier envoyé + attente = jaune.
   */
 
   const CURRENT_USER = {
@@ -32,7 +36,6 @@
   const STATUS_LABELS = {
     A_CONTACTER: "À contacter",
     DOSSIER_A_ENVOYER: "Dossier à envoyer",
-    DOSSIER_ENVOYE: "Dossier envoyé",
     EN_ATTENTE_REPONSE: "En attente",
     A_RELANCER: "À relancer",
     LISTE_ATTENTE: "Liste d’attente",
@@ -76,6 +79,7 @@
     barnumInput: document.getElementById("barnumInput"),
     chairsInput: document.getElementById("chairsInput"),
     lightInput: document.getElementById("lightInput"),
+    electricityInput: document.getElementById("electricityInput"),
 
     contactNameInput: document.getElementById("contactNameInput"),
     contactMailInput: document.getElementById("contactMailInput"),
@@ -235,6 +239,20 @@
     }
   };
 
+  const buildWazeUrl = (item) => {
+    const addressParts = [
+      item.adresse,
+      item.lieu,
+      item.ville
+    ].filter(Boolean);
+
+    const query = addressParts.join(" ");
+
+    if (!query.trim()) return "";
+
+    return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
+  };
+
   const buildInscriptionFromForm = () => {
     const now = new Date().toISOString();
     const name = els.nameInput.value.trim();
@@ -262,9 +280,10 @@
 
     let statut = els.statusInput.value;
     const acceptation = els.acceptedInput.checked || statut === "ACCEPTE";
+
     const dossierEnvoye =
       els.docSentInput.checked ||
-      ["DOSSIER_ENVOYE", "EN_ATTENTE_REPONSE", "A_RELANCER", "LISTE_ATTENTE", "ACCEPTE"].includes(statut);
+      ["EN_ATTENTE_REPONSE", "A_RELANCER", "LISTE_ATTENTE", "ACCEPTE"].includes(statut);
 
     if (acceptation) {
       statut = "ACCEPTE";
@@ -297,6 +316,7 @@
       barnum_fourni: els.barnumInput.checked,
       chaises_fournies: els.chairsInput.checked,
       eclairage_fourni: els.lightInput.checked,
+      electricite_fournie: els.electricityInput.checked,
       responsable_user_id: els.ownerInput.value,
       responsable_nom: OPERATORS[els.ownerInput.value] || els.ownerInput.value,
       contact_nom: els.contactNameInput.value.trim(),
@@ -343,10 +363,7 @@
     els.eventKindInput.value = inscription.type_evenement || "MARCHE_ARTISANAL";
     els.statusInput.value = inscription.statut || "A_CONTACTER";
     els.startDateInput.value = inscription.date_debut || "";
-    els.endDateInput.value =
-      inscription.date_fin && inscription.date_fin !== inscription.date_debut
-        ? inscription.date_fin
-        : "";
+    els.endDateInput.value = inscription.date_fin || "";
     els.scheduleInput.value = inscription.horaires || "";
     els.setupInput.value = inscription.mise_en_place || "";
     els.priceInput.value = inscription.prix_emplacement || "";
@@ -361,6 +378,7 @@
     els.barnumInput.checked = Boolean(inscription.barnum_fourni);
     els.chairsInput.checked = Boolean(inscription.chaises_fournies);
     els.lightInput.checked = Boolean(inscription.eclairage_fourni);
+    els.electricityInput.checked = Boolean(inscription.electricite_fournie);
 
     els.contactNameInput.value = inscription.contact_nom || "";
     els.contactMailInput.value = inscription.contact_mail || "";
@@ -485,7 +503,13 @@
 
     setInscriptions(items);
 
-    setStatus("Évènement créé dans le planning.", "isSuccess");
+    setStatus(
+      dates.length > 1
+        ? `Évènement créé avec ${dates.length} journées : ${dates.map((_, i) => `J${i + 1}`).join(", ")}.`
+        : "Évènement créé dans le planning.",
+      "isSuccess"
+    );
+
     renderAll();
   };
 
@@ -595,9 +619,17 @@
 
   const getStatusClass = (status) => {
     if (status === "ACCEPTE") return "isAccepted";
+    if (status === "DOSSIER_A_ENVOYER") return "isTodo";
     if (status === "A_RELANCER") return "isWarning";
-    if (status === "EN_ATTENTE_REPONSE" || status === "DOSSIER_ENVOYE") return "isWaiting";
+    if (status === "EN_ATTENTE_REPONSE") return "isWaiting";
     if (status === "REFUSE") return "isRefused";
+    return "";
+  };
+
+  const getCardClass = (item) => {
+    if (item.statut === "ACCEPTE") return "isAcceptedCard";
+    if (item.statut === "DOSSIER_A_ENVOYER") return "isTodoCard";
+    if (item.statut === "EN_ATTENTE_REPONSE" && item.dossier_envoye) return "isWaitingCard";
     return "";
   };
 
@@ -605,7 +637,7 @@
     const items = getInscriptions();
 
     els.statRelance.textContent = items.filter((item) => item.statut === "A_RELANCER").length;
-    els.statWaiting.textContent = items.filter((item) => item.statut === "EN_ATTENTE_REPONSE" || item.statut === "DOSSIER_ENVOYE").length;
+    els.statWaiting.textContent = items.filter((item) => item.statut === "EN_ATTENTE_REPONSE").length;
     els.statAccepted.textContent = items.filter((item) => item.statut === "ACCEPTE").length;
   };
 
@@ -616,6 +648,24 @@
       button.classList.toggle("isActive", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
+  };
+
+  const renderDayChips = (item) => {
+    const dates = getDateRange(item.date_debut, item.date_fin);
+
+    if (dates.length <= 1) return "";
+
+    return `
+      <div class="eventDayPreview">
+        ${dates
+          .map((date, index) => `
+            <span>
+              J${index + 1} · ${escapeHtml(formatDisplayDate(date))}
+            </span>
+          `)
+          .join("")}
+      </div>
+    `;
   };
 
   const renderList = () => {
@@ -635,19 +685,23 @@
             : `${formatDisplayDate(item.date_debut)} → ${formatDisplayDate(item.date_fin)}`;
 
         const place = [item.lieu, item.ville].filter(Boolean).join(" · ");
+        const fullAddress = [item.adresse, item.ville].filter(Boolean).join(" · ");
+        const wazeUrl = buildWazeUrl(item);
         const statusLabel = STATUS_LABELS[item.statut] || item.statut;
         const statusClass = getStatusClass(item.statut);
+        const cardClass = getCardClass(item);
         const price = formatCurrency(item.prix_emplacement);
 
         const material = [
           item.table_fournie ? "Table" : "",
           item.barnum_fourni ? "Barnum" : "",
           item.chaises_fournies ? "Chaises" : "",
-          item.eclairage_fourni ? "Éclairage" : ""
+          item.eclairage_fourni ? "Éclairage" : "",
+          item.electricite_fournie ? "Électricité" : ""
         ].filter(Boolean);
 
         return `
-          <article class="inscriptionCard">
+          <article class="inscriptionCard ${escapeAttr(cardClass)}">
             <div class="inscriptionHeader">
               <div>
                 <strong>${escapeHtml(item.nom)}</strong>
@@ -662,13 +716,31 @@
               </span>
             </div>
 
+            ${renderDayChips(item)}
+
             <div class="inscriptionMeta">
               ${place ? `<span>📍 ${escapeHtml(place)}</span>` : ""}
+              ${fullAddress ? `<span>🧭 ${escapeHtml(fullAddress)}</span>` : ""}
               ${item.horaires ? `<span>🕒 ${escapeHtml(item.horaires)}</span>` : ""}
               ${item.mise_en_place ? `<span>🚚 ${escapeHtml(item.mise_en_place)}</span>` : ""}
               ${price ? `<span>💶 ${escapeHtml(price)}</span>` : ""}
               ${item.responsable_nom ? `<span>👤 ${escapeHtml(item.responsable_nom)}</span>` : ""}
             </div>
+
+            ${
+              wazeUrl
+                ? `
+                  <a
+                    class="wazeLink"
+                    href="${escapeAttr(wazeUrl)}"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    Ouvrir dans Waze
+                  </a>
+                `
+                : ""
+            }
 
             ${
               material.length > 0
@@ -799,7 +871,7 @@
       els.docSentInput.checked = true;
     }
 
-    if (["DOSSIER_ENVOYE", "EN_ATTENTE_REPONSE", "A_RELANCER", "LISTE_ATTENTE"].includes(els.statusInput.value)) {
+    if (["EN_ATTENTE_REPONSE", "A_RELANCER", "LISTE_ATTENTE"].includes(els.statusInput.value)) {
       els.docSentInput.checked = true;
     }
   });
@@ -812,8 +884,11 @@
   });
 
   els.docSentInput.addEventListener("change", () => {
-    if (els.docSentInput.checked && els.statusInput.value === "A_CONTACTER") {
-      els.statusInput.value = "DOSSIER_ENVOYE";
+    if (
+      els.docSentInput.checked &&
+      ["A_CONTACTER", "DOSSIER_A_ENVOYER"].includes(els.statusInput.value)
+    ) {
+      els.statusInput.value = "EN_ATTENTE_REPONSE";
     }
   });
 
