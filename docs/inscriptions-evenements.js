@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Inscriptions évènements V3 :
+    Inscriptions évènements V4 :
     - Suppression du statut "Dossier envoyé" pour éviter le doublon avec "En attente de réponse".
     - "Dossier envoyé" devient uniquement une case de suivi.
     - Adresse visible directement dans la carte.
@@ -12,6 +12,13 @@
     - Création automatique de J1/J2/J3 si l’évènement dure plusieurs jours.
     - Cartes colorées selon le statut :
       accepté = vert, dossier à envoyer = rouge, dossier envoyé + attente = jaune.
+    - Mode modification plus clair :
+      bouton "Enregistrer les modifications"
+      titre "Modifier une inscription"
+    - Si une inscription a déjà créé un évènement, les modifications sont synchronisées
+      vers l’évènement lié.
+    - Si les dates changent, les journées liées sont régénérées uniquement si elles
+      sont encore sûres à modifier : statut prévu, pas de mission_id, pas de stock_mission_id.
   */
 
   const CURRENT_USER = {
@@ -59,6 +66,7 @@
 
   const els = {
     form: document.getElementById("inscriptionForm"),
+    formTitle: document.getElementById("trackingFormTitle"),
     inscriptionIdInput: document.getElementById("inscriptionIdInput"),
 
     nameInput: document.getElementById("nameInput"),
@@ -89,6 +97,7 @@
     commentInput: document.getElementById("commentInput"),
 
     resetFormBtn: document.getElementById("resetFormBtn"),
+    saveInscriptionBtn: document.getElementById("saveInscriptionBtn"),
     formStatus: document.getElementById("formStatus"),
 
     searchInput: document.getElementById("searchInput"),
@@ -346,14 +355,198 @@
     setInscriptions(items);
   };
 
-  const resetForm = () => {
+  const getEventJournees = (eventId) =>
+    getJournees()
+      .filter((journee) => journee.evenement_id === eventId)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  const isJourneeSafeToRegenerate = (journee) => {
+    const statut = String(journee.statut || "prevu").trim();
+    const missionId = String(journee.mission_id || "").trim();
+    const stockMissionId = String(journee.stock_mission_id || "").trim();
+
+    return (
+      statut === "prevu" &&
+      !missionId &&
+      !stockMissionId &&
+      !journee.started_at &&
+      !journee.closed_at
+    );
+  };
+
+  const canRegenerateEventJournees = (eventId) => {
+    const linkedDays = getEventJournees(eventId);
+
+    if (linkedDays.length === 0) return true;
+
+    return linkedDays.every(isJourneeSafeToRegenerate);
+  };
+
+  const regenerateEventJournees = (eventId, inscription, dates) => {
+    const now = new Date().toISOString();
+    const slug = slugify(inscription.nom, "EVENEMENT");
+    const stamp = Date.now().toString(36).toUpperCase();
+
+    const allJournees = getJournees();
+    const otherJournees = allJournees.filter((journee) => journee.evenement_id !== eventId);
+
+    const newJournees = dates.map((date, dayIndex) => ({
+      journee_id: `J_${date.replaceAll("-", "")}_${slug}_J${dayIndex + 1}_${stamp}`,
+      evenement_id: eventId,
+      mission_id: "",
+      stock_mission_id: "",
+      date,
+      jour_label: `J${dayIndex + 1}`,
+      statut: "prevu",
+      meteo: "",
+      affluence_ressentie: "",
+      note: "",
+      created_at: now,
+      updated_at: now
+    }));
+
+    setJournees([...otherJournees, ...newJournees]);
+
+    return newJournees;
+  };
+
+  const buildLinkedEventPatch = (existingEvent, inscription, dates, { allowDateUpdate }) => {
+    const now = new Date().toISOString();
+
+    const dateDebut = allowDateUpdate
+      ? dates[0] || inscription.date_debut
+      : existingEvent.date_debut;
+
+    const dateFin = allowDateUpdate
+      ? dates[dates.length - 1] || inscription.date_fin
+      : existingEvent.date_fin;
+
+    return {
+      ...existingEvent,
+      nom: inscription.nom,
+      date_debut: dateDebut,
+      date_fin: dateFin,
+      lieu: inscription.lieu,
+      ville: inscription.ville,
+      adresse: inscription.adresse,
+      horaires: inscription.horaires,
+      mise_en_place: inscription.mise_en_place,
+      type_evenement: inscription.type_evenement,
+      type_evenement_label: inscription.type_evenement_label,
+      duree_type: allowDateUpdate
+        ? dates.length > 1
+          ? "PLUSIEURS_JOURS"
+          : "JOURNEE_UNIQUE"
+        : existingEvent.duree_type,
+      vendeurs_prevus: [
+        {
+          user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
+          nom: inscription.responsable_nom || CURRENT_USER.nom
+        }
+      ],
+      responsable_user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
+      note: [
+        inscription.commentaire ? `Commentaire : ${inscription.commentaire}` : "",
+        inscription.paiement_statut ? `Paiement/caution : ${inscription.paiement_statut}` : "",
+        inscription.contact_mail ? `Mail : ${inscription.contact_mail}` : "",
+        inscription.contact_tel ? `Téléphone : ${inscription.contact_tel}` : ""
+      ].filter(Boolean).join("\n"),
+      updated_at: now
+    };
+  };
+
+  const syncLinkedEventFromInscription = (inscription) => {
+    if (!inscription.evenement_id) {
+      return {
+        status: "none",
+        message: ""
+      };
+    }
+
+    const events = getEvents();
+    const eventIndex = events.findIndex(
+      (event) => event.evenement_id === inscription.evenement_id
+    );
+
+    if (eventIndex < 0) {
+      return {
+        status: "warning",
+        message: "Inscription modifiée, mais l’évènement lié est introuvable."
+      };
+    }
+
+    const existingEvent = events[eventIndex];
+    const dates = getDateRange(inscription.date_debut, inscription.date_fin);
+
+    const newDateDebut = dates[0] || inscription.date_debut;
+    const newDateFin = dates[dates.length - 1] || inscription.date_fin;
+
+    const datesChanged =
+      String(existingEvent.date_debut || "") !== String(newDateDebut || "") ||
+      String(existingEvent.date_fin || "") !== String(newDateFin || "");
+
+    if (datesChanged && !canRegenerateEventJournees(existingEvent.evenement_id)) {
+      events[eventIndex] = buildLinkedEventPatch(existingEvent, inscription, dates, {
+        allowDateUpdate: false
+      });
+
+      setEvents(events);
+
+      return {
+        status: "warning",
+        message:
+          "Modifications enregistrées, mais les dates de l’évènement lié n’ont pas été changées : des journées semblent déjà utilisées."
+      };
+    }
+
+    events[eventIndex] = buildLinkedEventPatch(existingEvent, inscription, dates, {
+      allowDateUpdate: true
+    });
+
+    setEvents(events);
+
+    if (datesChanged) {
+      const newJournees = regenerateEventJournees(
+        existingEvent.evenement_id,
+        inscription,
+        dates
+      );
+
+      return {
+        status: "success",
+        message:
+          newJournees.length > 1
+            ? `Modifications enregistrées. Évènement lié mis à jour avec ${newJournees.length} journées.`
+            : "Modifications enregistrées. Évènement lié mis à jour avec 1 journée."
+      };
+    }
+
+    return {
+      status: "success",
+      message: "Modifications enregistrées. Évènement lié mis à jour."
+    };
+  };
+
+  const resetForm = ({ keepStatus = false } = {}) => {
     state.editingId = "";
     els.form.reset();
     els.inscriptionIdInput.value = "";
     els.statusInput.value = "A_CONTACTER";
     els.ownerInput.value = CURRENT_USER.user_id;
+
+    if (els.formTitle) {
+      els.formTitle.textContent = "Ajouter une inscription";
+    }
+
+    if (els.saveInscriptionBtn) {
+      els.saveInscriptionBtn.textContent = "Enregistrer";
+    }
+
     setDefaultDate();
-    setStatus("");
+
+    if (!keepStatus) {
+      setStatus("");
+    }
   };
 
   const fillForm = (inscription) => {
@@ -386,6 +579,14 @@
     els.contactPhoneInput.value = inscription.contact_tel || "";
     els.paymentInput.value = inscription.paiement_statut || "";
     els.commentInput.value = inscription.commentaire || "";
+
+    if (els.formTitle) {
+      els.formTitle.textContent = "Modifier une inscription";
+    }
+
+    if (els.saveInscriptionBtn) {
+      els.saveInscriptionBtn.textContent = "Enregistrer les modifications";
+    }
 
     setStatus("Fiche chargée pour modification.", "isSuccess");
 
@@ -902,18 +1103,33 @@
   els.form.addEventListener("submit", (event) => {
     event.preventDefault();
 
+    const wasEditing = Boolean(els.inscriptionIdInput.value.trim());
     const inscription = buildInscriptionFromForm();
 
     if (!inscription) return;
 
     saveInscription(inscription);
 
-    setStatus("Inscription enregistrée.", "isSuccess");
-    resetForm();
+    const syncResult = wasEditing
+      ? syncLinkedEventFromInscription(inscription)
+      : { status: "none", message: "" };
+
     renderAll();
+    resetForm({ keepStatus: true });
+
+    if (wasEditing) {
+      const message = syncResult.message || "Modifications enregistrées.";
+      const type = syncResult.status === "warning" ? "isError" : "isSuccess";
+      setStatus(message, type);
+      return;
+    }
+
+    setStatus("Inscription enregistrée.", "isSuccess");
   });
 
-  els.resetFormBtn.addEventListener("click", resetForm);
+  els.resetFormBtn.addEventListener("click", () => {
+    resetForm();
+  });
 
   setDefaultDate();
   renderAll();
