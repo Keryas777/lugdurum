@@ -2,10 +2,11 @@
   "use strict";
 
   /*
-    Inscriptions évènements V2 :
+    Inscriptions évènements V3 :
     - Suppression du statut "Dossier envoyé" pour éviter le doublon avec "En attente de réponse".
     - "Dossier envoyé" devient uniquement une case de suivi.
-    - Ajout adresse visible + lien Waze.
+    - Adresse visible directement dans la carte.
+    - L’adresse devient cliquable vers Waze avec un badge compact.
     - Ajout électricité dans le matériel fourni.
     - Date de fin conservée en modification, même si égale à la date de début.
     - Création automatique de J1/J2/J3 si l’évènement dure plusieurs jours.
@@ -668,6 +669,27 @@
     `;
   };
 
+  const renderAddressLine = (fullAddress, wazeUrl) => {
+    if (!fullAddress) return "";
+
+    if (!wazeUrl) {
+      return `<span>🧭 ${escapeHtml(fullAddress)}</span>`;
+    }
+
+    return `
+      <a
+        class="addressWazeLink"
+        href="${escapeAttr(wazeUrl)}"
+        target="_blank"
+        rel="noopener"
+        aria-label="Ouvrir l’adresse dans Waze"
+      >
+        <span>🧭 ${escapeHtml(fullAddress)}</span>
+        <strong>Waze</strong>
+      </a>
+    `;
+  };
+
   const renderList = () => {
     const items = getFilteredInscriptions();
 
@@ -720,27 +742,12 @@
 
             <div class="inscriptionMeta">
               ${place ? `<span>📍 ${escapeHtml(place)}</span>` : ""}
-              ${fullAddress ? `<span>🧭 ${escapeHtml(fullAddress)}</span>` : ""}
+              ${renderAddressLine(fullAddress, wazeUrl)}
               ${item.horaires ? `<span>🕒 ${escapeHtml(item.horaires)}</span>` : ""}
               ${item.mise_en_place ? `<span>🚚 ${escapeHtml(item.mise_en_place)}</span>` : ""}
               ${price ? `<span>💶 ${escapeHtml(price)}</span>` : ""}
               ${item.responsable_nom ? `<span>👤 ${escapeHtml(item.responsable_nom)}</span>` : ""}
             </div>
-
-            ${
-              wazeUrl
-                ? `
-                  <a
-                    class="wazeLink"
-                    href="${escapeAttr(wazeUrl)}"
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    Ouvrir dans Waze
-                  </a>
-                `
-                : ""
-            }
 
             ${
               material.length > 0
