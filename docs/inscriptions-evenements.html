@@ -19,10 +19,10 @@
     <title>Lugdurum — Inscriptions évènements</title>
 
     <link rel="stylesheet" href="./style.css?v=11" />
-    <link rel="stylesheet" href="./inscriptions-evenements.css?v=1" />
+    <link rel="stylesheet" href="./inscriptions-evenements.css?v=2" />
 
     <script src="./lugdurum-api.js?v=2" defer></script>
-    <script src="./inscriptions-evenements.js?v=1" defer></script>
+    <script src="./inscriptions-evenements.js?v=2" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -55,7 +55,7 @@
             <p class="sectionKicker">Suivi administratif</p>
             <h2 id="trackingHeroTitle">Demandes & réponses</h2>
             <p class="trackingHeroText">
-              Suis les dossiers envoyés, les réponses des organisateurs, le matériel fourni et les contacts avant de créer l’évènement confirmé.
+              Suis les dossiers, les réponses des organisateurs, le matériel fourni et les contacts avant de créer l’évènement confirmé.
             </p>
           </div>
 
@@ -116,7 +116,6 @@
                 <select id="statusInput">
                   <option value="A_CONTACTER">À contacter</option>
                   <option value="DOSSIER_A_ENVOYER">Dossier à envoyer</option>
-                  <option value="DOSSIER_ENVOYE">Dossier envoyé</option>
                   <option value="EN_ATTENTE_REPONSE">En attente de réponse</option>
                   <option value="A_RELANCER">À relancer</option>
                   <option value="LISTE_ATTENTE">Liste d’attente</option>
@@ -245,6 +244,11 @@
                   <label class="checkPill">
                     <input id="lightInput" type="checkbox" />
                     <span>Éclairage</span>
+                  </label>
+
+                  <label class="checkPill">
+                    <input id="electricityInput" type="checkbox" />
+                    <span>Électricité</span>
                   </label>
                 </div>
               </div>
