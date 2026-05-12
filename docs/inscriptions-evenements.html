@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Inscriptions évènements</title>
+
+    <link rel="stylesheet" href="./style.css?v=11" />
+    <link rel="stylesheet" href="./inscriptions-evenements.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=2" defer></script>
+    <script src="./inscriptions-evenements.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-event-tracking">
+    <div class="appShell eventTrackingShell">
+      <header class="topbar eventTrackingTopbar">
+        <a class="backBtn" href="./missions.html" aria-label="Retour aux évènements">
+          ←
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Inscriptions</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="eventTrackingLayout">
+        <section class="trackingHero" aria-labelledby="trackingHeroTitle">
+          <div>
+            <p class="sectionKicker">Suivi administratif</p>
+            <h2 id="trackingHeroTitle">Demandes & réponses</h2>
+            <p class="trackingHeroText">
+              Suis les dossiers envoyés, les réponses des organisateurs, le matériel fourni et les contacts avant de créer l’évènement confirmé.
+            </p>
+          </div>
+
+          <div class="trackingStats">
+            <article>
+              <span>À relancer</span>
+              <strong id="statRelance">0</strong>
+            </article>
+
+            <article>
+              <span>En attente</span>
+              <strong id="statWaiting">0</strong>
+            </article>
+
+            <article>
+              <span>Acceptés</span>
+              <strong id="statAccepted">0</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="trackingPanel" aria-labelledby="trackingFormTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Nouvelle fiche</p>
+              <h2 id="trackingFormTitle">Ajouter une inscription</h2>
+            </div>
+          </div>
+
+          <form id="inscriptionForm" class="trackingForm">
+            <input id="inscriptionIdInput" type="hidden" />
+
+            <div class="trackingFields">
+              <label class="trackingField trackingFieldFull">
+                <span>Nom du marché / salon</span>
+                <input
+                  id="nameInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Marché de Noël Millery"
+                  required
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Type</span>
+                <select id="eventKindInput">
+                  <option value="MARCHE_ARTISANAL">Marché artisanal</option>
+                  <option value="SALON_DES_VINS">Salon des vins</option>
+                  <option value="MARCHE_DE_NOEL">Marché de Noël</option>
+                  <option value="FOIRE">Foire</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="trackingField">
+                <span>Statut</span>
+                <select id="statusInput">
+                  <option value="A_CONTACTER">À contacter</option>
+                  <option value="DOSSIER_A_ENVOYER">Dossier à envoyer</option>
+                  <option value="DOSSIER_ENVOYE">Dossier envoyé</option>
+                  <option value="EN_ATTENTE_REPONSE">En attente de réponse</option>
+                  <option value="A_RELANCER">À relancer</option>
+                  <option value="LISTE_ATTENTE">Liste d’attente</option>
+                  <option value="ACCEPTE">Accepté</option>
+                  <option value="REFUSE">Refusé</option>
+                  <option value="ANNULE">Annulé</option>
+                </select>
+              </label>
+
+              <label class="trackingField">
+                <span>Date de début</span>
+                <input id="startDateInput" type="date" required />
+              </label>
+
+              <label class="trackingField">
+                <span>Date de fin</span>
+                <input id="endDateInput" type="date" />
+              </label>
+
+              <label class="trackingField">
+                <span>Horaires</span>
+                <input
+                  id="scheduleInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : 10h - 18h"
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Mise en place</span>
+                <input
+                  id="setupInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : À partir de 8h30"
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Prix emplacement</span>
+                <input
+                  id="priceInput"
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  placeholder="Ex : 25"
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Qui ?</span>
+                <select id="ownerInput">
+                  <option value="U_JEROME">Jérôme</option>
+                  <option value="U_ANTHO">Antho</option>
+                  <option value="U_WILL">Will</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="trackingField">
+                <span>Ville</span>
+                <input
+                  id="cityInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Millery"
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Lieu</span>
+                <input
+                  id="locationInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Salle polyvalente"
+                />
+              </label>
+
+              <label class="trackingField trackingFieldFull">
+                <span>Adresse</span>
+                <input
+                  id="addressInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Avenue du sentier, 69390 Millery"
+                />
+              </label>
+
+              <div class="trackingField trackingFieldFull">
+                <span>Suivi dossier</span>
+
+                <div class="checkGrid">
+                  <label class="checkPill">
+                    <input id="docSentInput" type="checkbox" />
+                    <span>Dossier envoyé</span>
+                  </label>
+
+                  <label class="checkPill">
+                    <input id="acceptedInput" type="checkbox" />
+                    <span>Accepté</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="trackingField trackingFieldFull">
+                <span>Matériel fourni</span>
+
+                <div class="checkGrid">
+                  <label class="checkPill">
+                    <input id="tableInput" type="checkbox" />
+                    <span>Table</span>
+                  </label>
+
+                  <label class="checkPill">
+                    <input id="barnumInput" type="checkbox" />
+                    <span>Barnum</span>
+                  </label>
+
+                  <label class="checkPill">
+                    <input id="chairsInput" type="checkbox" />
+                    <span>Chaises</span>
+                  </label>
+
+                  <label class="checkPill">
+                    <input id="lightInput" type="checkbox" />
+                    <span>Éclairage</span>
+                  </label>
+                </div>
+              </div>
+
+              <label class="trackingField">
+                <span>Nom contact</span>
+                <input
+                  id="contactNameInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : Mme Albani"
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Mail contact</span>
+                <input
+                  id="contactMailInput"
+                  type="email"
+                  autocomplete="off"
+                  placeholder="Ex : contact@email.fr"
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Téléphone contact</span>
+                <input
+                  id="contactPhoneInput"
+                  type="tel"
+                  autocomplete="off"
+                  placeholder="Ex : 06..."
+                />
+              </label>
+
+              <label class="trackingField">
+                <span>Paiement / caution</span>
+                <input
+                  id="paymentInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Ex : chèque envoyé, caution 50€"
+                />
+              </label>
+
+              <label class="trackingField trackingFieldFull">
+                <span>Commentaires</span>
+                <textarea
+                  id="commentInput"
+                  rows="3"
+                  placeholder="Ex : Tout OK, paiement plus tard, dossier à confirmer..."
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="trackingActions">
+              <button class="btn btnGhost" type="button" id="resetFormBtn">
+                Réinitialiser
+              </button>
+
+              <button class="btn btnPrimary" type="submit" id="saveInscriptionBtn">
+                Enregistrer
+              </button>
+            </div>
+
+            <p class="trackingStatus" id="formStatus" role="status"></p>
+          </form>
+        </section>
+
+        <section class="trackingPanel" aria-labelledby="trackingListTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Planning</p>
+              <h2 id="trackingListTitle">Inscriptions suivies</h2>
+            </div>
+          </div>
+
+          <div class="trackingFilters">
+            <label class="trackingSearch">
+              <span>Recherche</span>
+              <input
+                id="searchInput"
+                type="search"
+                autocomplete="off"
+                placeholder="Marché, ville, contact..."
+              />
+            </label>
+
+            <div class="statusFilters" role="group" aria-label="Filtrer par statut">
+              <button class="statusFilter isActive" type="button" data-filter-status="ALL">
+                Tous
+              </button>
+              <button class="statusFilter" type="button" data-filter-status="EN_ATTENTE_REPONSE">
+                Attente
+              </button>
+              <button class="statusFilter" type="button" data-filter-status="A_RELANCER">
+                Relance
+              </button>
+              <button class="statusFilter" type="button" data-filter-status="ACCEPTE">
+                Acceptés
+              </button>
+            </div>
+          </div>
+
+          <div class="inscriptionsList" id="inscriptionsList">
+            <p class="trackingEmpty">Aucune inscription enregistrée pour l’instant.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
