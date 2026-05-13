@@ -471,7 +471,7 @@ video {
 
 .workflowGrid {
   display: grid;
-  gap: 10px;
+  gap: 28px;
 }
 
 .workflowCard {
@@ -498,6 +498,28 @@ video {
   background: transparent;
 }
 
+.workflowCard:not(:last-child)::before {
+  content: "⌄";
+  position: absolute;
+  left: 50%;
+  bottom: -25px;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  transform: translateX(-50%);
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: 999px;
+  color: var(--rum);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 241, 0.98), rgba(245, 231, 208, 0.9));
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.08);
+  font-size: 1.05rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
 .workflowCard.isActive {
   border-color: rgba(138, 90, 43, 0.36);
   background:
@@ -519,6 +541,13 @@ video {
 
 .workflowCard.isDone::after {
   background: var(--green);
+}
+
+.workflowCard.isDone:not(:last-child)::before {
+  color: var(--green);
+  border-color: rgba(63, 111, 79, 0.18);
+  background:
+    linear-gradient(180deg, rgba(245, 255, 248, 0.98), rgba(230, 246, 235, 0.92));
 }
 
 .workflowCard.isUpcoming {
@@ -830,12 +859,22 @@ video {
 
   .workflowGrid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 18px;
   }
 
   .workflowCard {
     grid-template-columns: 1fr;
     align-content: start;
     min-height: 148px;
+  }
+
+  .workflowCard:not(:last-child)::before {
+    content: "›";
+    left: auto;
+    right: -25px;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
   }
 
   .workflowNumber {
