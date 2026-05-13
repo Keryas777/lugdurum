@@ -569,6 +569,122 @@
   font-weight: 850;
 }
 
+#saveTicketBtn.isSumupButton {
+  background:
+    linear-gradient(135deg, #2f7cf6, #1162dc);
+  box-shadow: 0 14px 34px rgba(47, 124, 246, 0.22);
+}
+
+.sumupOverlay[hidden] {
+  display: none;
+}
+
+.sumupOverlay {
+  position: fixed;
+  z-index: 9999;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding:
+    calc(18px + env(safe-area-inset-top))
+    14px
+    calc(18px + env(safe-area-inset-bottom));
+  background: rgba(31, 27, 22, 0.38);
+  backdrop-filter: blur(14px);
+}
+
+.sumupDialog {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(255, 250, 241, 0.36);
+  border-radius: 28px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(216, 160, 79, 0.22), transparent 18rem),
+    linear-gradient(160deg, rgba(255, 250, 241, 0.98), rgba(245, 231, 208, 0.94));
+  box-shadow: 0 24px 70px rgba(31, 27, 22, 0.28);
+}
+
+.sumupDialogHeader h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.7rem, 7vw, 2.4rem);
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+}
+
+.sumupDialogHeader p:last-child {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.sumupRecap {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 241, 0.58));
+}
+
+.sumupRecap span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.sumupRecap strong {
+  color: var(--rum);
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.sumupRecap small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.sumupActions {
+  display: grid;
+  gap: 10px;
+}
+
+.sumupBtn {
+  min-height: 52px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 950;
+}
+
+.sumupBtnSuccess {
+  color: #fffaf1;
+  background: linear-gradient(135deg, rgba(63, 111, 79, 0.98), rgba(49, 92, 65, 0.96));
+  box-shadow: 0 14px 30px rgba(63, 111, 79, 0.22);
+}
+
+.sumupBtnDanger {
+  color: #fffaf1;
+  background: linear-gradient(135deg, rgba(179, 92, 58, 0.98), rgba(138, 70, 45, 0.96));
+  box-shadow: 0 14px 30px rgba(179, 92, 58, 0.22);
+}
+
+.sumupBtnGhost {
+  border: 1px solid var(--border);
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+}
+
 @media (min-width: 620px) {
   .saleModeTabs {
     grid-template-columns: repeat(3, 1fr);
@@ -580,6 +696,14 @@
 
   .saleActions {
     grid-template-columns: 1fr 1.4fr;
+  }
+
+  .sumupActions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sumupBtnGhost {
+    grid-column: 1 / -1;
   }
 }
 
