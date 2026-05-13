@@ -32,7 +32,7 @@
       Tu peux aussi la poser en localStorage avec :
       localStorage.setItem("lugdurum_sumup_affiliate_key", "TA_CLE_SUMUP")
     */
-    affiliateKey: "",
+    affiliateKey: "sup_afk_XKnrqZNyKlv6T1c29eBSYdrco9uwKz0j",
     currency: "EUR",
     titlePrefix: "Lugdurum",
     callbackEnabled: true
