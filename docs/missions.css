@@ -1,5 +1,5 @@
 /* ==============================
-   Page Missions / Évènements
+   Page Missions / Stock
    ============================== */
 
 .page-missions .appShell {
@@ -63,6 +63,8 @@
 }
 
 .missionHero {
+  display: grid;
+  gap: 16px;
   padding: 20px;
 }
 
@@ -87,6 +89,21 @@
   line-height: 1.38;
 }
 
+.heroAction {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 16px;
+  color: #fffaf1;
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+  box-shadow: 0 12px 26px rgba(138, 90, 43, 0.2);
+  font-weight: 950;
+  text-align: center;
+}
+
 .missionPanel {
   padding: 16px;
 }
@@ -108,56 +125,6 @@
   line-height: 1.36;
 }
 
-.eventTypeGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.eventTypeCard {
-  min-height: 118px;
-  display: grid;
-  align-content: center;
-  gap: 5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  text-align: left;
-  color: var(--text);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
-  box-shadow: 0 8px 20px rgba(75, 48, 22, 0.075);
-}
-
-.eventTypeCard.isActive {
-  color: #fffaf1;
-  border-color: rgba(138, 90, 43, 0.52);
-  background:
-    linear-gradient(135deg, var(--rum-2), var(--rum));
-  box-shadow: 0 14px 32px rgba(138, 90, 43, 0.22);
-}
-
-.eventTypeCard strong {
-  font-size: clamp(0.98rem, 4vw, 1.14rem);
-  line-height: 1.05;
-  letter-spacing: -0.035em;
-}
-
-.eventTypeCard small {
-  color: var(--muted);
-  font-size: clamp(0.75rem, 3.2vw, 0.88rem);
-  font-weight: 750;
-  line-height: 1.25;
-}
-
-.eventTypeCard.isActive small {
-  color: rgba(255, 250, 241, 0.8);
-}
-
-.eventTypeIcon {
-  font-size: 1.32rem;
-}
-
 .missionFields {
   display: grid;
   grid-template-columns: 1fr;
@@ -169,13 +136,6 @@
   gap: 7px;
 }
 
-.page-missions [hidden],
-.missionField[hidden],
-#endDateField[hidden],
-#otherOperatorField[hidden] {
-  display: none !important;
-}
-
 .missionField span {
   color: var(--muted);
   font-size: 0.82rem;
@@ -183,7 +143,6 @@
 }
 
 .missionField input,
-.missionField select,
 .missionField textarea {
   width: 100%;
   min-height: var(--tap);
@@ -200,40 +159,12 @@
 }
 
 .missionField textarea {
-  min-height: 94px;
+  min-height: 88px;
   padding-top: 12px;
   resize: vertical;
   line-height: 1.35;
 }
 
-.operatorGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.operatorChip {
-  min-height: 44px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 10px;
-  color: var(--text);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
-  font: inherit;
-  font-size: 0.9rem;
-  font-weight: 900;
-}
-
-.operatorChip.isActive {
-  color: #fffaf1;
-  border-color: rgba(138, 90, 43, 0.48);
-  background:
-    linear-gradient(135deg, var(--rum-2), var(--rum));
-  box-shadow: 0 10px 22px rgba(138, 90, 43, 0.18);
-}
-
-.dayPreviewBox,
 .stockDaysBox,
 .stockMissionPreview {
   border: 1px solid rgba(86, 65, 42, 0.14);
@@ -242,48 +173,14 @@
   background: rgba(255, 250, 241, 0.46);
 }
 
-.dayPreviewList,
 .stockDayList {
   display: grid;
   gap: 8px;
 }
 
-.dayPreviewItem,
-.missionListItem {
-  border: 1px solid rgba(86, 65, 42, 0.14);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 241, 0.56));
-}
-
-.dayPreviewItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.dayPreviewItem strong {
-  color: var(--text);
-  font-size: 1rem;
-}
-
-.dayPreviewItem span {
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 800;
-}
-
-.dayBadge {
-  min-width: 42px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 999px;
-  color: #fffaf1;
-  background: var(--rum);
-  font-weight: 950;
+.missionEmptyBlock {
+  display: grid;
+  gap: 10px;
 }
 
 .missionEmpty {
@@ -329,6 +226,11 @@
 .missionListItem {
   display: grid;
   gap: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 241, 0.56));
 }
 
 .missionListHeader {
@@ -385,13 +287,12 @@
   line-height: 1.3;
 }
 
-.missionOperatorLine {
+.missionDayChips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.missionOperatorChip,
 .missionDayChip {
   display: inline-flex;
   align-items: center;
@@ -404,20 +305,9 @@
   font-weight: 900;
 }
 
-.missionOperatorChip {
-  color: var(--rum);
-  background: var(--amber-soft);
-}
-
 .missionDayChip.isLinked {
   color: var(--green);
   background: var(--green-soft);
-}
-
-.missionDayChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .missionListActions {
@@ -437,6 +327,7 @@
   color: var(--text);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.5));
+  font: inherit;
   font-weight: 900;
   text-align: center;
 }
@@ -446,6 +337,11 @@
   color: #fffaf1;
   background:
     linear-gradient(135deg, var(--rum-2), var(--rum));
+}
+
+.missionSmallBtn:disabled {
+  opacity: 0.42;
+  pointer-events: none;
 }
 
 .stockDayOption {
@@ -466,8 +362,8 @@
   box-shadow: inset 0 0 0 2px rgba(63, 111, 79, 0.12);
 }
 
-.stockDayOption.isLinked:not(.isSelected) {
-  opacity: 0.76;
+.stockDayOption.isLinked {
+  opacity: 0.64;
 }
 
 .stockDayOption input {
@@ -494,6 +390,12 @@
 .stockDayOption.isSelected .stockDayCheck::after {
   content: "✓";
   color: #fffaf1;
+  font-weight: 950;
+}
+
+.stockDayOption.isLinked .stockDayCheck::after {
+  content: "•";
+  color: var(--muted);
   font-weight: 950;
 }
 
@@ -534,6 +436,11 @@
 }
 
 @media (min-width: 620px) {
+  .missionHero {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+
   .missionFields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -559,23 +466,9 @@
   .missionPanel {
     padding: 14px;
   }
-
-  .operatorGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 370px) {
-  .eventTypeGrid {
-    gap: 8px;
-  }
-
-  .eventTypeCard {
-    min-height: 112px;
-    padding: 12px;
-  }
-
-  .dayPreviewItem,
   .missionListTitle {
     align-items: flex-start;
     flex-direction: column;
