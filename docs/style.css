@@ -46,7 +46,6 @@
   box-sizing: border-box;
 }
 
-/* ===== Verrouillage global : pas de scroll horizontal, pas de zoom parasite ===== */
 html,
 body {
   width: 100%;
@@ -54,42 +53,6 @@ body {
   overflow-x: hidden;
   overscroll-behavior-x: none;
   touch-action: manipulation;
-}
-
-body {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-img,
-svg,
-canvas,
-video {
-  max-width: 100%;
-}
-
-button,
-input,
-select,
-textarea {
-  max-width: 100%;
-  font-size: 16px;
-}
-
-.appShell,
-.mainContent,
-.saleShell,
-.saleLayout,
-.salePanel,
-.sectionBlock,
-.statusHero,
-.watchPanel,
-.tileGrid,
-.productGrid,
-.ticketPanel,
-.ticketLines {
-  max-width: 100%;
-  min-width: 0;
 }
 
 html {
@@ -106,9 +69,10 @@ body {
     radial-gradient(circle at 12% 0%, rgba(216, 160, 79, 0.28), transparent 26rem),
     radial-gradient(circle at 88% 4%, rgba(168, 143, 104, 0.26), transparent 24rem),
     linear-gradient(180deg, #fbf7ef 0%, var(--bg) 46%, #efe3d0 100%);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
-/* ===== Cache fixe sous la barre d’état iPhone en PWA ===== */
 body::before {
   content: "";
   position: fixed;
@@ -118,31 +82,26 @@ body::before {
   right: 0;
   height: env(safe-area-inset-top);
   pointer-events: none;
-
   background:
     radial-gradient(circle at 12% 0%, rgba(216, 160, 79, 0.24), transparent 22rem),
     radial-gradient(circle at 88% 4%, rgba(168, 143, 104, 0.22), transparent 20rem),
     linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
 }
 
-/* ===== Texture de fond globale ===== */
 body::after {
   content: "";
   position: fixed;
   z-index: 0;
   inset: 0;
   pointer-events: none;
-
   background-image:
     linear-gradient(rgba(86, 65, 42, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(86, 65, 42, 0.03) 1px, transparent 1px),
     linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.38) 42%, transparent 70%);
-
   background-size:
     34px 34px,
     34px 34px,
     auto;
-
   opacity: 0.72;
   mask-image: linear-gradient(to bottom, black, transparent 72%);
 }
@@ -157,8 +116,31 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-button {
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
   font: inherit;
+  font-size: 16px;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
+.appShell,
+.mainContent,
+.sectionBlock,
+.statusHero,
+.watchPanel,
+.tileGrid,
+.workflowGrid {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .appShell {
@@ -227,14 +209,13 @@ button {
 
 .brandBlock h1 {
   max-width: none;
+  color: var(--text);
   font-size: clamp(1.55rem, 6.2vw, 3.2rem);
   letter-spacing: -0.065em;
-  color: var(--text);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
   white-space: nowrap;
 }
 
-.eyebrow,
 .sectionKicker,
 .statusTopline {
   margin: 0 0 7px;
@@ -245,18 +226,12 @@ button {
   text-transform: uppercase;
 }
 
-.missionMeta,
-.tileText,
-.watchList,
-.statCard span {
-  color: var(--muted);
-}
-
 .userPill {
   min-height: var(--tap);
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0 14px;
@@ -264,10 +239,8 @@ button {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 250, 241, 0.68));
   box-shadow: var(--shadow-soft);
-  font: inherit;
   font-weight: 800;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .mainContent {
@@ -287,8 +260,8 @@ button {
 }
 
 .statusHero {
-  overflow: hidden;
   position: relative;
+  overflow: hidden;
   padding: 22px;
 }
 
@@ -318,6 +291,30 @@ button {
   z-index: 1;
 }
 
+.statusHero.isNoMission::before {
+  background:
+    linear-gradient(90deg, rgba(168, 143, 104, 0.12), transparent 44%),
+    radial-gradient(circle at 90% 12%, rgba(168, 143, 104, 0.22), transparent 16rem);
+}
+
+.statusHero.isStockToPrepare::before {
+  background:
+    linear-gradient(90deg, rgba(216, 160, 79, 0.16), transparent 44%),
+    radial-gradient(circle at 90% 12%, rgba(216, 160, 79, 0.34), transparent 16rem);
+}
+
+.statusHero.isSelling::before {
+  background:
+    linear-gradient(90deg, rgba(63, 111, 79, 0.14), transparent 44%),
+    radial-gradient(circle at 90% 12%, rgba(63, 111, 79, 0.24), transparent 16rem);
+}
+
+.statusHero.isClosed::before {
+  background:
+    linear-gradient(90deg, rgba(31, 27, 22, 0.08), transparent 44%),
+    radial-gradient(circle at 90% 12%, rgba(168, 143, 104, 0.2), transparent 16rem);
+}
+
 .statusTopline {
   display: inline-flex;
   align-items: center;
@@ -332,15 +329,36 @@ button {
   box-shadow: 0 0 0 6px var(--green-soft);
 }
 
+.liveDot.isNoMission {
+  background: var(--kraft);
+  box-shadow: 0 0 0 6px var(--kraft-soft);
+}
+
+.liveDot.isStockToPrepare {
+  background: var(--amber);
+  box-shadow: 0 0 0 6px var(--amber-soft);
+}
+
+.liveDot.isSelling {
+  background: var(--green);
+  box-shadow: 0 0 0 6px var(--green-soft);
+}
+
+.liveDot.isClosed {
+  background: var(--muted-2);
+  box-shadow: 0 0 0 6px rgba(31, 27, 22, 0.08);
+}
+
 .statusHero h2 {
   max-width: 760px;
+  color: var(--text);
   font-size: clamp(1.8rem, 7.5vw, 4rem);
   letter-spacing: -0.055em;
-  color: var(--text);
 }
 
 .missionMeta {
   margin: 9px 0 0;
+  color: var(--muted);
   font-size: 1.02rem;
   line-height: 1.42;
 }
@@ -365,6 +383,7 @@ button {
 .statCard span {
   display: block;
   margin-bottom: 6px;
+  color: var(--muted);
   font-size: 0.78rem;
   font-weight: 750;
 }
@@ -379,7 +398,8 @@ button {
 
 .statCard.warning.hasWarning {
   border-color: rgba(179, 92, 58, 0.3);
-  background: linear-gradient(180deg, rgba(179, 92, 58, 0.11), rgba(255, 250, 241, 0.62));
+  background:
+    linear-gradient(180deg, rgba(179, 92, 58, 0.11), rgba(255, 250, 241, 0.62));
 }
 
 .statCard.warning.hasWarning strong {
@@ -398,9 +418,9 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 0;
   border-radius: 999px;
   padding: 0 18px;
-  border: 0;
   font-weight: 900;
   cursor: pointer;
 }
@@ -449,6 +469,105 @@ button {
   margin-bottom: 5px;
 }
 
+.workflowGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.workflowCard {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  min-height: 82px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(255, 250, 241, 0.58));
+  box-shadow: 0 8px 20px rgba(75, 48, 22, 0.065);
+}
+
+.workflowCard::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: transparent;
+}
+
+.workflowCard.isActive {
+  border-color: rgba(138, 90, 43, 0.36);
+  background:
+    linear-gradient(145deg, rgba(255, 244, 226, 0.96), rgba(255, 250, 241, 0.7));
+  box-shadow:
+    0 10px 24px rgba(75, 48, 22, 0.09),
+    inset 0 0 0 2px rgba(216, 160, 79, 0.12);
+}
+
+.workflowCard.isActive::after {
+  background: var(--rum);
+}
+
+.workflowCard.isDone {
+  border-color: rgba(63, 111, 79, 0.28);
+  background:
+    linear-gradient(145deg, rgba(230, 246, 235, 0.82), rgba(255, 250, 241, 0.62));
+}
+
+.workflowCard.isDone::after {
+  background: var(--green);
+}
+
+.workflowCard.isUpcoming {
+  opacity: 0.82;
+}
+
+.workflowNumber {
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--rum);
+  background: var(--amber-soft);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.workflowCard.isDone .workflowNumber {
+  color: #fffaf1;
+  background: var(--green);
+}
+
+.workflowCard.isActive .workflowNumber {
+  color: #fffaf1;
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+}
+
+.workflowContent {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.workflowContent strong {
+  color: var(--text);
+  font-size: 1.03rem;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+}
+
+.workflowContent small {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 760;
+  line-height: 1.28;
+}
+
 .tileGrid {
   display: grid;
   grid-template-columns: 1fr;
@@ -494,37 +613,6 @@ button {
   transform: scale(0.985);
 }
 
-@media (hover: hover) {
-  .tile:hover {
-    transform: translateY(-2px);
-    border-color: rgba(138, 90, 43, 0.38);
-    background:
-      linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 244, 226, 0.8));
-    box-shadow: 0 16px 34px rgba(75, 48, 22, 0.12);
-  }
-}
-
-.tilePrimary {
-  background:
-    linear-gradient(135deg, rgba(138, 90, 43, 0.94), rgba(180, 122, 60, 0.9));
-  border-color: rgba(138, 90, 43, 0.48);
-  color: #fffaf1;
-}
-
-.tilePrimary::after {
-  background: rgba(255, 250, 241, 0.12);
-}
-
-.tilePrimary .tileText {
-  color: rgba(255, 250, 241, 0.78);
-}
-
-.tilePrimary .tileIcon {
-  color: #fffaf1;
-  background: rgba(255, 250, 241, 0.16);
-  border-color: rgba(255, 250, 241, 0.18);
-}
-
 .tileIcon {
   position: relative;
   z-index: 1;
@@ -552,36 +640,21 @@ button {
   grid-area: title;
   align-self: end;
   color: inherit;
-  font-weight: 950;
   font-size: 1.03rem;
+  font-weight: 950;
   letter-spacing: -0.02em;
 }
 
 .tileText {
   grid-area: text;
   align-self: start;
+  color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.26;
 }
 
-.tileSoon {
-  opacity: 0.72;
-}
-
-.soonBadge {
-  position: absolute;
-  z-index: 2;
-  top: 10px;
-  right: 10px;
-  border: 1px solid rgba(86, 65, 42, 0.16);
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: var(--muted);
-  background: rgba(255, 250, 241, 0.72);
-  font-size: 0.68rem;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.compactTiles .tile {
+  min-height: 82px;
 }
 
 .watchList {
@@ -590,6 +663,7 @@ button {
   gap: 10px;
   margin: 0;
   padding: 0;
+  color: var(--muted);
 }
 
 .watchList li {
@@ -609,32 +683,15 @@ button {
   font-weight: 950;
 }
 
-/* Variantes facultatives pour différencier les tuiles sans casser le HTML existant */
-.tileSales .tileIcon,
-.tileVente .tileIcon {
-  color: var(--green);
-  background: var(--green-soft);
-}
-
-.tileStock .tileIcon {
-  color: var(--rum);
-  background: var(--amber-soft);
-}
-
-.tileStats .tileIcon {
-  color: #5b4b82;
-  background: rgba(91, 75, 130, 0.13);
-}
-
-.tileAlert .tileIcon,
-.tileWarning .tileIcon {
-  color: var(--red);
-  background: var(--red-soft);
-}
-
-.tileSettings .tileIcon {
-  color: var(--text-soft);
-  background: rgba(31, 27, 22, 0.08);
+@media (hover: hover) {
+  .tile:hover,
+  .workflowCard:hover {
+    transform: translateY(-2px);
+    border-color: rgba(138, 90, 43, 0.38);
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 244, 226, 0.8));
+    box-shadow: 0 16px 34px rgba(75, 48, 22, 0.12);
+  }
 }
 
 @media (max-width: 640px) {
@@ -732,7 +789,8 @@ button {
     padding: 0 10px;
   }
 
-  .tile {
+  .tile,
+  .workflowCard {
     min-height: 82px;
     padding: 13px;
   }
@@ -750,24 +808,42 @@ button {
     grid-template-columns: max-content max-content;
   }
 
+  .workflowGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .tileGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 920px) {
-  .mainContent {
-    grid-template-columns: 1.2fr 0.8fr;
+  .homeLayout {
+    grid-template-columns: 1.18fr 0.82fr;
     align-items: start;
   }
 
   .statusHero,
-  .sectionBlock {
+  .homeWorkflow {
     grid-column: 1 / -1;
   }
 
+  .workflowGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .workflowCard {
+    grid-template-columns: 1fr;
+    align-content: start;
+    min-height: 148px;
+  }
+
+  .workflowNumber {
+    margin-bottom: 4px;
+  }
+
   .tileGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
