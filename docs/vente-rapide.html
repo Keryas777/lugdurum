@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta
-  name="viewport"
-  content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
-/>
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#a88f68" />
 
     <link rel="manifest" href="./manifest.webmanifest" />
@@ -17,10 +17,12 @@
     <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
 
     <title>Lugdurum — Vente rapide</title>
+
     <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./vente-rapide.css?v=13" />
+    <link rel="stylesheet" href="./vente-rapide.css?v=14" />
+
     <script src="./lugdurum-api.js?v=2" defer></script>
-    <script src="./vente-rapide.js?v=13" defer></script>
+    <script src="./vente-rapide.js?v=14" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -207,6 +209,45 @@
           <p class="saveStatus" id="saveStatus" role="status"></p>
         </section>
       </main>
+    </div>
+
+    <div
+      class="sumupOverlay"
+      id="sumupConfirmOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sumupConfirmTitle"
+      hidden
+    >
+      <div class="sumupDialog">
+        <div class="sumupDialogHeader">
+          <p class="sectionKicker">Paiement CB</p>
+          <h2 id="sumupConfirmTitle">Paiement SumUp lancé</h2>
+          <p id="sumupConfirmText">
+            Quand tu reviens de SumUp, confirme ici si le paiement est bien passé.
+          </p>
+        </div>
+
+        <div class="sumupRecap">
+          <span>Ticket</span>
+          <strong id="sumupPendingAmount">0 €</strong>
+          <small id="sumupPendingReference">Référence en attente</small>
+        </div>
+
+        <div class="sumupActions">
+          <button class="sumupBtn sumupBtnSuccess" type="button" id="sumupConfirmSuccessBtn">
+            Paiement validé
+          </button>
+
+          <button class="sumupBtn sumupBtnDanger" type="button" id="sumupConfirmFailBtn">
+            Refusé / annulé
+          </button>
+
+          <button class="sumupBtn sumupBtnGhost" type="button" id="sumupReturnBtn">
+            Retourner dans SumUp
+          </button>
+        </div>
+      </div>
     </div>
   </body>
 </html>
