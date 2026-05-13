@@ -2,27 +2,19 @@
   "use strict";
 
   /*
-    V13 terrain :
+    Vente rapide V14 :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
     - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
-    - Fallback sur le dernier catalogue + les dernières offres chargées en localStorage si l’API est indisponible.
-    - catalogue = produits physiques / SKU.
-    - offres_vente = prix, gammes, coffrets, suppléments.
-    - 50 cL vendu à l’unité via offres_vente :
-      produit.gamme_tarif → offre type bouteille + format 50 + même gamme_tarif.
-    - 20 cL vendu uniquement en coffrets 3×20 ou 6×20 via offres_vente.
-    - Les modes coffrets affichent les SKU actifs / composables en format 20.
-    - VB existe uniquement en 50 cL, donc n'apparaît pas en coffret si aucun SKU VB_20 n’existe dans le Sheet.
-    - FF et VK restent au catalogue mais ne sont pas visibles si actif = false.
-    - Supplément PE : géré depuis offres_vente.
-    - Les parfums du coffret peuvent être retirés un par un depuis la composition.
-    - Les visuels de boutons sont chargés depuis ./assets/parfums/{code}.webp.
-    - Le montant encaissé se remplit automatiquement avec le total du ticket.
-    - Le montant encaissé reste modifiable manuellement.
-    - LP reçoit une classe spéciale pour mieux gérer son nom long.
-    - MV et PE reçoivent une classe spéciale pour texte clair sur fond sombre.
-    - Optimisation rendu : la grille produits n’est plus reconstruite à chaque ajout.
-    - Optimisation pastilles : les pastilles quantité existent dès le rendu initial, invisibles à ×0.
+    - Fallback cache localStorage.
+    - Ajout intégration SumUp niveau V1 :
+      - Paiement CB → bouton principal “Encaisser avec SumUp”.
+      - Création d’un ticket temporaire en attente.
+      - Ouverture de l’app SumUp via Payment Switch.
+      - Au retour manuel, affichage d’une popup :
+        - Paiement validé.
+        - Refusé / annulé.
+        - Retourner dans SumUp.
+      - Le ticket n’est enregistré définitivement qu’après confirmation verte.
   */
 
   const JOURNEE_ACTIVE = {
@@ -32,6 +24,18 @@
     date_label: "lundi 04 mai 2026",
     user_id: "U_JEROME",
     vendeur: "Jérôme"
+  };
+
+  const SUMUP_CONFIG = {
+    /*
+      À renseigner quand tu auras ta clé SumUp.
+      Tu peux aussi la poser en localStorage avec :
+      localStorage.setItem("lugdurum_sumup_affiliate_key", "TA_CLE_SUMUP")
+    */
+    affiliateKey: "",
+    currency: "EUR",
+    titlePrefix: "Lugdurum",
+    callbackEnabled: true
   };
 
   const SALE_MODES = {
@@ -60,6 +64,8 @@
   const LAST_TICKET_KEY = "lugdurum_last_ticket";
   const CATALOGUE_CACHE_KEY = "lugdurum_catalogue_cache";
   const OFFRES_VENTE_CACHE_KEY = "lugdurum_offres_vente_cache";
+  const SUMUP_PENDING_KEY = "lugdurum_pending_sumup_ticket";
+  const SUMUP_AFFILIATE_KEY_STORAGE = "lugdurum_sumup_affiliate_key";
 
   const state = {
     selectedMode: "BOTTLE_50",
@@ -88,7 +94,15 @@
     undoBtn: document.getElementById("undoBtn"),
     saveTicketBtn: document.getElementById("saveTicketBtn"),
     amountPaidInput: document.getElementById("amountPaidInput"),
-    saveStatus: document.getElementById("saveStatus")
+    saveStatus: document.getElementById("saveStatus"),
+
+    sumupConfirmOverlay: document.getElementById("sumupConfirmOverlay"),
+    sumupConfirmText: document.getElementById("sumupConfirmText"),
+    sumupPendingAmount: document.getElementById("sumupPendingAmount"),
+    sumupPendingReference: document.getElementById("sumupPendingReference"),
+    sumupConfirmSuccessBtn: document.getElementById("sumupConfirmSuccessBtn"),
+    sumupConfirmFailBtn: document.getElementById("sumupConfirmFailBtn"),
+    sumupReturnBtn: document.getElementById("sumupReturnBtn")
   };
 
   const formatCurrency = (value) =>
@@ -623,6 +637,14 @@
     document.querySelectorAll(".paymentBtn").forEach((button) => {
       button.classList.toggle("isActive", button.dataset.payment === state.paymentMode);
     });
+
+    const isCb = state.paymentMode === "CB";
+
+    els.saveTicketBtn.textContent = isCb
+      ? "Encaisser avec SumUp"
+      : "Enregistrer le ticket";
+
+    els.saveTicketBtn.classList.toggle("isSumupButton", isCb);
   };
 
   const renderAll = ({ refreshProducts = false } = {}) => {
@@ -778,14 +800,15 @@
     localStorage.setItem(LAST_TICKET_KEY, JSON.stringify(transaction));
   };
 
-  const getSourceForPayment = () => {
+  const getSourceForPayment = ({ provider = "" } = {}) => {
     if (state.paymentMode === "ESP") return "WEBAPP_ESPECES";
     if (state.paymentMode === "CHQ") return "WEBAPP_CHEQUE";
+    if (state.paymentMode === "CB" && provider === "SUMUP") return "SUMUP";
     if (state.paymentMode === "CB") return "WEBAPP_CB_MANUEL";
     return "MANUEL";
   };
 
-  const buildSaleLines = (transactionId) => {
+  const buildSaleLines = (transactionId, { provider = "" } = {}) => {
     const lines = [];
 
     state.ticketItems.forEach((item) => {
@@ -803,7 +826,7 @@
           montant_tva_ligne: 0,
           total_catalogue_ligne_ttc: item.quantite * item.prix_unitaire_ttc,
           total_catalogue_ligne_ht: item.quantite * item.prix_unitaire_ht,
-          source: getSourceForPayment(),
+          source: getSourceForPayment({ provider }),
           note: item.offre_id ? `Offre : ${item.offre_id}` : ""
         });
         return;
@@ -853,7 +876,7 @@
             montant_tva_ligne: 0,
             total_catalogue_ligne_ttc: totalLineTtc,
             total_catalogue_ligne_ht: totalLineHt,
-            source: getSourceForPayment(),
+            source: getSourceForPayment({ provider }),
             note: `${item.label} · ${item.composition.map((p) => p.parfum_code).join(" ")}`
           });
         });
@@ -863,8 +886,13 @@
     return lines;
   };
 
-  const buildTransaction = () => {
-    const transactionId = `TX_${Date.now()}`;
+  const buildTransaction = ({
+    provider = "",
+    paymentStatus = "PAYE",
+    status = "validee",
+    foreignTxId = ""
+  } = {}) => {
+    const transactionId = foreignTxId || `TX_${Date.now()}`;
     const totalCatalogue = getTicketTotal();
     const amountInput = Number(String(els.amountPaidInput.value).replace(",", "."));
     const totalEncaisse =
@@ -877,24 +905,276 @@
       journee_id: JOURNEE_ACTIVE.journee_id,
       user_id: JOURNEE_ACTIVE.user_id,
       mode_paiement: state.paymentMode,
-      source: getSourceForPayment(),
-      source_id: "",
+      paiement_provider: provider,
+      paiement_statut: paymentStatus,
+      sumup_foreign_tx_id: provider === "SUMUP" ? foreignTxId : "",
+      source: getSourceForPayment({ provider }),
+      source_id: provider === "SUMUP" ? foreignTxId : "",
       total_catalogue_ttc: totalCatalogue,
       total_catalogue_ht: totalCatalogue,
       total_tva: 0,
       total_encaisse_ttc: totalEncaisse,
       remise_totale: totalCatalogue - totalEncaisse,
       motif_remise: totalCatalogue !== totalEncaisse ? "Montant encaissé modifié" : "",
-      statut: "validee",
+      statut: status,
       note: "",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      lignes: buildSaleLines(transactionId),
+      lignes: buildSaleLines(transactionId, { provider }),
       detail_ticket: state.ticketItems
     };
   };
 
+  const getSumupAffiliateKey = () => {
+    return (
+      localStorage.getItem(SUMUP_AFFILIATE_KEY_STORAGE) ||
+      SUMUP_CONFIG.affiliateKey ||
+      ""
+    ).trim();
+  };
+
+  const buildForeignTxId = () => {
+    return `LUG_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  };
+
+  const buildCallbackUrl = (status, foreignTxId) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("sumup_callback", status);
+    url.searchParams.set("foreign_tx_id", foreignTxId);
+    return url.toString();
+  };
+
+  const buildSumupUrl = (transaction, foreignTxId) => {
+    const affiliateKey = getSumupAffiliateKey();
+    const params = new URLSearchParams();
+
+    params.set("amount", formatAmountInput(transaction.total_encaisse_ttc));
+    params.set("currency", SUMUP_CONFIG.currency);
+    params.set("affiliate-key", affiliateKey);
+    params.set("title", `${SUMUP_CONFIG.titlePrefix} - Ticket`);
+    params.set("foreign-tx-id", foreignTxId);
+
+    if (SUMUP_CONFIG.callbackEnabled) {
+      params.set("callbacksuccess", buildCallbackUrl("success", foreignTxId));
+      params.set("callbackfail", buildCallbackUrl("failed", foreignTxId));
+    }
+
+    return `sumupmerchant://pay/1.0?${params.toString()}`;
+  };
+
+  const getPendingSumup = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(SUMUP_PENDING_KEY) || "null");
+      return value && typeof value === "object" ? value : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setPendingSumup = (payload) => {
+    localStorage.setItem(SUMUP_PENDING_KEY, JSON.stringify(payload));
+  };
+
+  const clearPendingSumup = () => {
+    localStorage.removeItem(SUMUP_PENDING_KEY);
+  };
+
+  const showSumupConfirm = (pending, message = "") => {
+    if (!pending || !pending.transaction) return;
+
+    els.sumupPendingAmount.textContent = formatCurrency(pending.transaction.total_encaisse_ttc);
+    els.sumupPendingReference.textContent =
+      pending.foreign_tx_id ? `Réf. ${pending.foreign_tx_id}` : "Référence SumUp en attente";
+
+    els.sumupConfirmText.textContent =
+      message ||
+      "Le paiement SumUp a été lancé. Confirme le résultat après ton retour dans Lugdurum.";
+
+    els.sumupConfirmOverlay.hidden = false;
+  };
+
+  const hideSumupConfirm = () => {
+    els.sumupConfirmOverlay.hidden = true;
+  };
+
+  const restoreTicketFromTransaction = (transaction) => {
+    state.ticketItems = Array.isArray(transaction.detail_ticket)
+      ? transaction.detail_ticket
+      : [];
+
+    state.draftPack = [];
+    state.paymentMode = transaction.mode_paiement || "CB";
+    state.amountManuallyEdited = true;
+    els.amountPaidInput.value = formatAmountInput(transaction.total_encaisse_ttc || 0);
+  };
+
+  const checkPendingSumup = (message = "") => {
+    const pending = getPendingSumup();
+
+    if (!pending) return;
+
+    showSumupConfirm(pending, message);
+  };
+
+  const handleSumupCallbackParams = () => {
+    const url = new URL(window.location.href);
+    const callbackStatus =
+      url.searchParams.get("sumup_callback") ||
+      url.searchParams.get("smp-status") ||
+      "";
+
+    const foreignTxId =
+      url.searchParams.get("foreign_tx_id") ||
+      url.searchParams.get("foreign-tx-id") ||
+      "";
+
+    if (!callbackStatus) return;
+
+    const pending = getPendingSumup();
+
+    if (pending) {
+      pending.callback_status = callbackStatus;
+      pending.callback_foreign_tx_id = foreignTxId;
+      pending.updated_at = new Date().toISOString();
+      setPendingSumup(pending);
+
+      if (callbackStatus === "success") {
+        showSumupConfirm(
+          pending,
+          "SumUp indique un paiement réussi. Confirme pour enregistrer le ticket dans Lugdurum."
+        );
+      } else {
+        showSumupConfirm(
+          pending,
+          "SumUp indique un paiement non validé. Tu peux annuler ou retourner dans SumUp."
+        );
+      }
+    }
+
+    url.searchParams.delete("sumup_callback");
+    url.searchParams.delete("smp-status");
+    url.searchParams.delete("foreign_tx_id");
+    url.searchParams.delete("foreign-tx-id");
+
+    window.history.replaceState({}, document.title, url.toString());
+  };
+
+  const launchSumupPayment = () => {
+    if (state.ticketItems.length === 0) {
+      setStatus("Ajoute au moins un produit avant d’encaisser.", "isError");
+      return;
+    }
+
+    if (state.draftPack.length > 0) {
+      setStatus("Tu as un coffret en cours non ajouté au ticket.", "isError");
+      return;
+    }
+
+    const affiliateKey = getSumupAffiliateKey();
+
+    if (!affiliateKey) {
+      setStatus(
+        "Clé SumUp manquante. Renseigne SUMUP_CONFIG.affiliateKey dans vente-rapide.js.",
+        "isError"
+      );
+      return;
+    }
+
+    const foreignTxId = buildForeignTxId();
+    const transaction = buildTransaction({
+      provider: "SUMUP",
+      paymentStatus: "SUMUP_LANCE",
+      status: "paiement_en_attente",
+      foreignTxId
+    });
+
+    const sumupUrl = buildSumupUrl(transaction, foreignTxId);
+
+    setPendingSumup({
+      foreign_tx_id: foreignTxId,
+      sumup_url: sumupUrl,
+      transaction,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
+    setStatus("Ouverture de SumUp… Confirme le paiement au retour.", "isSuccess");
+    showSumupConfirm(getPendingSumup());
+
+    window.location.href = sumupUrl;
+  };
+
+  const confirmSumupSuccess = () => {
+    const pending = getPendingSumup();
+
+    if (!pending || !pending.transaction) {
+      hideSumupConfirm();
+      return;
+    }
+
+    const transaction = {
+      ...pending.transaction,
+      statut: "validee",
+      paiement_statut: "PAYE",
+      updated_at: new Date().toISOString(),
+      note: [
+        pending.transaction.note || "",
+        pending.callback_status ? `Retour SumUp : ${pending.callback_status}` : ""
+      ].filter(Boolean).join("\n")
+    };
+
+    savePendingTransaction(transaction);
+    clearPendingSumup();
+    hideSumupConfirm();
+
+    setStatus(
+      `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
+      "isSuccess"
+    );
+
+    state.ticketItems = [];
+    state.draftPack = [];
+    els.amountPaidInput.value = "";
+    state.amountManuallyEdited = false;
+    renderAll();
+  };
+
+  const confirmSumupFailure = () => {
+    const pending = getPendingSumup();
+
+    if (pending?.transaction) {
+      restoreTicketFromTransaction(pending.transaction);
+    }
+
+    clearPendingSumup();
+    hideSumupConfirm();
+
+    setStatus(
+      "Paiement SumUp non validé. Le panier est conservé : tu peux réessayer ou changer le paiement.",
+      "isError"
+    );
+
+    renderAll({ refreshProducts: true });
+  };
+
+  const reopenSumup = () => {
+    const pending = getPendingSumup();
+
+    if (!pending?.sumup_url) {
+      setStatus("Aucun paiement SumUp en attente.", "isError");
+      hideSumupConfirm();
+      return;
+    }
+
+    window.location.href = pending.sumup_url;
+  };
+
   const saveTicket = () => {
+    if (state.paymentMode === "CB") {
+      launchSumupPayment();
+      return;
+    }
+
     if (state.ticketItems.length === 0) {
       setStatus("Ajoute au moins un produit avant d’enregistrer.", "isError");
       return;
@@ -905,7 +1185,12 @@
       return;
     }
 
-    const transaction = buildTransaction();
+    const transaction = buildTransaction({
+      provider: "",
+      paymentStatus: "PAYE",
+      status: "validee"
+    });
+
     savePendingTransaction(transaction);
 
     setStatus(
@@ -1055,6 +1340,22 @@
   els.undoBtn.addEventListener("click", undoLast);
   els.saveTicketBtn.addEventListener("click", saveTicket);
 
+  els.sumupConfirmSuccessBtn.addEventListener("click", confirmSumupSuccess);
+  els.sumupConfirmFailBtn.addEventListener("click", confirmSumupFailure);
+  els.sumupReturnBtn.addEventListener("click", reopenSumup);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      checkPendingSumup();
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    checkPendingSumup();
+  });
+
+  handleSumupCallbackParams();
   renderAll();
   loadData();
+  checkPendingSumup();
 })();
