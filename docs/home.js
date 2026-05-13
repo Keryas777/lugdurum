@@ -2,12 +2,13 @@
   "use strict";
 
   /*
-    Accueil V7 :
-    - L'accueil n'est plus une grille de modules.
-    - Il lit le parcours localStorage.
-    - Il affiche l'état actuel :
-      aucune mission / stock à préparer / journée active / journée clôturée.
-    - Il oriente vers la prochaine action logique.
+    Accueil V8 :
+    - L'accueil lit le parcours localStorage.
+    - Stats dynamiques :
+      - sans journée active : inscriptions / acceptées / missions stock
+      - stock à préparer : journées / stock / à synchroniser
+      - vente ou clôture : CA jour / tickets / à synchroniser
+    - Parcours principal visuel en étapes.
   */
 
   const CURRENT_USER = {
@@ -17,6 +18,7 @@
   };
 
   const STORAGE_KEYS = {
+    inscriptions: "lugdurum_inscriptions_evenements",
     events: "lugdurum_evenements",
     stockMissions: "lugdurum_missions_stock",
     journees: "lugdurum_journees",
@@ -159,7 +161,9 @@
 
     return Boolean(
       preparation &&
-      ["valide", "validé", "pret", "prêt"].includes(String(preparation.statut || "").toLowerCase())
+      ["valide", "validé", "pret", "prêt"].includes(
+        String(preparation.statut || "").toLowerCase()
+      )
     );
   };
 
@@ -197,7 +201,18 @@
     return `${eventItem.nom} — ${journee.jour_label || "Journée"}`;
   };
 
+  const getActiveInscriptions = (inscriptions) => {
+    return inscriptions.filter((item) => item.statut !== "ANNULE");
+  };
+
+  const getAcceptedInscriptions = (inscriptions) => {
+    return inscriptions.filter((item) => {
+      return item.statut === "ACCEPTE" || item.acceptation === true;
+    });
+  };
+
   const buildHomeState = () => {
+    const inscriptions = getArray(STORAGE_KEYS.inscriptions);
     const events = getArray(STORAGE_KEYS.events);
     const stockMissions = getArray(STORAGE_KEYS.stockMissions);
     const journees = getArray(STORAGE_KEYS.journees);
@@ -225,15 +240,20 @@
       }
     }
 
+    const linkedDays = mission ? getMissionJournees(mission.mission_id, journees) : [];
     const dayTransactions = getDayTransactions(journee?.journee_id || "");
     const revenue = getRevenueForTransactions(dayTransactions);
     const stockPrepared = isStockPrepared(mission);
 
     return {
       user: CURRENT_USER,
+      inscriptions,
+      activeInscriptions: getActiveInscriptions(inscriptions),
+      acceptedInscriptions: getAcceptedInscriptions(inscriptions),
       events,
       stockMissions,
       journees,
+      linkedDays,
       mission,
       journee,
       stockPrepared,
@@ -241,7 +261,8 @@
       resume: {
         ca_jour_ttc: revenue,
         nb_transactions: dayTransactions.length,
-        ventes_en_attente_sync: pendingTransactions.length
+        ventes_en_attente_sync: pendingTransactions.length,
+        total_pending_transactions: pendingTransactions.length
       }
     };
   };
@@ -269,7 +290,7 @@
         step: "stock",
         label: "Stock à préparer",
         title: mission.nom || "Mission de stock",
-        meta: `${getDateLabel(mission)} · ${homeState.journees.filter((j) => j.mission_id === mission.mission_id || j.stock_mission_id === mission.mission_id).length || 1} journée(s) liée(s)`,
+        meta: `${getDateLabel(mission)} · ${homeState.linkedDays.length || 1} journée(s) liée(s)`,
         primaryText: "Préparer le stock",
         primaryHref: "./preparation-stock.html",
         secondaryText: "Missions stock",
@@ -317,6 +338,57 @@
     el.href = href;
   };
 
+  const renderStats = (homeState, uiState) => {
+    const syncCard = qs("#syncStatCard");
+
+    syncCard?.classList.remove("hasWarning");
+
+    if (uiState.code === "no_mission") {
+      setText("#statOneLabel", "Inscriptions");
+      setText("#todayRevenue", String(homeState.activeInscriptions.length));
+
+      setText("#statTwoLabel", "Acceptées");
+      setText("#todayTickets", String(homeState.acceptedInscriptions.length));
+
+      setText("#statThreeLabel", "Missions stock");
+      setText("#pendingSync", String(homeState.stockMissions.length));
+
+      return;
+    }
+
+    if (uiState.code === "stock_to_prepare") {
+      setText("#statOneLabel", "Journées");
+      setText("#todayRevenue", String(homeState.linkedDays.length || 1));
+
+      setText("#statTwoLabel", "Stock");
+      setText("#todayTickets", homeState.stockPrepared ? "OK" : "À faire");
+
+      setText("#statThreeLabel", "À synchroniser");
+      setText("#pendingSync", String(homeState.resume.total_pending_transactions || 0));
+
+      syncCard?.classList.toggle(
+        "hasWarning",
+        Number(homeState.resume.total_pending_transactions || 0) > 0
+      );
+
+      return;
+    }
+
+    setText("#statOneLabel", "CA jour");
+    setText("#todayRevenue", formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0)));
+
+    setText("#statTwoLabel", "Tickets");
+    setText("#todayTickets", String(homeState.resume.nb_transactions || 0));
+
+    setText("#statThreeLabel", "À synchroniser");
+    setText("#pendingSync", String(homeState.resume.total_pending_transactions || 0));
+
+    syncCard?.classList.toggle(
+      "hasWarning",
+      Number(homeState.resume.total_pending_transactions || 0) > 0
+    );
+  };
+
   const renderHero = (homeState, uiState) => {
     const statusHero = qs("#statusHero");
     const liveDot = qs("#liveDot");
@@ -352,12 +424,7 @@
     setText("#missionTitle", uiState.title);
     setText("#missionMeta", uiState.meta);
 
-    setText("#todayRevenue", formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0)));
-    setText("#todayTickets", String(homeState.resume.nb_transactions || 0));
-    setText("#pendingSync", String(homeState.resume.ventes_en_attente_sync || 0));
-
-    const pendingCount = Number(homeState.resume.ventes_en_attente_sync || 0);
-    qs("#syncStatCard")?.classList.toggle("hasWarning", pendingCount > 0);
+    renderStats(homeState, uiState);
 
     setLink("#primaryAction", uiState.primaryText, uiState.primaryHref);
     setLink("#secondaryAction", uiState.secondaryText, uiState.secondaryHref);
@@ -392,15 +459,19 @@
 
     if (!homeState.mission || !homeState.journee) {
       items.push("Aucune mission de stock active pour le moment.");
-      items.push("Commence par créer ou accepter une inscription, puis crée l’évènement.");
+
+      if (homeState.activeInscriptions.length > 0) {
+        items.push(`${homeState.activeInscriptions.length} inscription(s) suivie(s), dont ${homeState.acceptedInscriptions.length} acceptée(s).`);
+      } else {
+        items.push("Commence par créer ou accepter une inscription, puis crée l’évènement.");
+      }
+
       items.push("Les données sont encore locales : Chrome, Safari et WebApp ne partagent pas encore les mêmes informations.");
       return items;
     }
 
-    const linkedDays = getMissionJournees(homeState.mission.mission_id, homeState.journees);
-
     items.push(
-      `${linkedDays.length || 1} journée(s) liée(s) à la mission “${homeState.mission.nom}”.`
+      `${homeState.linkedDays.length || 1} journée(s) liée(s) à la mission “${homeState.mission.nom}”.`
     );
 
     if (uiState.code === "stock_to_prepare") {
@@ -411,8 +482,8 @@
       items.push("La vente rapide est disponible pour la journée active.");
     }
 
-    if (Number(homeState.resume.ventes_en_attente_sync || 0) > 0) {
-      items.push(`${homeState.resume.ventes_en_attente_sync} ticket(s) en attente de synchronisation.`);
+    if (Number(homeState.resume.total_pending_transactions || 0) > 0) {
+      items.push(`${homeState.resume.total_pending_transactions} ticket(s) en attente de synchronisation.`);
     } else {
       items.push("Aucun ticket en attente de synchronisation locale.");
     }
