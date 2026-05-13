@@ -64,7 +64,7 @@
 
 .missionHero {
   display: grid;
-  gap: 16px;
+  gap: 18px;
   padding: 20px;
 }
 
@@ -99,7 +99,7 @@
   gap: 9px;
   border: 1px solid rgba(138, 90, 43, 0.28);
   border-radius: 999px;
-  padding: 0 17px 0 15px;
+  padding: 0 18px;
   color: #fffaf1 !important;
   background:
     linear-gradient(135deg, var(--rum-2), var(--rum));
@@ -115,8 +115,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.heroAction::before {
-  content: "⬅️";
+.heroAction span:first-child {
   display: inline-flex;
   align-items: center;
   justify-content: center;
