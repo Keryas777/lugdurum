@@ -2,23 +2,15 @@
   "use strict";
 
   /*
-    Missions V4 :
-    - Séparation claire :
-      - Évènement = salon / marché / foire réel.
-      - Mission de stock = stock partagé sur une ou plusieurs journées.
-      - Journée = journée réelle de vente liée à un évènement et éventuellement à une mission de stock.
-    - Un évènement peut être créé plusieurs mois à l’avance.
-    - Un évènement peut durer un ou plusieurs jours.
-    - Une mission de stock peut regrouper plusieurs journées issues d’évènements différents.
-    - Exemple : Yzeron J1 + Salagnon J1/J2 avec le même stock.
+    Missions V5 :
+    - La page ne crée plus d’évènements.
+    - Les évènements / journées viennent de la page inscriptions-evenements.
+    - Cette page sert à créer une mission de stock à partir d’une ou plusieurs journées.
+    - Une mission de stock peut regrouper plusieurs évènements.
+    - Une seule journée suffit pour un évènement simple.
+    - Après création, on peut envoyer vers preparation-stock.html.
     - Stockage localStorage provisoire avant connexion Google Sheets.
   */
-
-  const OPERATORS = {
-    U_JEROME: "Jérôme",
-    U_ANTHO: "Antho",
-    U_WILL: "Will"
-  };
 
   const CURRENT_USER = {
     user_id: "U_JEROME",
@@ -56,43 +48,19 @@
   };
 
   const state = {
-    eventMode: "single",
-    selectedOperators: new Set(["U_JEROME"]),
     selectedDayIds: new Set(),
-    eventSubmitAction: "save",
     stockSubmitAction: "save"
   };
 
   const els = {
-    eventForm: document.getElementById("eventForm"),
     stockMissionForm: document.getElementById("stockMissionForm"),
-
-    eventNameInput: document.getElementById("eventNameInput"),
-    eventKindInput: document.getElementById("eventKindInput"),
-    locationInput: document.getElementById("locationInput"),
-    cityInput: document.getElementById("cityInput"),
-    startDateInput: document.getElementById("startDateInput"),
-    endDateInput: document.getElementById("endDateInput"),
-    endDateField: document.getElementById("endDateField"),
-    startDateLabel: document.getElementById("startDateLabel"),
-    noteInput: document.getElementById("noteInput"),
-
-    otherOperatorField: document.getElementById("otherOperatorField"),
-    otherOperatorInput: document.getElementById("otherOperatorInput"),
-
-    dayPreviewList: document.getElementById("dayPreviewList"),
     eventsList: document.getElementById("eventsList"),
-
     stockMissionsList: document.getElementById("stockMissionsList"),
     stockMissionNameInput: document.getElementById("stockMissionNameInput"),
     stockMissionNoteInput: document.getElementById("stockMissionNoteInput"),
     stockDayList: document.getElementById("stockDayList"),
     stockMissionPreview: document.getElementById("stockMissionPreview"),
-
-    resetEventBtn: document.getElementById("resetEventBtn"),
     resetStockMissionBtn: document.getElementById("resetStockMissionBtn"),
-
-    eventStatus: document.getElementById("eventStatus"),
     stockMissionStatus: document.getElementById("stockMissionStatus")
   };
 
@@ -159,12 +127,6 @@
     }).format(date);
   };
 
-  const addDays = (date, days) => {
-    const copy = new Date(date);
-    copy.setDate(copy.getDate() + days);
-    return copy;
-  };
-
   const getEvents = () => readJson(STORAGE_KEYS.events, []);
 
   const setEvents = (events) => writeJson(STORAGE_KEYS.events, events);
@@ -184,80 +146,6 @@
   const getStockMissionById = (missionId) =>
     getStockMissions().find((mission) => mission.mission_id === missionId);
 
-  const setEventStatus = (message, type = "") => {
-    els.eventStatus.textContent = message;
-    els.eventStatus.className = "missionStatus";
-
-    if (type) {
-      els.eventStatus.classList.add(type);
-    }
-  };
-
-  const setStockStatus = (message, type = "") => {
-    els.stockMissionStatus.textContent = message;
-    els.stockMissionStatus.className = "missionStatus";
-
-    if (type) {
-      els.stockMissionStatus.classList.add(type);
-    }
-  };
-
-  const getDateRange = () => {
-    const start = parseLocalDate(els.startDateInput.value);
-    const end =
-      state.eventMode === "multi"
-        ? parseLocalDate(els.endDateInput.value)
-        : start;
-
-    if (!start || !end) return [];
-    if (end < start) return [];
-
-    const dates = [];
-    let cursor = new Date(start);
-
-    while (cursor <= end && dates.length < 15) {
-      dates.push(formatIsoDate(cursor));
-      cursor = addDays(cursor, 1);
-    }
-
-    return dates;
-  };
-
-  const getOperatorLabels = (source) => {
-    const values = Array.isArray(source?.vendeurs_prevus)
-      ? source.vendeurs_prevus
-      : [];
-
-    return values
-      .map((operator) => {
-        if (typeof operator === "string") return OPERATORS[operator] || operator;
-        return operator.nom || OPERATORS[operator.user_id] || operator.user_id || "";
-      })
-      .filter(Boolean);
-  };
-
-  const getSelectedOperatorsPayload = () => {
-    const payload = [...state.selectedOperators]
-      .filter((operatorId) => operatorId !== "AUTRE")
-      .map((operatorId) => ({
-        user_id: operatorId,
-        nom: OPERATORS[operatorId] || operatorId
-      }));
-
-    if (state.selectedOperators.has("AUTRE")) {
-      const otherName = els.otherOperatorInput.value.trim();
-
-      if (otherName) {
-        payload.push({
-          user_id: "AUTRE",
-          nom: otherName
-        });
-      }
-    }
-
-    return payload;
-  };
-
   const getEventJournees = (eventId) =>
     getJournees()
       .filter((journee) => journee.evenement_id === eventId)
@@ -265,7 +153,7 @@
 
   const getStockMissionJournees = (missionId) =>
     getJournees()
-      .filter((journee) => journee.mission_id === missionId)
+      .filter((journee) => journee.mission_id === missionId || journee.stock_mission_id === missionId)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   const getFirstOpenDayForStockMission = (missionId) => {
@@ -294,93 +182,28 @@
     return "";
   };
 
-  const getJourneeTitle = (journee) => {
+  const getDayEventTitle = (journee) => {
     const eventItem = getEventById(journee.evenement_id);
 
     if (!eventItem) {
-      return `${journee.jour_label} · ${formatDisplayDate(journee.date)}`;
+      return `${journee.jour_label || "J?"} · ${formatDisplayDate(journee.date)}`;
     }
 
-    const dayPart = eventItem.date_debut === eventItem.date_fin
-      ? ""
-      : ` ${journee.jour_label}`;
+    const dayLabel =
+      eventItem.date_debut === eventItem.date_fin
+        ? ""
+        : ` ${journee.jour_label || ""}`;
 
-    return `${eventItem.nom}${dayPart}`;
+    return `${eventItem.nom}${dayLabel}`;
   };
 
-  const renderEventMode = () => {
-    document.querySelectorAll("[data-event-mode]").forEach((button) => {
-      const isActive = button.dataset.eventMode === state.eventMode;
+  const setStockStatus = (message, type = "") => {
+    els.stockMissionStatus.textContent = message;
+    els.stockMissionStatus.className = "missionStatus";
 
-      button.classList.toggle("isActive", isActive);
-      button.setAttribute("aria-pressed", String(isActive));
-    });
-
-    const isMulti = state.eventMode === "multi";
-
-    els.endDateField.hidden = !isMulti;
-    els.startDateLabel.textContent = isMulti ? "Date de début" : "Date";
-
-    if (!isMulti) {
-      els.endDateInput.value = "";
+    if (type) {
+      els.stockMissionStatus.classList.add(type);
     }
-  };
-
-  const renderOperators = () => {
-    document.querySelectorAll("[data-operator]").forEach((button) => {
-      const isActive = state.selectedOperators.has(button.dataset.operator);
-
-      button.classList.toggle("isActive", isActive);
-      button.setAttribute("aria-pressed", String(isActive));
-    });
-
-    const hasOther = state.selectedOperators.has("AUTRE");
-
-    els.otherOperatorField.hidden = !hasOther;
-
-    if (!hasOther) {
-      els.otherOperatorInput.value = "";
-    }
-  };
-
-  const renderDayPreview = () => {
-    const dates = getDateRange();
-
-    if (!els.startDateInput.value) {
-      els.dayPreviewList.innerHTML =
-        `<p class="missionEmpty">Choisis une date pour générer J1.</p>`;
-      return;
-    }
-
-    if (state.eventMode === "multi" && !els.endDateInput.value) {
-      els.dayPreviewList.innerHTML =
-        `<p class="missionEmpty">Choisis une date de fin pour générer les journées.</p>`;
-      return;
-    }
-
-    if (dates.length === 0) {
-      els.dayPreviewList.innerHTML =
-        `<p class="missionEmpty">La date de fin doit être après la date de début.</p>`;
-      return;
-    }
-
-    if (dates.length >= 15) {
-      els.dayPreviewList.innerHTML =
-        `<p class="missionEmpty">Évènement trop long pour cette V1. Limite provisoire : 14 jours.</p>`;
-      return;
-    }
-
-    els.dayPreviewList.innerHTML = dates
-      .map((date, index) => `
-        <article class="dayPreviewItem">
-          <div>
-            <strong>${escapeHtml(formatDisplayDate(date))}</strong>
-            <span>${index === 0 ? "Première journée" : `Journée ${index + 1}`}</span>
-          </div>
-          <span class="dayBadge">J${index + 1}</span>
-        </article>
-      `)
-      .join("");
   };
 
   const setPreparationContext = (missionId, journeeId) => {
@@ -410,106 +233,71 @@
     });
   };
 
-  const createEvent = () => {
-    const name = els.eventNameInput.value.trim();
-    const startDate = els.startDateInput.value;
-    const dates = getDateRange();
-    const operators = getSelectedOperatorsPayload();
+  const getSelectableDays = () =>
+    getJournees()
+      .filter((journee) => journee.statut !== "annule")
+      .filter((journee) => !journee.mission_id && !journee.stock_mission_id)
+      .sort((a, b) => {
+        const byDate = String(a.date).localeCompare(String(b.date));
+        if (byDate !== 0) return byDate;
 
-    if (!name) {
-      setEventStatus("Indique le nom de l’évènement.", "isError");
-      return null;
+        const eventA = getEventById(a.evenement_id);
+        const eventB = getEventById(b.evenement_id);
+
+        return String(eventA?.nom || "").localeCompare(String(eventB?.nom || ""));
+      });
+
+  const buildDefaultStockMissionName = (days) => {
+    if (!days.length) return "";
+
+    const events = [...new Set(days.map((day) => day.evenement_id))]
+      .map((eventId) => getEventById(eventId))
+      .filter(Boolean);
+
+    if (events.length === 1) {
+      return events[0].nom;
     }
 
-    if (!startDate || dates.length === 0) {
-      setEventStatus("Indique une date valide.", "isError");
-      return null;
-    }
-
-    if (dates.length >= 15) {
-      setEventStatus("Évènement trop long pour cette V1. Limite provisoire : 14 jours.", "isError");
-      return null;
-    }
-
-    if (operators.length === 0) {
-      setEventStatus("Indique au moins une personne prévue sur l’évènement.", "isError");
-      return null;
-    }
-
-    const now = new Date().toISOString();
-    const slug = slugify(name, "EVENEMENT");
-    const stamp = Date.now().toString(36).toUpperCase();
-
-    const eventId = `EVT_${dates[0].replaceAll("-", "")}_${slug}_${stamp}`;
-
-    const eventItem = {
-      evenement_id: eventId,
-      nom: name,
-      date_debut: dates[0],
-      date_fin: dates[dates.length - 1],
-      lieu: els.locationInput.value.trim(),
-      ville: els.cityInput.value.trim(),
-      type_evenement: els.eventKindInput.value,
-      type_evenement_label: EVENT_KIND_LABELS[els.eventKindInput.value],
-      duree_type: state.eventMode === "multi" ? "PLUSIEURS_JOURS" : "JOURNEE_UNIQUE",
-      statut: "prevu",
-      vendeurs_prevus: operators,
-      responsable_user_id: CURRENT_USER.user_id,
-      note: els.noteInput.value.trim(),
-      created_at: now,
-      updated_at: now
-    };
-
-    const jours = dates.map((date, index) => ({
-      journee_id: `J_${date.replaceAll("-", "")}_${slug}_J${index + 1}_${stamp}`,
-      evenement_id: eventId,
-      mission_id: "",
-      stock_mission_id: "",
-      date,
-      jour_label: `J${index + 1}`,
-      statut: "prevu",
-      meteo: "",
-      affluence_ressentie: "",
-      note: "",
-      created_at: now,
-      updated_at: now
-    }));
-
-    const events = getEvents();
-    const journees = getJournees();
-
-    events.push(eventItem);
-    journees.push(...jours);
-
-    setEvents(events);
-    setJournees(journees);
-
-    setEventStatus("Évènement enregistré.", "isSuccess");
-
-    return {
-      eventItem,
-      jours
-    };
+    return `Stock partagé ${formatDisplayDate(days[0].date)} → ${formatDisplayDate(days[days.length - 1].date)}`;
   };
 
-  const createStockMission = ({ fromDays = null } = {}) => {
-    const selectedDayIds = Array.isArray(fromDays)
-      ? fromDays.map((journee) => journee.journee_id)
-      : [...state.selectedDayIds];
+  const getSelectedDays = (fromDays = null) => {
+    if (Array.isArray(fromDays)) {
+      return fromDays
+        .slice()
+        .filter(Boolean)
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    }
 
     const allJournees = getJournees();
-    const selectedDays = selectedDayIds
+
+    return [...state.selectedDayIds]
       .map((journeeId) => allJournees.find((journee) => journee.journee_id === journeeId))
       .filter(Boolean)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  };
 
-    const name = els.stockMissionNameInput.value.trim() ||
-      buildDefaultStockMissionName(selectedDays);
+  const createStockMission = ({ fromDays = null, nameOverride = "" } = {}) => {
+    const selectedDays = getSelectedDays(fromDays);
 
     if (selectedDays.length === 0) {
       setStockStatus("Sélectionne au moins une journée pour cette mission de stock.", "isError");
       return null;
     }
+
+    const alreadyLinked = selectedDays.find(
+      (journee) => journee.mission_id || journee.stock_mission_id
+    );
+
+    if (alreadyLinked) {
+      setStockStatus("Une des journées sélectionnées est déjà liée à une mission de stock.", "isError");
+      return null;
+    }
+
+    const name =
+      nameOverride.trim() ||
+      els.stockMissionNameInput.value.trim() ||
+      buildDefaultStockMissionName(selectedDays);
 
     if (!name) {
       setStockStatus("Indique le nom de la mission de stock.", "isError");
@@ -535,9 +323,9 @@
       updated_at: now
     };
 
-    const selectedSet = new Set(selectedDayIds);
+    const selectedSet = new Set(selectedDays.map((journee) => journee.journee_id));
 
-    const updatedJournees = allJournees.map((journee) => {
+    const updatedJournees = getJournees().map((journee) => {
       if (!selectedSet.has(journee.journee_id)) return journee;
 
       return {
@@ -566,18 +354,61 @@
     };
   };
 
-  const buildDefaultStockMissionName = (days) => {
-    if (!days.length) return "";
+  const prepareEventStock = (eventId) => {
+    const eventItem = getEventById(eventId);
 
-    const events = [...new Set(days.map((day) => day.evenement_id))]
-      .map((eventId) => getEventById(eventId))
-      .filter(Boolean);
+    if (!eventItem) return;
 
-    if (events.length === 1) {
-      return events[0].nom;
+    const availableDays = getEventJournees(eventId).filter(
+      (journee) => !journee.mission_id && !journee.stock_mission_id
+    );
+
+    if (availableDays.length === 0) {
+      setStockStatus("Toutes les journées de cet évènement sont déjà liées à une mission de stock.", "isError");
+      return;
     }
 
-    return `Stock partagé ${formatDisplayDate(days[0].date)} → ${formatDisplayDate(days[days.length - 1].date)}`;
+    const result = createStockMission({
+      fromDays: availableDays,
+      nameOverride: eventItem.nom
+    });
+
+    renderAll();
+
+    if (result?.mission && result?.jours?.[0]) {
+      setPreparationContext(result.mission.mission_id, result.jours[0].journee_id);
+      window.location.href = "./preparation-stock.html";
+    }
+  };
+
+  const selectEventDays = (eventId) => {
+    const availableDays = getEventJournees(eventId).filter(
+      (journee) => !journee.mission_id && !journee.stock_mission_id
+    );
+
+    if (availableDays.length === 0) {
+      setStockStatus("Aucune journée disponible pour cet évènement.", "isError");
+      return;
+    }
+
+    availableDays.forEach((journee) => {
+      state.selectedDayIds.add(journee.journee_id);
+    });
+
+    const selectedDays = getSelectedDays();
+
+    if (!els.stockMissionNameInput.value.trim()) {
+      els.stockMissionNameInput.value = buildDefaultStockMissionName(selectedDays);
+    }
+
+    setStockStatus(`${availableDays.length} journée(s) ajoutée(s) à la sélection.`, "isSuccess");
+    renderStockDayList();
+    renderStockMissionPreview();
+
+    document.getElementById("createStockMissionTitle")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
   };
 
   const renderEventsList = () => {
@@ -594,16 +425,22 @@
       });
 
     if (events.length === 0) {
-      els.eventsList.innerHTML =
-        `<p class="missionEmpty">Aucun évènement enregistré pour l’instant.</p>`;
+      els.eventsList.innerHTML = `
+        <div class="missionEmptyBlock">
+          <p class="missionEmpty">Aucun évènement enregistré pour l’instant.</p>
+          <a class="missionSmallBtn primary" href="./inscriptions-evenements.html">
+            Créer depuis les inscriptions
+          </a>
+        </div>
+      `;
       return;
     }
 
     els.eventsList.innerHTML = events
       .map((eventItem) => {
         const jours = getEventJournees(eventItem.evenement_id);
+        const availableDays = jours.filter((journee) => !journee.mission_id && !journee.stock_mission_id);
         const place = [eventItem.lieu, eventItem.ville].filter(Boolean).join(" · ");
-        const operatorLabels = getOperatorLabels(eventItem);
         const statusClass = getStatusClass(eventItem.statut);
         const statusLabel = STATUS_LABELS[eventItem.statut] || eventItem.statut;
 
@@ -624,32 +461,46 @@
               </div>
             </div>
 
-            ${
-              operatorLabels.length > 0
-                ? `
-                  <div class="missionOperatorLine" aria-label="Personnes prévues">
-                    ${operatorLabels
-                      .map((name) => `<span class="missionOperatorChip">${escapeHtml(name)}</span>`)
-                      .join("")}
-                  </div>
-                `
-                : ""
-            }
-
             <div class="missionDayChips">
-              ${jours
-                .map((jour) => {
-                  const linked = Boolean(jour.mission_id);
-                  const mission = linked ? getStockMissionById(jour.mission_id) : null;
+              ${
+                jours.length > 0
+                  ? jours
+                      .map((jour) => {
+                        const linked = Boolean(jour.mission_id || jour.stock_mission_id);
+                        const mission = linked
+                          ? getStockMissionById(jour.stock_mission_id || jour.mission_id)
+                          : null;
 
-                  return `
-                    <span class="missionDayChip ${linked ? "isLinked" : ""}">
-                      ${escapeHtml(jour.jour_label)} · ${escapeHtml(formatDisplayDate(jour.date))}
-                      ${mission ? ` · ${escapeHtml(mission.nom)}` : ""}
-                    </span>
-                  `;
-                })
-                .join("")}
+                        return `
+                          <span class="missionDayChip ${linked ? "isLinked" : ""}">
+                            ${escapeHtml(jour.jour_label || "J?")} · ${escapeHtml(formatDisplayDate(jour.date))}
+                            ${mission ? ` · ${escapeHtml(mission.nom)}` : ""}
+                          </span>
+                        `;
+                      })
+                      .join("")
+                  : `<span class="missionDayChip">Aucune journée</span>`
+              }
+            </div>
+
+            <div class="missionListActions">
+              <button
+                class="missionSmallBtn"
+                type="button"
+                data-select-event-days="${escapeAttr(eventItem.evenement_id)}"
+                ${availableDays.length === 0 ? "disabled" : ""}
+              >
+                Sélectionner
+              </button>
+
+              <button
+                class="missionSmallBtn primary"
+                type="button"
+                data-prepare-event="${escapeAttr(eventItem.evenement_id)}"
+                ${availableDays.length === 0 ? "disabled" : ""}
+              >
+                Préparer le stock
+              </button>
             </div>
           </article>
         `;
@@ -699,19 +550,23 @@
             </div>
 
             <div class="missionDayChips">
-              ${jours
-                .map((jour) => {
-                  const eventItem = getEventById(jour.evenement_id);
+              ${
+                jours.length > 0
+                  ? jours
+                      .map((jour) => {
+                        const eventItem = getEventById(jour.evenement_id);
 
-                  return `
-                    <span class="missionDayChip isLinked">
-                      ${escapeHtml(formatDisplayDate(jour.date))}
-                      · ${escapeHtml(eventItem ? eventItem.nom : "Évènement inconnu")}
-                      ${eventItem && eventItem.date_debut !== eventItem.date_fin ? ` ${escapeHtml(jour.jour_label)}` : ""}
-                    </span>
-                  `;
-                })
-                .join("")}
+                        return `
+                          <span class="missionDayChip isLinked">
+                            ${escapeHtml(formatDisplayDate(jour.date))}
+                            · ${escapeHtml(eventItem ? eventItem.nom : "Évènement inconnu")}
+                            ${eventItem && eventItem.date_debut !== eventItem.date_fin ? ` ${escapeHtml(jour.jour_label || "")}` : ""}
+                          </span>
+                        `;
+                      })
+                      .join("")
+                  : `<span class="missionDayChip">Aucune journée liée</span>`
+              }
             </div>
 
             <div class="missionListActions">
@@ -739,8 +594,7 @@
   };
 
   const renderStockDayList = () => {
-    const events = getEvents();
-    const journees = getJournees()
+    const allJournees = getJournees()
       .slice()
       .filter((journee) => journee.statut !== "annule")
       .sort((a, b) => {
@@ -753,18 +607,18 @@
         return String(eventA?.nom || "").localeCompare(String(eventB?.nom || ""));
       });
 
-    if (events.length === 0 || journees.length === 0) {
+    if (allJournees.length === 0) {
       els.stockDayList.innerHTML =
-        `<p class="missionEmpty">Crée d’abord un évènement pour pouvoir choisir ses journées.</p>`;
+        `<p class="missionEmpty">Crée d’abord un évènement depuis les inscriptions.</p>`;
       return;
     }
 
-    els.stockDayList.innerHTML = journees
+    els.stockDayList.innerHTML = allJournees
       .map((journee) => {
         const eventItem = getEventById(journee.evenement_id);
         const checked = state.selectedDayIds.has(journee.journee_id);
-        const linked = Boolean(journee.mission_id);
-        const linkedMission = linked ? getStockMissionById(journee.mission_id) : null;
+        const linked = Boolean(journee.mission_id || journee.stock_mission_id);
+        const linkedMission = linked ? getStockMissionById(journee.stock_mission_id || journee.mission_id) : null;
 
         return `
           <label class="stockDayOption ${checked ? "isSelected" : ""} ${linked ? "isLinked" : ""}">
@@ -773,12 +627,13 @@
               value="${escapeAttr(journee.journee_id)}"
               data-stock-day-choice
               ${checked ? "checked" : ""}
+              ${linked ? "disabled" : ""}
             />
 
             <span class="stockDayCheck" aria-hidden="true"></span>
 
             <span class="stockDayText">
-              <strong>${escapeHtml(getJourneeTitle(journee))}</strong>
+              <strong>${escapeHtml(getDayEventTitle(journee))}</strong>
               <small>
                 ${escapeHtml(formatDisplayDate(journee.date))}
                 ${eventItem?.ville ? ` · ${escapeHtml(eventItem.ville)}` : ""}
@@ -792,22 +647,22 @@
   };
 
   const renderStockMissionPreview = () => {
-    const allJournees = getJournees();
-    const selectedDays = [...state.selectedDayIds]
-      .map((journeeId) => allJournees.find((journee) => journee.journee_id === journeeId))
-      .filter(Boolean)
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const selectedDays = getSelectedDays();
 
     if (selectedDays.length === 0) {
       els.stockMissionPreview.innerHTML =
         `<p class="missionEmpty">Sélectionne au moins une journée.</p>`;
+      els.stockMissionNameInput.placeholder = "Ex : Week-end 1-3 mai";
       return;
     }
+
+    const defaultName = buildDefaultStockMissionName(selectedDays);
+    els.stockMissionNameInput.placeholder = defaultName;
 
     els.stockMissionPreview.innerHTML = `
       <div class="stockPreviewHeader">
         <strong>${selectedDays.length} journée${selectedDays.length > 1 ? "s" : ""} sélectionnée${selectedDays.length > 1 ? "s" : ""}</strong>
-        <span>${escapeHtml(formatDisplayDate(selectedDays[0].date))} → ${escapeHtml(formatDisplayDate(selectedDays[selectedDays.length - 1].date))}</span>
+        <span>${escapeHtml(defaultName)}</span>
       </div>
 
       <div class="missionDayChips">
@@ -819,7 +674,7 @@
               <span class="missionDayChip isLinked">
                 ${escapeHtml(formatDisplayDate(journee.date))}
                 · ${escapeHtml(eventItem ? eventItem.nom : "Évènement inconnu")}
-                ${eventItem && eventItem.date_debut !== eventItem.date_fin ? ` ${escapeHtml(journee.jour_label)}` : ""}
+                ${eventItem && eventItem.date_debut !== eventItem.date_fin ? ` ${escapeHtml(journee.jour_label || "")}` : ""}
               </span>
             `;
           })
@@ -829,27 +684,10 @@
   };
 
   const renderAll = () => {
-    renderEventMode();
-    renderOperators();
-    renderDayPreview();
     renderEventsList();
     renderStockMissionsList();
     renderStockDayList();
     renderStockMissionPreview();
-  };
-
-  const resetEventForm = () => {
-    state.eventMode = "single";
-    state.selectedOperators = new Set(["U_JEROME"]);
-    state.eventSubmitAction = "save";
-
-    els.eventForm.reset();
-    setDefaultDate();
-    setEventStatus("");
-
-    renderEventMode();
-    renderOperators();
-    renderDayPreview();
   };
 
   const resetStockMissionForm = () => {
@@ -863,50 +701,22 @@
     renderStockMissionPreview();
   };
 
-  const setDefaultDate = () => {
-    if (els.startDateInput.value) return;
-
-    const today = new Date();
-    els.startDateInput.value = formatIsoDate(today);
-  };
-
   document.addEventListener("click", (event) => {
-    const modeButton = event.target.closest("[data-event-mode]");
-    if (modeButton) {
-      state.eventMode = modeButton.dataset.eventMode;
-      setEventStatus("");
-      renderEventMode();
-      renderDayPreview();
-      return;
-    }
-
-    const operatorButton = event.target.closest("[data-operator]");
-    if (operatorButton) {
-      const operatorId = operatorButton.dataset.operator;
-
-      if (state.selectedOperators.has(operatorId)) {
-        state.selectedOperators.delete(operatorId);
-      } else {
-        state.selectedOperators.add(operatorId);
-      }
-
-      if (state.selectedOperators.size === 0) {
-        state.selectedOperators.add("U_JEROME");
-      }
-
-      renderOperators();
-      return;
-    }
-
-    const eventSubmitButton = event.target.closest("[data-event-submit-action]");
-    if (eventSubmitButton) {
-      state.eventSubmitAction = eventSubmitButton.dataset.eventSubmitAction;
-      return;
-    }
-
     const stockSubmitButton = event.target.closest("[data-stock-submit-action]");
     if (stockSubmitButton) {
       state.stockSubmitAction = stockSubmitButton.dataset.stockSubmitAction;
+      return;
+    }
+
+    const selectEventButton = event.target.closest("[data-select-event-days]");
+    if (selectEventButton) {
+      selectEventDays(selectEventButton.dataset.selectEventDays);
+      return;
+    }
+
+    const prepareEventButton = event.target.closest("[data-prepare-event]");
+    if (prepareEventButton) {
+      prepareEventStock(prepareEventButton.dataset.prepareEvent);
       return;
     }
 
@@ -918,14 +728,6 @@
       if (!missionId || !journeeId) return;
 
       setPreparationContext(missionId, journeeId);
-
-      const mission = getStockMissionById(missionId);
-
-      if (mission && mission.statut === "en_cours") {
-        window.location.href = "./index.html";
-        return;
-      }
-
       window.location.href = "./preparation-stock.html";
       return;
     }
@@ -943,6 +745,7 @@
 
   document.addEventListener("change", (event) => {
     const dayChoice = event.target.closest("[data-stock-day-choice]");
+
     if (!dayChoice) return;
 
     if (dayChoice.checked) {
@@ -954,31 +757,6 @@
     setStockStatus("");
     renderStockDayList();
     renderStockMissionPreview();
-  });
-
-  els.eventForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-
-    const result = createEvent();
-
-    if (!result) return;
-
-    renderAll();
-
-    if (state.eventSubmitAction === "stock") {
-      const stockName = buildDefaultStockMissionName(result.jours);
-      els.stockMissionNameInput.value = stockName;
-      state.selectedDayIds = new Set(result.jours.map((journee) => journee.journee_id));
-
-      const stockResult = createStockMission({ fromDays: result.jours });
-
-      renderAll();
-
-      if (stockResult?.mission && stockResult?.jours?.[0]) {
-        setPreparationContext(stockResult.mission.mission_id, stockResult.jours[0].journee_id);
-        window.location.href = "./preparation-stock.html";
-      }
-    }
   });
 
   els.stockMissionForm.addEventListener("submit", (event) => {
@@ -996,16 +774,7 @@
     }
   });
 
-  els.resetEventBtn.addEventListener("click", resetEventForm);
   els.resetStockMissionBtn.addEventListener("click", resetStockMissionForm);
 
-  [els.startDateInput, els.endDateInput].forEach((input) => {
-    input.addEventListener("change", () => {
-      setEventStatus("");
-      renderDayPreview();
-    });
-  });
-
-  setDefaultDate();
   renderAll();
 })();
