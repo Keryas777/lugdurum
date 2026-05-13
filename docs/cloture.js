@@ -2,8 +2,9 @@
   "use strict";
 
   /*
-    Clôture V1 :
+    Clôture V2 :
     - Fonctionne en localStorage tant que Sheets n’est pas connecté.
+    - Masque complètement le bloc de validation si aucune journée active n’existe.
     - Lit la mission de stock active + la journée active.
     - Lit les tickets locaux enregistrés par vente-rapide.
     - Calcule CA, paiements, quantités vendues.
@@ -70,6 +71,7 @@
     salesPanel: document.getElementById("salesPanel"),
     stockPanel: document.getElementById("stockPanel"),
     feesPanel: document.getElementById("feesPanel"),
+    finalPanel: document.getElementById("finalPanel"),
 
     paymentSummary: document.getElementById("paymentSummary"),
     stockInitialTotal: document.getElementById("stockInitialTotal"),
@@ -287,11 +289,17 @@
   const getStockPreparationForMission = (missionId) => {
     const items = getArray(STORAGE_KEYS.stockPreparations);
 
-    return items
-      .filter((item) => {
-        return item.mission_id === missionId || item.stock_mission_id === missionId;
-      })
-      .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0] || null;
+    return (
+      items
+        .filter((item) => {
+          return item.mission_id === missionId || item.stock_mission_id === missionId;
+        })
+        .sort((a, b) =>
+          String(b.updated_at || b.created_at || "").localeCompare(
+            String(a.updated_at || a.created_at || "")
+          )
+        )[0] || null
+    );
   };
 
   const getRawPreparationLines = (preparation, missionId) => {
@@ -501,6 +509,7 @@
     els.salesPanel.hidden = !hasContext;
     els.stockPanel.hidden = !hasContext;
     els.feesPanel.hidden = !hasContext;
+    els.finalPanel.hidden = !hasContext;
 
     els.saveDraftBtn.disabled = !hasContext;
     els.closeDayBtn.disabled = !hasContext;
@@ -845,8 +854,14 @@
       });
     }
 
-    state.journee = journees.find((journee) => journee.journee_id === state.journee.journee_id) || state.journee;
-    state.mission = stockMissions.find((mission) => mission.mission_id === state.mission.mission_id) || state.mission;
+    state.journee =
+      journees.find((journee) => journee.journee_id === state.journee.journee_id) ||
+      state.journee;
+
+    state.mission =
+      stockMissions.find((mission) => mission.mission_id === state.mission.mission_id) ||
+      state.mission;
+
     state.linkedDays = linkedAfterClose;
   };
 
@@ -970,16 +985,21 @@
       state.transactions = [];
       state.stockRows = [];
       state.frais = [];
+      state.existingClosure = null;
+      state.counts = new Map();
       return;
     }
 
     state.eventItem = getEventById(state.journee.evenement_id);
     state.linkedDays = getMissionJournees(state.mission.mission_id);
+
     state.nextDay =
       state.linkedDays.find((journee) => {
-        return String(journee.date).localeCompare(String(state.journee.date)) > 0 &&
+        return (
+          String(journee.date).localeCompare(String(state.journee.date)) > 0 &&
           journee.statut !== "cloture" &&
-          journee.statut !== "annule";
+          journee.statut !== "annule"
+        );
       }) || null;
 
     state.transactions = getTransactionsForDay(state.journee.journee_id);
