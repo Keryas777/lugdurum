@@ -1,145 +1,453 @@
-const API_HOME_URL = ""; // Plus tard : "/api/home" ou l'URL du Worker/Apps Script.
+(() => {
+  "use strict";
 
-const fallbackHomeState = {
-  user: {
+  /*
+    Accueil V7 :
+    - L'accueil n'est plus une grille de modules.
+    - Il lit le parcours localStorage.
+    - Il affiche l'état actuel :
+      aucune mission / stock à préparer / journée active / journée clôturée.
+    - Il oriente vers la prochaine action logique.
+  */
+
+  const CURRENT_USER = {
     user_id: "U_JEROME",
     nom: "Jérôme",
     role: "admin"
-  },
-  mission_active: {
-    mission_id: "M202605_SALAGNON",
-    nom: "Salagnon",
-    ville: "Salagnon",
-    date_debut: "2026-05-03",
-    date_fin: "2026-05-04",
-    statut: "en_cours"
-  },
-  journee_active: {
-    journee_id: "J20260504_SALAGNON",
-    date: "2026-05-04",
-    jour_label: "J2",
-    statut: "en_cours"
-  },
-  resume_journee: {
-    ca_jour_ttc: 0,
-    nb_transactions: 0,
-    ventes_en_attente_sync: 0,
-    stock_non_compte: true,
-    frais_non_saisis: false
-  }
-};
+  };
 
-const formatEuro = new Intl.NumberFormat("fr-FR", {
-  style: "currency",
-  currency: "EUR",
-  maximumFractionDigits: 0
-});
+  const STORAGE_KEYS = {
+    events: "lugdurum_evenements",
+    stockMissions: "lugdurum_missions_stock",
+    journees: "lugdurum_journees",
+    activeMissionId: "lugdurum_active_mission_id",
+    activeStockMissionId: "lugdurum_active_stock_mission_id",
+    activeJourneeId: "lugdurum_active_journee_id",
+    preparationContext: "lugdurum_preparation_context",
+    pendingTransactions: "lugdurum_pending_transactions",
+    stockPreparations: "lugdurum_stock_preparations"
+  };
 
-const formatDate = new Intl.DateTimeFormat("fr-FR", {
-  weekday: "long",
-  day: "2-digit",
-  month: "long",
-  year: "numeric"
-});
+  const STEP_ORDER = ["inscriptions", "missions", "stock", "vente", "cloture"];
 
-function qs(selector) {
-  return document.querySelector(selector);
-}
-
-async function loadHomeState() {
-  if (!API_HOME_URL) return fallbackHomeState;
-
-  try {
-    const response = await fetch(API_HOME_URL, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Erreur API ${response.status}`);
-    return await response.json();
-  } catch (error) {
-    console.warn("Impossible de charger les données réelles, fallback local utilisé.", error);
-    return fallbackHomeState;
-  }
-}
-
-function renderHome(state) {
-  const user = state.user || fallbackHomeState.user;
-  const mission = state.mission_active;
-  const journee = state.journee_active;
-  const resume = state.resume_journee || {};
-
-  qs("#currentUserName").textContent = user.nom || "Utilisateur";
-
-  if (!mission || !journee) {
-    qs("#activeStatusLabel").textContent = "Aucune mission active";
-    qs("#missionTitle").textContent = "Préparer une mission";
-    qs("#missionMeta").textContent = "Crée ou choisis une mission avant de saisir les ventes.";
-    qs("#todayRevenue").textContent = "—";
-    qs("#todayTickets").textContent = "—";
-    qs("#pendingSync").textContent = "—";
-    renderWatchList(["Aucune journée active pour le moment."]);
-    return;
-  }
-
-  const dateLabel = journee.date ? formatDate.format(new Date(`${journee.date}T12:00:00`)) : "date non définie";
-
-  qs("#activeStatusLabel").textContent = "Mission active";
-  qs("#missionTitle").textContent = `${mission.nom} — ${journee.jour_label || "Journée"}`;
-  qs("#missionMeta").textContent = `${mission.ville || "Lieu à définir"} · ${dateLabel}`;
-  qs("#todayRevenue").textContent = formatEuro.format(Number(resume.ca_jour_ttc || 0));
-  qs("#todayTickets").textContent = String(resume.nb_transactions || 0);
-  qs("#pendingSync").textContent = String(resume.ventes_en_attente_sync || 0);
-
-  qs("#syncStatCard").classList.toggle("hasWarning", Number(resume.ventes_en_attente_sync || 0) > 0);
-
-  renderWatchList(buildWatchItems(resume));
-}
-
-function buildWatchItems(resume) {
-  const items = [];
-
-  if (Number(resume.ventes_en_attente_sync || 0) > 0) {
-    items.push(`${resume.ventes_en_attente_sync} vente(s) en attente de synchronisation.`);
-  } else {
-    items.push("Toutes les ventes semblent synchronisées.");
-  }
-
-  if (resume.stock_non_compte) {
-    items.push("Stock de fin pas encore compté pour cette journée.");
-  } else {
-    items.push("Stock de fin déjà renseigné.");
-  }
-
-  if (resume.frais_non_saisis) {
-    items.push("Pense à saisir les frais de la mission avant clôture.");
-  } else {
-    items.push("Aucun frais signalé comme manquant.");
-  }
-
-  return items;
-}
-
-function renderWatchList(items) {
-  const list = qs("#watchList");
-  list.innerHTML = "";
-
-  items.forEach((item) => {
-    const li = document.createElement("li");
-    li.textContent = item;
-    list.appendChild(li);
+  const formatEuro = new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0
   });
-}
 
-function setupDisabledTiles() {
-  document.querySelectorAll("[data-disabled='true']").forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      alert("Module prévu pour une prochaine étape.");
+  const formatDate = new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric"
+  });
+
+  const qs = (selector) => document.querySelector(selector);
+
+  const readJson = (key, fallback) => {
+    try {
+      return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    } catch {
+      return fallback;
+    }
+  };
+
+  const getArray = (key) => {
+    const value = readJson(key, []);
+    return Array.isArray(value) ? value : [];
+  };
+
+  const getObject = (key) => {
+    const value = readJson(key, {});
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  };
+
+  const parseDate = (isoDate) => {
+    if (!isoDate) return null;
+    return new Date(`${isoDate}T12:00:00`);
+  };
+
+  const formatDisplayDate = (isoDate) => {
+    const date = parseDate(isoDate);
+    if (!date) return "date inconnue";
+    return formatDate.format(date);
+  };
+
+  const getDateLabel = (item) => {
+    if (!item?.date_debut) return "Date inconnue";
+
+    if (!item.date_fin || item.date_debut === item.date_fin) {
+      return formatDisplayDate(item.date_debut);
+    }
+
+    return `${formatDisplayDate(item.date_debut)} → ${formatDisplayDate(item.date_fin)}`;
+  };
+
+  const getActiveIds = () => {
+    const context = getObject(STORAGE_KEYS.preparationContext);
+
+    return {
+      stockMissionId:
+        localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
+        context.stock_mission_id ||
+        context.mission_id ||
+        localStorage.getItem(STORAGE_KEYS.activeMissionId) ||
+        "",
+      journeeId:
+        localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
+        context.journee_id ||
+        ""
+    };
+  };
+
+  const getMissionJournees = (missionId, journees) => {
+    return journees
+      .filter((journee) => {
+        return (
+          journee.mission_id === missionId ||
+          journee.stock_mission_id === missionId
+        );
+      })
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  };
+
+  const getFirstOpenDay = (missionId, journees) => {
+    const linkedDays = getMissionJournees(missionId, journees);
+
+    return (
+      linkedDays.find((journee) => {
+        return journee.statut !== "cloture" && journee.statut !== "annule";
+      }) ||
+      linkedDays[0] ||
+      null
+    );
+  };
+
+  const findFallbackActiveMission = (stockMissions) => {
+    const candidates = stockMissions
+      .filter((mission) => mission.statut !== "annule")
+      .filter((mission) => mission.statut !== "cloture")
+      .sort((a, b) => {
+        const byDate = String(a.date_debut).localeCompare(String(b.date_debut));
+        if (byDate !== 0) return byDate;
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      });
+
+    return candidates[0] || null;
+  };
+
+  const getStockPreparationForMission = (missionId) => {
+    return getArray(STORAGE_KEYS.stockPreparations).find((item) => {
+      return (
+        item.mission_id === missionId ||
+        item.stock_mission_id === missionId
+      );
     });
-  });
-}
+  };
 
-async function initHome() {
-  setupDisabledTiles();
-  const state = await loadHomeState();
-  renderHome(state);
-}
+  const isStockPrepared = (mission) => {
+    if (!mission) return false;
 
-initHome();
+    if (mission.stock_prepare === true) return true;
+
+    if (["pret", "en_cours", "termine", "cloture"].includes(mission.statut)) {
+      return true;
+    }
+
+    const preparation = getStockPreparationForMission(mission.mission_id);
+
+    return Boolean(
+      preparation &&
+      ["valide", "validé", "pret", "prêt"].includes(String(preparation.statut || "").toLowerCase())
+    );
+  };
+
+  const getDayTransactions = (journeeId) => {
+    if (!journeeId) return [];
+
+    return getArray(STORAGE_KEYS.pendingTransactions).filter((transaction) => {
+      return transaction.journee_id === journeeId;
+    });
+  };
+
+  const getRevenueForTransactions = (transactions) => {
+    return transactions.reduce((sum, transaction) => {
+      return sum + Number(transaction.total_encaisse_ttc || transaction.total_catalogue_ttc || 0);
+    }, 0);
+  };
+
+  const getEventById = (eventId, events) => {
+    return events.find((eventItem) => eventItem.evenement_id === eventId) || null;
+  };
+
+  const getDayReadableTitle = (journee, events) => {
+    if (!journee) return "Aucune journée";
+
+    const eventItem = getEventById(journee.evenement_id, events);
+
+    if (!eventItem) {
+      return journee.jour_label || "Journée";
+    }
+
+    if (eventItem.date_debut === eventItem.date_fin) {
+      return eventItem.nom;
+    }
+
+    return `${eventItem.nom} — ${journee.jour_label || "Journée"}`;
+  };
+
+  const buildHomeState = () => {
+    const events = getArray(STORAGE_KEYS.events);
+    const stockMissions = getArray(STORAGE_KEYS.stockMissions);
+    const journees = getArray(STORAGE_KEYS.journees);
+    const pendingTransactions = getArray(STORAGE_KEYS.pendingTransactions);
+
+    const activeIds = getActiveIds();
+
+    let mission = activeIds.stockMissionId
+      ? stockMissions.find((item) => item.mission_id === activeIds.stockMissionId) || null
+      : null;
+
+    if (!mission) {
+      mission = findFallbackActiveMission(stockMissions);
+    }
+
+    let journee = null;
+
+    if (mission) {
+      journee = activeIds.journeeId
+        ? journees.find((item) => item.journee_id === activeIds.journeeId) || null
+        : null;
+
+      if (!journee) {
+        journee = getFirstOpenDay(mission.mission_id, journees);
+      }
+    }
+
+    const dayTransactions = getDayTransactions(journee?.journee_id || "");
+    const revenue = getRevenueForTransactions(dayTransactions);
+    const stockPrepared = isStockPrepared(mission);
+
+    return {
+      user: CURRENT_USER,
+      events,
+      stockMissions,
+      journees,
+      mission,
+      journee,
+      stockPrepared,
+      dayTransactions,
+      resume: {
+        ca_jour_ttc: revenue,
+        nb_transactions: dayTransactions.length,
+        ventes_en_attente_sync: pendingTransactions.length
+      }
+    };
+  };
+
+  const getUiState = (homeState) => {
+    const { mission, journee, stockPrepared } = homeState;
+
+    if (!mission || !journee) {
+      return {
+        code: "no_mission",
+        step: "inscriptions",
+        label: "Aucune mission active",
+        title: "Commencer par les inscriptions",
+        meta: "Crée ou valide un évènement, puis prépare une mission de stock.",
+        primaryText: "Gérer les inscriptions",
+        primaryHref: "./inscriptions-evenements.html",
+        secondaryText: "Missions stock",
+        secondaryHref: "./missions.html"
+      };
+    }
+
+    if (!stockPrepared || mission.statut === "stock_a_preparer") {
+      return {
+        code: "stock_to_prepare",
+        step: "stock",
+        label: "Stock à préparer",
+        title: mission.nom || "Mission de stock",
+        meta: `${getDateLabel(mission)} · ${homeState.journees.filter((j) => j.mission_id === mission.mission_id || j.stock_mission_id === mission.mission_id).length || 1} journée(s) liée(s)`,
+        primaryText: "Préparer le stock",
+        primaryHref: "./preparation-stock.html",
+        secondaryText: "Missions stock",
+        secondaryHref: "./missions.html"
+      };
+    }
+
+    if (journee.statut === "cloture") {
+      return {
+        code: "closed",
+        step: "cloture",
+        label: "Journée clôturée",
+        title: getDayReadableTitle(journee, homeState.events),
+        meta: `${mission.nom || "Mission"} · ${formatDisplayDate(journee.date)}`,
+        primaryText: "Voir le dashboard",
+        primaryHref: "./dashboard.html",
+        secondaryText: "Missions stock",
+        secondaryHref: "./missions.html"
+      };
+    }
+
+    return {
+      code: "selling",
+      step: "vente",
+      label: journee.statut === "en_cours" ? "Journée en cours" : "Stock prêt",
+      title: getDayReadableTitle(journee, homeState.events),
+      meta: `${mission.nom || "Mission"} · ${formatDisplayDate(journee.date)}`,
+      primaryText: "+ Nouvelle vente",
+      primaryHref: "./vente-rapide.html",
+      secondaryText: "Clôturer la journée",
+      secondaryHref: "./cloture.html"
+    };
+  };
+
+  const setText = (selector, value) => {
+    const el = qs(selector);
+    if (el) el.textContent = value;
+  };
+
+  const setLink = (selector, text, href) => {
+    const el = qs(selector);
+    if (!el) return;
+
+    el.textContent = text;
+    el.href = href;
+  };
+
+  const renderHero = (homeState, uiState) => {
+    const statusHero = qs("#statusHero");
+    const liveDot = qs("#liveDot");
+
+    statusHero.classList.remove(
+      "isNoMission",
+      "isStockToPrepare",
+      "isSelling",
+      "isClosed"
+    );
+
+    liveDot.classList.remove(
+      "isNoMission",
+      "isStockToPrepare",
+      "isSelling",
+      "isClosed"
+    );
+
+    const stateClass = {
+      no_mission: "isNoMission",
+      stock_to_prepare: "isStockToPrepare",
+      selling: "isSelling",
+      closed: "isClosed"
+    }[uiState.code];
+
+    if (stateClass) {
+      statusHero.classList.add(stateClass);
+      liveDot.classList.add(stateClass);
+    }
+
+    setText("#currentUserName", homeState.user.nom || "Utilisateur");
+    setText("#activeStatusLabel", uiState.label);
+    setText("#missionTitle", uiState.title);
+    setText("#missionMeta", uiState.meta);
+
+    setText("#todayRevenue", formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0)));
+    setText("#todayTickets", String(homeState.resume.nb_transactions || 0));
+    setText("#pendingSync", String(homeState.resume.ventes_en_attente_sync || 0));
+
+    const pendingCount = Number(homeState.resume.ventes_en_attente_sync || 0);
+    qs("#syncStatCard")?.classList.toggle("hasWarning", pendingCount > 0);
+
+    setLink("#primaryAction", uiState.primaryText, uiState.primaryHref);
+    setLink("#secondaryAction", uiState.secondaryText, uiState.secondaryHref);
+  };
+
+  const renderWorkflow = (uiState) => {
+    const currentIndex = STEP_ORDER.indexOf(uiState.step);
+
+    document.querySelectorAll("[data-step]").forEach((card) => {
+      const step = card.dataset.step;
+      const index = STEP_ORDER.indexOf(step);
+
+      card.classList.remove("isDone", "isActive", "isUpcoming");
+
+      if (currentIndex < 0) {
+        card.classList.add("isUpcoming");
+        return;
+      }
+
+      if (index < currentIndex) {
+        card.classList.add("isDone");
+      } else if (index === currentIndex) {
+        card.classList.add("isActive");
+      } else {
+        card.classList.add("isUpcoming");
+      }
+    });
+  };
+
+  const buildWatchItems = (homeState, uiState) => {
+    const items = [];
+
+    if (!homeState.mission || !homeState.journee) {
+      items.push("Aucune mission de stock active pour le moment.");
+      items.push("Commence par créer ou accepter une inscription, puis crée l’évènement.");
+      items.push("Les données sont encore locales : Chrome, Safari et WebApp ne partagent pas encore les mêmes informations.");
+      return items;
+    }
+
+    const linkedDays = getMissionJournees(homeState.mission.mission_id, homeState.journees);
+
+    items.push(
+      `${linkedDays.length || 1} journée(s) liée(s) à la mission “${homeState.mission.nom}”.`
+    );
+
+    if (uiState.code === "stock_to_prepare") {
+      items.push("Le stock initial n’est pas encore validé pour cette mission.");
+    }
+
+    if (uiState.code === "selling") {
+      items.push("La vente rapide est disponible pour la journée active.");
+    }
+
+    if (Number(homeState.resume.ventes_en_attente_sync || 0) > 0) {
+      items.push(`${homeState.resume.ventes_en_attente_sync} ticket(s) en attente de synchronisation.`);
+    } else {
+      items.push("Aucun ticket en attente de synchronisation locale.");
+    }
+
+    if (uiState.code !== "closed") {
+      items.push("Pense à saisir les frais avant la clôture si besoin.");
+    } else {
+      items.push("La journée active semble clôturée.");
+    }
+
+    return items;
+  };
+
+  const renderWatchList = (items) => {
+    const list = qs("#watchList");
+
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    items.forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      list.appendChild(li);
+    });
+  };
+
+  const initHome = () => {
+    const homeState = buildHomeState();
+    const uiState = getUiState(homeState);
+
+    renderHero(homeState, uiState);
+    renderWorkflow(uiState);
+    renderWatchList(buildWatchItems(homeState, uiState));
+  };
+
+  initHome();
+})();
