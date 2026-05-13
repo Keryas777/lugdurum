@@ -16,12 +16,12 @@
 
     <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
 
-    <title>Lugdurum — Évènements</title>
+    <title>Lugdurum — Missions de stock</title>
 
     <link rel="stylesheet" href="./style.css?v=11" />
-    <link rel="stylesheet" href="./missions.css?v=4" />
+    <link rel="stylesheet" href="./missions.css?v=5" />
 
-    <script src="./missions.js?v=4" defer></script>
+    <script src="./missions.js?v=5" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -42,7 +42,7 @@
 
             <div class="brandText">
               <p class="brandName">LUGDURUM</p>
-              <h1>Évènements</h1>
+              <h1>Missions stock</h1>
             </div>
           </div>
         </div>
@@ -50,16 +50,25 @@
 
       <main class="missionsLayout">
         <section class="missionHero" aria-labelledby="missionHeroTitle">
-          <h2 id="missionHeroTitle">Évènements & stock partagé</h2>
-          <p>
-            Planifie les salons et marchés, puis prépare une mission de stock pour une ou plusieurs journées.
-          </p>
+          <div>
+            <p class="sectionKicker">Préparation terrain</p>
+            <h2 id="missionHeroTitle">Créer une mission de stock</h2>
+            <p>
+              Les évènements viennent du suivi des inscriptions. Ici, tu choisis une ou plusieurs journées
+              pour préparer un seul stock commun.
+            </p>
+          </div>
+
+          <a class="heroAction" href="./inscriptions-evenements.html">
+            Gérer les inscriptions
+          </a>
         </section>
 
         <section class="missionPanel" aria-labelledby="upcomingEventsTitle">
           <div class="sectionHeader compact">
             <div>
-              <h2 id="upcomingEventsTitle">Évènements à venir</h2>
+              <p class="sectionKicker">Planning</p>
+              <h2 id="upcomingEventsTitle">Journées disponibles</h2>
             </div>
           </div>
 
@@ -68,217 +77,18 @@
           </div>
         </section>
 
-        <section class="missionPanel" aria-labelledby="stockMissionsTitle">
-          <div class="sectionHeader compact">
-            <div>
-              <h2 id="stockMissionsTitle">Missions de stock</h2>
-            </div>
-          </div>
-
-          <div class="missionsList" id="stockMissionsList">
-            <p class="missionEmpty">Aucune mission de stock préparée pour l’instant.</p>
-          </div>
-        </section>
-
-        <section class="missionPanel missionWizard" aria-labelledby="createEventTitle">
-          <div class="sectionHeader compact">
-            <div>
-              <p class="sectionKicker">Planning</p>
-              <h2 id="createEventTitle">Planifier un évènement</h2>
-            </div>
-          </div>
-
-          <form id="eventForm" class="missionForm">
-            <div class="eventTypeGrid" role="group" aria-label="Durée de l’évènement">
-              <button
-                class="eventTypeCard isActive"
-                type="button"
-                data-event-mode="single"
-                aria-pressed="true"
-              >
-                <span class="eventTypeIcon" aria-hidden="true">☀️</span>
-                <strong>Journée unique</strong>
-                <small>Un évènement sur une seule journée.</small>
-              </button>
-
-              <button
-                class="eventTypeCard"
-                type="button"
-                data-event-mode="multi"
-                aria-pressed="false"
-              >
-                <span class="eventTypeIcon" aria-hidden="true">📆</span>
-                <strong>Plusieurs jours</strong>
-                <small>Un même évènement avec J1, J2, J3…</small>
-              </button>
-            </div>
-
-            <div class="missionFields">
-              <label class="missionField missionFieldFull">
-                <span>Nom de l’évènement</span>
-                <input
-                  id="eventNameInput"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="Ex : Salon des vins de Salagnon"
-                  required
-                />
-              </label>
-
-              <label class="missionField">
-                <span>Type</span>
-                <select id="eventKindInput">
-                  <option value="MARCHE_ARTISANAL">Marché artisanal</option>
-                  <option value="SALON_DES_VINS">Salon des vins</option>
-                  <option value="MARCHE_DE_NOEL">Marché de Noël</option>
-                  <option value="FOIRE">Foire</option>
-                  <option value="AUTRE">Autre</option>
-                </select>
-              </label>
-
-              <label class="missionField">
-                <span>Ville</span>
-                <input
-                  id="cityInput"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="Ex : Salagnon"
-                />
-              </label>
-
-              <label class="missionField missionFieldFull">
-                <span>Lieu</span>
-                <input
-                  id="locationInput"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="Ex : Salle des fêtes, place du marché..."
-                />
-              </label>
-
-              <label class="missionField">
-                <span id="startDateLabel">Date</span>
-                <input id="startDateInput" type="date" required />
-              </label>
-
-              <label class="missionField" id="endDateField" hidden>
-                <span>Date de fin</span>
-                <input id="endDateInput" type="date" />
-              </label>
-
-              <div class="missionField missionFieldFull">
-                <span>Qui fait l’évènement ?</span>
-
-                <div class="operatorGrid" role="group" aria-label="Vendeurs prévus">
-                  <button
-                    class="operatorChip isActive"
-                    type="button"
-                    data-operator="U_JEROME"
-                    aria-pressed="true"
-                  >
-                    Jérôme
-                  </button>
-
-                  <button
-                    class="operatorChip"
-                    type="button"
-                    data-operator="U_ANTHO"
-                    aria-pressed="false"
-                  >
-                    Antho
-                  </button>
-
-                  <button
-                    class="operatorChip"
-                    type="button"
-                    data-operator="U_WILL"
-                    aria-pressed="false"
-                  >
-                    Will
-                  </button>
-
-                  <button
-                    class="operatorChip"
-                    type="button"
-                    data-operator="AUTRE"
-                    aria-pressed="false"
-                  >
-                    Autre
-                  </button>
-                </div>
-              </div>
-
-              <label class="missionField missionFieldFull" id="otherOperatorField" hidden>
-                <span>Nom de l’autre personne</span>
-                <input
-                  id="otherOperatorInput"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="Ex : famille, renfort..."
-                />
-              </label>
-
-              <label class="missionField missionFieldFull">
-                <span>Note</span>
-                <textarea
-                  id="noteInput"
-                  rows="3"
-                  placeholder="Optionnel : horaires, emplacement, inscription, infos pratiques..."
-                ></textarea>
-              </label>
-            </div>
-
-            <div class="dayPreviewBox" aria-live="polite">
-              <div class="sectionHeader compact">
-                <div>
-                  <p class="sectionKicker">Aperçu</p>
-                  <h2>Journées de vente</h2>
-                </div>
-              </div>
-
-              <div class="dayPreviewList" id="dayPreviewList">
-                <p class="missionEmpty">Choisis une date pour générer J1.</p>
-              </div>
-            </div>
-
-            <div class="missionActions">
-              <button class="btn btnGhost" type="button" id="resetEventBtn">
-                Réinitialiser
-              </button>
-
-              <button
-                class="btn btnGhost"
-                type="submit"
-                data-event-submit-action="save"
-              >
-                Enregistrer
-              </button>
-
-              <button
-                class="btn btnPrimary"
-                type="submit"
-                data-event-submit-action="stock"
-              >
-                Enregistrer puis préparer le stock
-              </button>
-            </div>
-
-            <p class="missionStatus" id="eventStatus" role="status"></p>
-          </form>
-        </section>
-
         <section class="missionPanel missionWizard" aria-labelledby="createStockMissionTitle">
           <div class="sectionHeader compact">
             <div>
               <p class="sectionKicker">Stock partagé</p>
-              <h2 id="createStockMissionTitle">Préparer une mission de stock</h2>
+              <h2 id="createStockMissionTitle">Préparer une mission</h2>
             </div>
           </div>
 
           <form id="stockMissionForm" class="missionForm">
             <p class="missionHelp">
-              Une mission de stock peut regrouper plusieurs journées, même si elles appartiennent à des évènements différents.
-              Exemple : Yzeron le 1er mai puis Salagnon les 2 et 3 mai avec le même stock.
+              Sélectionne une seule journée pour un évènement simple, ou plusieurs journées si le même stock
+              couvre plusieurs marchés/salons.
             </p>
 
             <div class="missionFields">
@@ -289,7 +99,6 @@
                   type="text"
                   autocomplete="off"
                   placeholder="Ex : Week-end 1-3 mai"
-                  required
                 />
               </label>
 
@@ -312,7 +121,7 @@
               </div>
 
               <div class="stockDayList" id="stockDayList">
-                <p class="missionEmpty">Crée d’abord un évènement pour pouvoir choisir ses journées.</p>
+                <p class="missionEmpty">Crée d’abord un évènement depuis les inscriptions.</p>
               </div>
             </div>
 
@@ -344,6 +153,19 @@
 
             <p class="missionStatus" id="stockMissionStatus" role="status"></p>
           </form>
+        </section>
+
+        <section class="missionPanel" aria-labelledby="stockMissionsTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Missions existantes</p>
+              <h2 id="stockMissionsTitle">Stocks préparés</h2>
+            </div>
+          </div>
+
+          <div class="missionsList" id="stockMissionsList">
+            <p class="missionEmpty">Aucune mission de stock préparée pour l’instant.</p>
+          </div>
         </section>
       </main>
     </div>
