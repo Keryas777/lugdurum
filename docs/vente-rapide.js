@@ -35,7 +35,7 @@
     affiliateKey: "sup_afk_XKnrqZNyKlv6T1c29eBSYdrco9uwKz0j",
     currency: "EUR",
     titlePrefix: "Lugdurum",
-    callbackEnabled: true
+    callbackEnabled: false
   };
 
   const SALE_MODES = {
