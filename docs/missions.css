@@ -90,18 +90,45 @@
 }
 
 .heroAction {
-  min-height: 46px;
+  min-height: 48px;
+  width: fit-content;
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 9px;
+  border: 1px solid rgba(138, 90, 43, 0.28);
   border-radius: 999px;
-  padding: 0 16px;
-  color: #fffaf1;
+  padding: 0 17px 0 15px;
+  color: #fffaf1 !important;
   background:
     linear-gradient(135deg, var(--rum-2), var(--rum));
-  box-shadow: 0 12px 26px rgba(138, 90, 43, 0.2);
+  box-shadow:
+    0 12px 26px rgba(138, 90, 43, 0.2),
+    inset 0 1px 0 rgba(255, 250, 241, 0.22);
+  font: inherit;
+  font-size: 0.96rem;
   font-weight: 950;
+  line-height: 1;
   text-align: center;
+  text-decoration: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.heroAction::before {
+  content: "⬅️";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-1px);
+  font-size: 1rem;
+}
+
+.heroAction:active {
+  transform: scale(0.98);
+  box-shadow:
+    0 8px 18px rgba(138, 90, 43, 0.18),
+    inset 0 1px 0 rgba(255, 250, 241, 0.18);
 }
 
 .missionPanel {
@@ -330,6 +357,7 @@
   font: inherit;
   font-weight: 900;
   text-align: center;
+  text-decoration: none;
 }
 
 .missionSmallBtn.primary {
@@ -465,6 +493,10 @@
 
   .missionPanel {
     padding: 14px;
+  }
+
+  .heroAction {
+    width: 100%;
   }
 }
 
