@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Clôture</title>
+
+    <link rel="stylesheet" href="./style.css?v=13" />
+    <link rel="stylesheet" href="./cloture.css?v=1" />
+
+    <script src="./cloture.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-close">
+    <div class="appShell closeShell">
+      <header class="topbar closeTopbar">
+        <a class="backBtn" href="./index.html" aria-label="Retour à l’accueil">
+          ←
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Clôture</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="closeLayout">
+        <section class="closeHero" aria-labelledby="closeHeroTitle">
+          <div>
+            <p class="sectionKicker" id="closeStatusLabel">Journée active</p>
+            <h2 id="closeHeroTitle">Clôturer la journée</h2>
+            <p class="closeMeta" id="closeMissionMeta">
+              Recherche de la mission active…
+            </p>
+          </div>
+
+          <div class="closeHeroStats" aria-label="Résumé de clôture">
+            <article>
+              <span>CA jour</span>
+              <strong id="closeRevenue">—</strong>
+            </article>
+
+            <article>
+              <span>Tickets</span>
+              <strong id="closeTickets">—</strong>
+            </article>
+
+            <article>
+              <span>Écart stock</span>
+              <strong id="closeStockGap">—</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="closePanel noContextPanel" id="noContextPanel" hidden>
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Parcours incomplet</p>
+              <h2>Aucune journée active</h2>
+            </div>
+          </div>
+
+          <p class="closeHelp">
+            La clôture a besoin d’une mission de stock et d’une journée active.
+            En local, c’est normal si rien n’apparaît tant que le parcours n’a pas été créé dans le même navigateur.
+          </p>
+
+          <div class="closeActions">
+            <a class="btn btnPrimary" href="./missions.html">Aller aux missions stock</a>
+            <a class="btn btnGhost" href="./index.html">Retour accueil</a>
+          </div>
+        </section>
+
+        <section class="closePanel" id="salesPanel" aria-labelledby="salesTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Ventes</p>
+              <h2 id="salesTitle">Résumé encaissé</h2>
+            </div>
+          </div>
+
+          <div class="paymentSummary" id="paymentSummary">
+            <p class="closeEmpty">Aucune vente trouvée pour cette journée.</p>
+          </div>
+        </section>
+
+        <section class="closePanel" id="stockPanel" aria-labelledby="stockTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Stock</p>
+              <h2 id="stockTitle">Comptage retour</h2>
+            </div>
+          </div>
+
+          <div class="stockCloseToolbar">
+            <button class="smallTextBtn" type="button" id="fillTheoreticalBtn">
+              Remplir avec le stock théorique
+            </button>
+
+            <button class="smallTextBtn" type="button" id="clearCountsBtn">
+              Vider le comptage
+            </button>
+          </div>
+
+          <div class="stockCloseStats">
+            <article>
+              <span>Initial</span>
+              <strong id="stockInitialTotal">0</strong>
+            </article>
+
+            <article>
+              <span>Vendu</span>
+              <strong id="stockSoldTotal">0</strong>
+            </article>
+
+            <article>
+              <span>Théorique</span>
+              <strong id="stockTheoryTotal">0</strong>
+            </article>
+
+            <article>
+              <span>Compté</span>
+              <strong id="stockCountedTotal">—</strong>
+            </article>
+          </div>
+
+          <div class="stockCloseRows" id="stockCloseRows">
+            <p class="closeEmpty">Aucun stock à contrôler pour le moment.</p>
+          </div>
+        </section>
+
+        <section class="closePanel" id="feesPanel" aria-labelledby="feesTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Frais</p>
+              <h2 id="feesTitle">Dépenses liées</h2>
+            </div>
+          </div>
+
+          <div class="feesSummary" id="feesSummary">
+            <p class="closeEmpty">Aucun frais local trouvé pour cette journée ou mission.</p>
+          </div>
+        </section>
+
+        <section class="closePanel" aria-labelledby="finalizeTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Validation</p>
+              <h2 id="finalizeTitle">Finaliser</h2>
+            </div>
+          </div>
+
+          <label class="closeNoteField">
+            <span>Note de clôture</span>
+            <textarea
+              id="closeNoteInput"
+              rows="3"
+              placeholder="Ex : écart expliqué, forte affluence, stock recompté, météo..."
+            ></textarea>
+          </label>
+
+          <div class="closeActions">
+            <button class="btn btnGhost" type="button" id="saveDraftBtn">
+              Enregistrer brouillon
+            </button>
+
+            <button class="btn btnPrimary" type="button" id="closeDayBtn">
+              Clôturer la journée
+            </button>
+
+            <button class="btn btnGhost" type="button" id="carryNextDayBtn" hidden>
+              Conserver stock pour la prochaine journée
+            </button>
+          </div>
+
+          <p class="closeStatus" id="closeStatus" role="status"></p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
