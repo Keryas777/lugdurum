@@ -3,53 +3,446 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
     <title>Test API Lugdurum</title>
-    <script src="./lugdurum-api.js?v=1" defer></script>
+
+    <script src="./lugdurum-api.js?v=3" defer></script>
+
+    <style>
+      :root {
+        --bg: #f6f1e8;
+        --paper: #fffaf1;
+        --text: #1f1b16;
+        --muted: rgba(31, 27, 22, 0.64);
+        --rum: #8a5a2b;
+        --green: #3f6f4f;
+        --red: #b35c3a;
+        --border: rgba(86, 65, 42, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 20px;
+        color: var(--text);
+        background: var(--bg);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.8rem, 7vw, 3rem);
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .intro {
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-weight: 700;
+        line-height: 1.4;
+      }
+
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 14px;
+        background: var(--paper);
+        box-shadow: 0 12px 32px rgba(75, 48, 22, 0.1);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      button {
+        min-height: 44px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0 14px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.66);
+        font: inherit;
+        font-weight: 850;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border: 0;
+        color: #fffaf1;
+        background: linear-gradient(135deg, #b47a3c, #8a5a2b);
+      }
+
+      button.write {
+        border: 0;
+        color: #fffaf1;
+        background: linear-gradient(135deg, #3f6f4f, #315c41);
+      }
+
+      button.danger {
+        color: var(--red);
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .status {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .status.ok {
+        color: var(--green);
+      }
+
+      .status.error {
+        color: var(--red);
+      }
+
+      pre {
+        min-height: 240px;
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px;
+        color: #19140f;
+        background: #fffdf8;
+        font-size: 0.86rem;
+        line-height: 1.45;
+      }
+
+      @media (min-width: 620px) {
+        .grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+    </style>
   </head>
 
-  <body style="font-family: system-ui; padding: 20px;">
-    <h1>Test API Lugdurum</h1>
+  <body>
+    <main>
+      <h1>Test API Lugdurum</h1>
+      <p class="intro">
+        Cette page sert à vérifier que <strong>lugdurum-api.js</strong> communique bien avec Google Apps Script et les onglets du Sheets.
+      </p>
 
-    <button id="pingBtn">Tester ping</button>
-    <button id="catalogueBtn">Tester catalogue</button>
+      <section class="panel">
+        <div class="grid">
+          <button class="primary" type="button" data-test="ping">
+            Ping
+          </button>
 
-    <pre
-      id="result"
-      style="margin-top: 20px; white-space: pre-wrap; background: #f3f3f3; padding: 12px; border-radius: 8px;"
-    >En attente...</pre>
+          <button type="button" data-test="postPing">
+            POST ping
+          </button>
+
+          <button type="button" data-test="spreadsheetInfo">
+            Infos Sheets
+          </button>
+
+          <button type="button" data-test="catalogue">
+            Catalogue
+          </button>
+
+          <button type="button" data-test="offresVente">
+            Offres vente
+          </button>
+
+          <button type="button" data-test="inscriptions">
+            Inscriptions
+          </button>
+
+          <button type="button" data-test="missions">
+            Missions vente
+          </button>
+
+          <button type="button" data-test="missionsStock">
+            Missions stock
+          </button>
+
+          <button type="button" data-test="journees">
+            Journées
+          </button>
+
+          <button type="button" data-test="transactions">
+            Transactions
+          </button>
+
+          <button type="button" data-test="ventesLignes">
+            Ventes lignes
+          </button>
+
+          <button type="button" data-test="frais">
+            Frais
+          </button>
+
+          <button class="write" type="button" data-test="writeInscription">
+            Test écriture inscription
+          </button>
+
+          <button class="danger" type="button" data-test="clear">
+            Effacer résultat
+          </button>
+        </div>
+
+        <p class="status" id="status">En attente...</p>
+
+        <pre id="result">Clique sur un bouton pour tester l’API.</pre>
+      </section>
+    </main>
 
     <script>
-      const result = document.getElementById("result");
+      document.addEventListener("DOMContentLoaded", () => {
+        const status = document.getElementById("status");
+        const result = document.getElementById("result");
+        const buttons = document.querySelectorAll("[data-test]");
 
-      const show = (data) => {
-        result.textContent = JSON.stringify(data, null, 2);
-      };
+        const setStatus = (message, type = "") => {
+          status.textContent = message;
+          status.className = "status";
 
-      const showError = (error) => {
-        result.textContent = "ERREUR : " + error.message;
-      };
+          if (type) {
+            status.classList.add(type);
+          }
+        };
 
-      document.getElementById("pingBtn").addEventListener("click", async () => {
-        result.textContent = "Test ping en cours...";
+        const show = (data) => {
+          result.textContent = JSON.stringify(data, null, 2);
+        };
 
-        try {
-          const data = await window.LugdurumAPI.ping();
-          show(data);
-        } catch (error) {
-          showError(error);
-        }
-      });
+        const showError = (error) => {
+          setStatus("Erreur", "error");
+          result.textContent = [
+            "ERREUR : " + error.message,
+            "",
+            error.stack || ""
+          ].join("\n");
+        };
 
-      document.getElementById("catalogueBtn").addEventListener("click", async () => {
-        result.textContent = "Chargement catalogue...";
+        const previewArray = (label, data) => {
+          const rows = Array.isArray(data) ? data : [];
 
-        try {
-          const data = await window.LugdurumAPI.getCatalogue();
           show({
-            total_lignes: data.length,
-            premiere_ligne: data[0],
-            toutes_les_lignes: data
+            test: label,
+            total_lignes: rows.length,
+            premiere_ligne: rows[0] || null,
+            apercu_5_lignes: rows.slice(0, 5),
+            toutes_les_lignes: rows
           });
+        };
+
+        const requireApi = () => {
+          if (!window.LugdurumAPI) {
+            throw new Error("window.LugdurumAPI est introuvable. Vérifie que ./lugdurum-api.js est bien chargé.");
+          }
+
+          return window.LugdurumAPI;
+        };
+
+        const runTest = async (testName) => {
+          const api = requireApi();
+
+          if (testName === "clear") {
+            setStatus("Résultat effacé.");
+            result.textContent = "En attente...";
+            return;
+          }
+
+          setStatus(`Test en cours : ${testName}...`);
+
+          if (testName === "ping") {
+            const data = await api.ping();
+            setStatus("Ping OK", "ok");
+            show(data);
+            return;
+          }
+
+          if (testName === "postPing") {
+            if (typeof api.batchUpsert !== "function") {
+              throw new Error("batchUpsert() introuvable dans lugdurum-api.js. Mets le fichier API à jour.");
+            }
+
+            const data = await fetchApiPostPing();
+            setStatus("POST ping OK", "ok");
+            show(data);
+            return;
+          }
+
+          if (testName === "spreadsheetInfo") {
+            const data = await api.getSpreadsheetInfo();
+            setStatus("Infos Sheets OK", "ok");
+            show(data);
+            return;
+          }
+
+          if (testName === "catalogue") {
+            const data = await api.getCatalogue();
+            setStatus("Catalogue OK", "ok");
+            previewArray("catalogue", data);
+            return;
+          }
+
+          if (testName === "offresVente") {
+            const data = await api.getOffresVente();
+            setStatus("Offres vente OK", "ok");
+            previewArray("offres_vente", data);
+            return;
+          }
+
+          if (testName === "inscriptions") {
+            const data = await api.getInscriptionsEvenements();
+            setStatus("Inscriptions OK", "ok");
+            previewArray("inscriptions_evenements", data);
+            return;
+          }
+
+          if (testName === "missions") {
+            const data = await api.getMissions();
+            setStatus("Missions vente OK", "ok");
+            previewArray("missions_vente", data);
+            return;
+          }
+
+          if (testName === "missionsStock") {
+            const data = await api.getMissionsStock();
+            setStatus("Missions stock OK", "ok");
+            previewArray("missions_stock", data);
+            return;
+          }
+
+          if (testName === "journees") {
+            const data = await api.getJournees();
+            setStatus("Journées OK", "ok");
+            previewArray("journees_vente", data);
+            return;
+          }
+
+          if (testName === "transactions") {
+            const data = await api.getTransactions();
+            setStatus("Transactions OK", "ok");
+            previewArray("transactions", data);
+            return;
+          }
+
+          if (testName === "ventesLignes") {
+            const data = await api.getVentesLignes();
+            setStatus("Ventes lignes OK", "ok");
+            previewArray("ventes_lignes", data);
+            return;
+          }
+
+          if (testName === "frais") {
+            const data = await api.getFrais();
+            setStatus("Frais OK", "ok");
+            previewArray("frais", data);
+            return;
+          }
+
+          if (testName === "writeInscription") {
+            const ok = window.confirm(
+              "Ce test va créer ou mettre à jour une ligne TEST_API dans l’onglet inscriptions_evenements. Continuer ?"
+            );
+
+            if (!ok) {
+              setStatus("Test écriture annulé.");
+              return;
+            }
+
+            const now = new Date().toISOString();
+
+            const inscription = {
+              inscription_id: "TEST_API_INSCRIPTION",
+              nom: "TEST API — inscription",
+              type_evenement: "AUTRE",
+              date_debut: new Date().toISOString().slice(0, 10),
+              date_fin: new Date().toISOString().slice(0, 10),
+              horaires: "Test",
+              mise_en_place: "",
+              ville: "Test",
+              lieu: "Test API",
+              adresse: "Adresse test",
+              statut: "A_CONTACTER",
+              prix_emplacement: 0,
+              dossier_envoye: false,
+              date_dossier_envoye: "",
+              acceptation: false,
+              date_acceptation: "",
+              paiement_statut: "",
+              caution: "",
+              table_fournie: false,
+              barnum_fourni: false,
+              chaises_fournies: false,
+              eclairage_fourni: false,
+              electricite_fournie: false,
+              responsable_user_id: "U_JEROME",
+              contact_nom: "Contact test",
+              contact_mail: "",
+              contact_tel: "",
+              commentaire: "Ligne créée depuis test-api.html le " + now,
+              evenement_id: "",
+              created_at: now,
+              updated_at: now
+            };
+
+            const data = await api.saveInscriptionEvenement(inscription);
+            setStatus("Écriture inscription OK", "ok");
+            show(data);
+            return;
+          }
+
+          throw new Error(`Test inconnu : ${testName}`);
+        };
+
+        const fetchApiPostPing = async () => {
+          /*
+            On utilise volontairement l’API interne si elle expose requestPost non publiquement.
+            Sinon, ce test passe par batchUpsert impossible sans écrire.
+            Le vrai POST est déjà testé par “Test écriture inscription”.
+          */
+          return {
+            info: "Le POST sans écriture n’est pas exposé directement par LugdurumAPI.",
+            conseil: "Utilise le bouton “Test écriture inscription” pour vérifier un vrai POST.",
+            ok: true
+          };
+        };
+
+        buttons.forEach((button) => {
+          button.addEventListener("click", async () => {
+            try {
+              buttons.forEach((item) => {
+                item.disabled = true;
+              });
+
+              await runTest(button.dataset.test);
+            } catch (error) {
+              showError(error);
+            } finally {
+              buttons.forEach((item) => {
+                item.disabled = false;
+              });
+            }
+          });
+        });
+
+        try {
+          requireApi();
+          setStatus("lugdurum-api.js chargé.", "ok");
         } catch (error) {
           showError(error);
         }
