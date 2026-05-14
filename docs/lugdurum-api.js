@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const API_URL = "COLLE_ICI_TON_URL_APPS_SCRIPT_EXEC";
+  const API_URL =
+    "https://script.google.com/macros/s/AKfycbzPnUPJsS-cdZk15j8J1cp_jSeE4yv0ki-I9mKt6sO9iPTsAsLMyeY7EBt_Uv954NXd/exec";
 
   const requestGet = async (action) => {
     if (!API_URL) {
@@ -26,7 +27,9 @@
       throw new Error(result.error || `Erreur API sur ${action}`);
     }
 
-    return result.data;
+    return Object.prototype.hasOwnProperty.call(result, "data")
+      ? result.data
+      : result;
   };
 
   const requestPost = async (action, payload = {}) => {
@@ -56,12 +59,18 @@
       throw new Error(result.error || `Erreur API sur ${action}`);
     }
 
-    return result.data;
+    return Object.prototype.hasOwnProperty.call(result, "data")
+      ? result.data
+      : result;
   };
 
   window.LugdurumAPI = {
     ping() {
       return requestGet("ping");
+    },
+
+    postPing() {
+      return requestPost("ping");
     },
 
     getSpreadsheetInfo() {
