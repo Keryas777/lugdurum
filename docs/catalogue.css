@@ -1,0 +1,361 @@
+/* ==============================
+   Page catalogue
+   ============================== */
+
+.page-catalogue .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.catalogueShell {
+  max-width: 780px;
+}
+
+.catalogueTopbar {
+  align-items: flex-start;
+}
+
+.backBtn {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,250,241,.68));
+  box-shadow: var(--shadow-soft);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.page-catalogue .brandLogo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.page-catalogue .brandName {
+  margin-bottom: 5px;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+}
+
+.page-catalogue .brandBlock h1 {
+  max-width: none;
+  font-size: clamp(1.55rem, 6vw, 2.2rem);
+  white-space: nowrap;
+}
+
+.catalogueLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.catalogueHero,
+.cataloguePanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, rgba(255,250,241,.96), rgba(245,231,208,.72));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.catalogueHero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.catalogueHero h2,
+.cataloguePanel h2 {
+  margin: 0;
+  color: var(--text);
+  letter-spacing: -0.045em;
+  line-height: 1.03;
+}
+
+.catalogueHero h2 {
+  font-size: clamp(1.45rem, 6vw, 2.4rem);
+}
+
+.cataloguePanel h2 {
+  font-size: clamp(1.25rem, 5vw, 1.8rem);
+}
+
+.catalogueHeroText {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.catalogueStats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.catalogueStatCard {
+  min-width: 0;
+  border: 1px solid rgba(86,65,42,.16);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,250,241,.56));
+  box-shadow: 0 8px 18px rgba(75,48,22,.07);
+}
+
+.catalogueStatCard span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 850;
+}
+
+.catalogueStatCard strong {
+  display: block;
+  color: var(--rum);
+  font-size: clamp(1.25rem, 6vw, 2rem);
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.cataloguePanel {
+  padding: 16px;
+}
+
+.catalogueList {
+  display: grid;
+  gap: 10px;
+}
+
+.catalogueCard {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: linear-gradient(145deg, rgba(255,255,255,.86), rgba(255,250,241,.62));
+}
+
+.catalogueCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.catalogueCardTitle {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.catalogueCardTitle strong {
+  color: var(--text);
+  font-size: 1.02rem;
+  line-height: 1.15;
+}
+
+.catalogueCardTitle span {
+  color: var(--muted);
+  font-size: .86rem;
+  line-height: 1.3;
+}
+
+.catalogueAmount {
+  color: var(--rum);
+  font-size: 1.12rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.catalogueMeta,
+.revenueMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.catalogueMeta span,
+.catalogueBadge,
+.revenueMeta span,
+.revenueBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--rum);
+  background: var(--amber-soft);
+  font-size: .78rem;
+  font-weight: 900;
+}
+
+.catalogueBadge.isGreen,
+.revenueBadge.isGreen {
+  color: var(--green);
+  background: rgba(63,111,79,.12);
+}
+
+.catalogueBadge.isRed,
+.revenueBadge.isRed {
+  color: var(--red);
+  background: rgba(179,92,58,.12);
+}
+
+.catalogueNote,
+.revenueNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.35;
+}
+
+.catalogueEmpty,
+.revenusEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255,250,241,.48);
+}
+
+.catalogueStatus,
+.revenusStatus {
+  min-height: 1.3em;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.catalogueStatus.isSuccess,
+.revenusStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.catalogueStatus.isError,
+.revenusStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.fieldBlock {
+  display: grid;
+  gap: 7px;
+}
+
+.fieldBlock span {
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 850;
+}
+
+.fieldBlock input,
+.fieldBlock select,
+.fieldBlock textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,250,241,.62));
+  font: inherit;
+  font-weight: 780;
+  outline: none;
+}
+
+.fieldBlock input,
+.fieldBlock select {
+  min-height: var(--tap);
+  padding: 0 14px;
+}
+
+.fieldBlock textarea {
+  resize: vertical;
+  min-height: 94px;
+  padding: 12px 14px;
+  line-height: 1.35;
+}
+
+.revenusForm {
+  display: grid;
+  gap: 14px;
+}
+
+.revenusActions,
+.revenueCardActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.revenueSmallBtn {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--rum);
+  background: rgba(255,250,241,.72);
+  font: inherit;
+  font-weight: 900;
+}
+
+.revenueSmallBtn.danger {
+  color: var(--red);
+}
+
+.smallTextBtn {
+  border: 0;
+  color: var(--rum);
+  background: transparent;
+  font-weight: 900;
+}
+
+@media (min-width: 620px) {
+  .catalogueHero {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .catalogueStats {
+    width: 300px;
+  }
+
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .revenusActions {
+    grid-template-columns: 1fr 1.4fr;
+  }
+
+  .revenueCardActions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 370px) {
+  .catalogueStats {
+    grid-template-columns: 1fr;
+  }
+
+  .catalogueCardHeader {
+    display: grid;
+  }
+
+  .catalogueAmount {
+    justify-self: start;
+  }
+}

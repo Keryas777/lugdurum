@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#a88f68" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+    <title>Lugdurum — Catalogue</title>
+    <link rel="stylesheet" href="./style.css?v=14" />
+    <link rel="stylesheet" href="./catalogue.css?v=1" />
+    <script src="./lugdurum-api.js?v=5" defer></script>
+    <script src="./catalogue.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-catalogue">
+    <div class="appShell catalogueShell">
+      <header class="topbar catalogueTopbar">
+        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">←</a>
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Catalogue</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="catalogueLayout">
+        <section class="catalogueHero">
+          <div>
+            <p class="sectionKicker">Outil secondaire</p>
+            <h2>Parfums, formats et offres</h2>
+            <p class="catalogueHeroText">Lecture du catalogue et des offres de vente.</p>
+          </div>
+          <div class="catalogueStats"><article class="catalogueStatCard"><span>Produits actifs</span><strong id="catalogueActiveCount">—</strong></article>
+            <article class="catalogueStatCard"><span>Offres actives</span><strong id="catalogueOffersCount">—</strong></article></div>
+        </section>
+        <section class="cataloguePanel">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Catalogue</p>
+              <h2>Produits</h2>
+            </div>
+          </div>
+          <div class="catalogueList" id="catalogueList">
+            <p class="catalogueEmpty">Chargement du catalogue…</p>
+          </div>
+          <p class="catalogueStatus" id="catalogueStatus" role="status"></p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
