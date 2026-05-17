@@ -2,14 +2,21 @@
   "use strict";
 
   /*
-    Préparation stock V1 :
+    Préparation stock V2 :
     - Lit la mission de stock active depuis lugdurum_preparation_context.
-    - Charge le catalogue depuis Google Sheets via lugdurum-api.js.
-    - Fallback sur le cache catalogue local.
+    - Charge missions_stock, journees_vente, missions_vente et catalogue depuis Google Sheets.
+    - Fallback localStorage si lecture Sheets impossible.
     - Permet de saisir le stock emmené par SKU, format 50 cL et 20 cL.
-    - Enregistre provisoirement en localStorage avant écriture Google Sheets.
-    - Met à jour la mission de stock et ses journées en local.
+    - Enregistre la préparation dans stock_preparations + stock_preparation_lignes via batchUpsert.
+    - Met à jour missions_stock et journees_vente via l’API.
+    - La file d’attente offline est gérée par lugdurum-api.js.
+    - Le cache localStorage reste utilisé pour garder l’interface exploitable.
   */
+
+  const SHEETS = {
+    stockPreparations: "stock_preparations",
+    stockPreparationLines: "stock_preparation_lignes"
+  };
 
   const STORAGE_KEYS = {
     events: "lugdurum_evenements",
@@ -20,17 +27,23 @@
     activeStockMissionId: "lugdurum_active_stock_mission_id",
     activeJourneeId: "lugdurum_active_journee_id",
     stockPreparations: "lugdurum_stock_preparations",
+    stockPreparationLines: "lugdurum_stock_preparation_lignes",
     catalogueCache: "lugdurum_catalogue_cache"
   };
 
   const state = {
     context: null,
     stockMission: null,
-    journees: [],
+    missionJournees: [],
     events: [],
+    stockMissions: [],
+    journees: [],
     catalogue: [],
+    stockPreparations: [],
+    stockPreparationLines: [],
     quantities: new Map(),
-    dataLoaded: false
+    dataLoaded: false,
+    isSaving: false
   };
 
   const els = {
@@ -48,6 +61,10 @@
     startDayBtn: document.getElementById("startDayBtn"),
     stockStatus: document.getElementById("stockStatus")
   };
+
+  const api = () => window.LugdurumAPI || null;
+
+  const hasApi = () => Boolean(api());
 
   const readJson = (key, fallback) => {
     try {
@@ -90,7 +107,6 @@
   const toBoolean = (value, fallback = false) => {
     if (value === true) return true;
     if (value === false) return false;
-
     if (typeof value === "number") return value !== 0;
 
     const normalized = String(value ?? "")
@@ -113,7 +129,7 @@
   const parseLocalDate = (value) => {
     if (!value) return null;
 
-    const [year, month, day] = value.split("-").map(Number);
+    const [year, month, day] = String(value).split("-").map(Number);
 
     if (!year || !month || !day) return null;
 
@@ -133,15 +149,6 @@
     }).format(date);
   };
 
-  const setStatus = (message, type = "") => {
-    els.stockStatus.textContent = message;
-    els.stockStatus.className = "stockStatus";
-
-    if (type) {
-      els.stockStatus.classList.add(type);
-    }
-  };
-
   const normalizeProduct = (rawProduct, index) => {
     const parfumCode = String(rawProduct.parfum_code || "")
       .trim()
@@ -157,6 +164,7 @@
       gamme_tarif: String(rawProduct.gamme_tarif || "").trim(),
       vendable_seul: toBoolean(rawProduct.vendable_seul, false),
       composable_coffret: toBoolean(rawProduct.composable_coffret, false),
+      cout_revient: toNumber(rawProduct.cout_revient, 0),
       actif: toBoolean(rawProduct.actif, false),
       visible_webapp: Object.prototype.hasOwnProperty.call(rawProduct, "visible_webapp")
         ? toBoolean(rawProduct.visible_webapp, true)
@@ -166,25 +174,79 @@
     };
   };
 
-  const getEvents = () => readJson(STORAGE_KEYS.events, []);
+  const setStatus = (message, type = "") => {
+    els.stockStatus.textContent = message;
+    els.stockStatus.className = "stockStatus";
 
-  const getStockMissions = () => readJson(STORAGE_KEYS.stockMissions, []);
+    if (type) {
+      els.stockStatus.classList.add(type);
+    }
+  };
 
-  const setStockMissions = (missions) =>
-    writeJson(STORAGE_KEYS.stockMissions, missions);
+  const setSaving = (isSaving) => {
+    state.isSaving = isSaving;
 
-  const getJournees = () => readJson(STORAGE_KEYS.journees, []);
+    [
+      els.clearStockBtn,
+      els.saveDraftBtn,
+      els.validateStockBtn,
+      els.startDayBtn
+    ].forEach((button) => {
+      if (button) button.disabled = isSaving;
+    });
+  };
 
-  const setJournees = (journees) => writeJson(STORAGE_KEYS.journees, journees);
+  const getEventId = (eventItem) =>
+    String(eventItem?.mission_id || eventItem?.evenement_id || "").trim();
 
-  const getStockPreparations = () =>
-    readJson(STORAGE_KEYS.stockPreparations, []);
+  const getDayEventId = (journee) =>
+    String(journee?.mission_id || journee?.evenement_id || "").trim();
 
-  const setStockPreparations = (preparations) =>
-    writeJson(STORAGE_KEYS.stockPreparations, preparations);
+  const getStockMissionId = () =>
+    String(
+      state.context?.stock_mission_id ||
+      state.context?.mission_id ||
+      localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
+      localStorage.getItem(STORAGE_KEYS.activeMissionId) ||
+      ""
+    ).trim();
+
+  const getActiveJourneeId = () =>
+    String(
+      state.context?.journee_id ||
+      localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
+      ""
+    ).trim();
+
+  const cacheCoreData = () => {
+    writeJson(STORAGE_KEYS.events, state.events);
+    writeJson(STORAGE_KEYS.stockMissions, state.stockMissions);
+    writeJson(STORAGE_KEYS.journees, state.journees);
+    writeJson(STORAGE_KEYS.catalogueCache, state.catalogue);
+  };
+
+  const cachePreparationData = () => {
+    writeJson(STORAGE_KEYS.stockPreparations, state.stockPreparations);
+    writeJson(STORAGE_KEYS.stockPreparationLines, state.stockPreparationLines);
+  };
+
+  const loadLocalCaches = () => {
+    state.events = readJson(STORAGE_KEYS.events, []);
+    state.stockMissions = readJson(STORAGE_KEYS.stockMissions, []);
+    state.journees = readJson(STORAGE_KEYS.journees, []);
+    state.catalogue = readJson(STORAGE_KEYS.catalogueCache, []);
+    state.stockPreparations = readJson(STORAGE_KEYS.stockPreparations, []);
+    state.stockPreparationLines = readJson(STORAGE_KEYS.stockPreparationLines, []);
+
+    state.catalogue = state.catalogue
+      .map((row, index) => normalizeProduct(row, index))
+      .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
+
+    state.dataLoaded = state.catalogue.length > 0;
+  };
 
   const getEventById = (eventId) =>
-    state.events.find((eventItem) => eventItem.evenement_id === eventId);
+    state.events.find((eventItem) => getEventId(eventItem) === String(eventId || ""));
 
   const getQuantity = (skuId) =>
     toNumber(state.quantities.get(skuId), 0);
@@ -197,6 +259,66 @@
     } else {
       state.quantities.delete(skuId);
     }
+  };
+
+  const refreshMissionContextFromState = () => {
+    const missionId = getStockMissionId();
+
+    if (!missionId) {
+      state.stockMission = null;
+      state.missionJournees = [];
+      return false;
+    }
+
+    state.stockMission =
+      state.stockMissions.find((mission) => String(mission.mission_id || "") === missionId) ||
+      null;
+
+    state.missionJournees = state.journees
+      .filter((journee) => {
+        const stockMissionId = String(journee.stock_mission_id || "").trim();
+        const legacyMissionId = String(journee.mission_id || "").trim();
+
+        return stockMissionId === missionId || legacyMissionId === missionId;
+      })
+      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+    return Boolean(state.stockMission);
+  };
+
+  const loadContext = () => {
+    const context = readJson(STORAGE_KEYS.preparationContext, null);
+
+    state.context = context;
+
+    const hasContext = Boolean(
+      context?.stock_mission_id ||
+      context?.mission_id ||
+      localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
+      localStorage.getItem(STORAGE_KEYS.activeMissionId)
+    );
+
+    if (!hasContext) {
+      state.stockMission = null;
+      state.missionJournees = [];
+
+      setStatus(
+        "Aucune mission de stock active. Retourne dans Évènements puis clique sur préparer le stock.",
+        "isError"
+      );
+
+      return false;
+    }
+
+    const ok = refreshMissionContextFromState();
+
+    if (!ok) {
+      setStatus("Mission de stock introuvable dans les données locales.", "isError");
+      return false;
+    }
+
+    return true;
   };
 
   const getTotals = () => {
@@ -265,7 +387,7 @@
   };
 
   const getPreparationId = () => {
-    const missionId = state.context?.stock_mission_id || state.context?.mission_id || "";
+    const missionId = getStockMissionId();
     return missionId ? `STOCK_PREP_${missionId}` : "";
   };
 
@@ -274,28 +396,172 @@
 
     if (!preparationId) return null;
 
-    return getStockPreparations().find(
+    return state.stockPreparations.find(
       (item) => item.stock_preparation_id === preparationId
+    );
+  };
+
+  const getExistingPreparationLines = () => {
+    const preparationId = getPreparationId();
+
+    if (!preparationId) return [];
+
+    return state.stockPreparationLines.filter(
+      (line) => line.stock_preparation_id === preparationId
     );
   };
 
   const hydrateExistingPreparation = () => {
     const existing = getExistingPreparation();
 
-    if (!existing) return;
-
-    if (existing.note) {
+    if (existing?.note) {
       els.stockNoteInput.value = existing.note;
     }
 
-    if (Array.isArray(existing.lignes)) {
-      existing.lignes.forEach((line) => {
-        setQuantity(line.sku_id, line.quantite_preparee);
+    getExistingPreparationLines().forEach((line) => {
+      setQuantity(line.sku_id, line.quantite_preparee);
+    });
+  };
+
+  const buildBatchOperation = ({ sheet, keyField, row }) => ({
+    action: "upsert",
+    type: "upsert",
+
+    sheet,
+    sheet_name: sheet,
+    sheetName: sheet,
+
+    key: keyField,
+    key_field: keyField,
+    keyField,
+
+    row,
+    data: row
+  });
+
+  const saveLocalPreparation = ({ preparation, lignes }) => {
+    const preparationIndex = state.stockPreparations.findIndex(
+      (item) => item.stock_preparation_id === preparation.stock_preparation_id
+    );
+
+    if (preparationIndex >= 0) {
+      state.stockPreparations[preparationIndex] = preparation;
+    } else {
+      state.stockPreparations.push(preparation);
+    }
+
+    state.stockPreparationLines = state.stockPreparationLines.filter(
+      (line) => line.stock_preparation_id !== preparation.stock_preparation_id
+    );
+
+    state.stockPreparationLines.push(...lignes);
+
+    cachePreparationData();
+  };
+
+  const upsertLocalStockMission = (mission) => {
+    const index = state.stockMissions.findIndex(
+      (item) => item.mission_id === mission.mission_id
+    );
+
+    if (index >= 0) {
+      state.stockMissions[index] = mission;
+    } else {
+      state.stockMissions.push(mission);
+    }
+
+    state.stockMission = mission;
+    cacheCoreData();
+  };
+
+  const upsertLocalJournees = (journees) => {
+    journees.forEach((journee) => {
+      const index = state.journees.findIndex(
+        (item) => item.journee_id === journee.journee_id
+      );
+
+      if (index >= 0) {
+        state.journees[index] = journee;
+      } else {
+        state.journees.push(journee);
+      }
+    });
+
+    refreshMissionContextFromState();
+    cacheCoreData();
+  };
+
+  const getPendingWritesCount = () => {
+    if (hasApi() && typeof api().getPendingWritesCount === "function") {
+      return api().getPendingWritesCount();
+    }
+
+    return 0;
+  };
+
+  const savePreparationToApi = async ({ preparation, lignes }) => {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    if (typeof api().saveStockPreparation === "function") {
+      await api().saveStockPreparation({
+        ...preparation,
+        lignes
       });
+      return;
+    }
+
+    if (typeof api().batchUpsert === "function") {
+      const operations = [
+        buildBatchOperation({
+          sheet: SHEETS.stockPreparations,
+          keyField: "stock_preparation_id",
+          row: preparation
+        }),
+        ...lignes.map((line) =>
+          buildBatchOperation({
+            sheet: SHEETS.stockPreparationLines,
+            keyField: "stock_preparation_ligne_id",
+            row: line
+          })
+        )
+      ];
+
+      await api().batchUpsert(operations);
+      return;
+    }
+
+    throw new Error("Aucune méthode API disponible pour écrire la préparation stock.");
+  };
+
+  const saveStockMissionToApi = async (mission) => {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    if (typeof api().saveMissionStock !== "function") {
+      throw new Error("LugdurumAPI.saveMissionStock() est indisponible.");
+    }
+
+    await api().saveMissionStock(mission);
+  };
+
+  const saveJourneesToApi = async (journees) => {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    if (typeof api().saveJournee !== "function") {
+      throw new Error("LugdurumAPI.saveJournee() est indisponible.");
+    }
+
+    for (const journee of journees) {
+      await api().saveJournee(journee);
     }
   };
 
-  const savePreparation = (status = "brouillon") => {
+  const buildPreparationPayload = (status = "brouillon") => {
     if (!state.stockMission) {
       setStatus("Aucune mission de stock active.", "isError");
       return null;
@@ -343,59 +609,30 @@
       total_50cl: totals.total50,
       total_20cl: totals.total20,
       parfums_count: totals.flavourCount,
+      lignes_count: lignes.length,
       note: els.stockNoteInput.value.trim(),
       created_at: existing?.created_at || now,
-      updated_at: now,
-      lignes
+      updated_at: now
     };
 
-    const preparations = getStockPreparations();
-    const index = preparations.findIndex(
-      (item) => item.stock_preparation_id === preparationId
-    );
-
-    if (index >= 0) {
-      preparations[index] = preparation;
-    } else {
-      preparations.push(preparation);
-    }
-
-    setStockPreparations(preparations);
-
-    if (status === "valide") {
-      markStockMissionReady();
-    }
-
-    setStatus(
-      status === "valide" ? "Stock validé." : "Brouillon enregistré.",
-      "isSuccess"
-    );
-
-    renderAll();
-
-    return preparation;
+    return {
+      preparation,
+      lignes
+    };
   };
 
-  const markStockMissionReady = () => {
+  const markStockMissionReadyLocal = () => {
     const now = new Date().toISOString();
     const missionId = state.stockMission.mission_id;
 
-    const missions = getStockMissions().map((mission) => {
-      if (mission.mission_id !== missionId) return mission;
+    const updatedMission = {
+      ...state.stockMission,
+      statut: state.stockMission.statut === "en_cours" ? "en_cours" : "pret",
+      stock_prepare: true,
+      updated_at: now
+    };
 
-      return {
-        ...mission,
-        statut: mission.statut === "en_cours" ? "en_cours" : "pret",
-        stock_prepare: true,
-        updated_at: now
-      };
-    });
-
-    const journees = getJournees().map((journee) => {
-      if (journee.mission_id !== missionId && journee.stock_mission_id !== missionId) {
-        return journee;
-      }
-
+    const updatedJournees = state.missionJournees.map((journee) => {
       const nextStatus =
         journee.statut === "en_cours" || journee.statut === "cloture"
           ? journee.statut
@@ -403,76 +640,144 @@
 
       return {
         ...journee,
+        stock_mission_id: missionId,
         statut: nextStatus,
         updated_at: now
       };
     });
 
-    setStockMissions(missions);
-    setJournees(journees);
+    upsertLocalStockMission(updatedMission);
+    upsertLocalJournees(updatedJournees);
 
-    state.stockMission = missions.find((mission) => mission.mission_id === missionId);
-    state.journees = journees
-      .filter((journee) => journee.mission_id === missionId || journee.stock_mission_id === missionId)
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return {
+      mission: updatedMission,
+      journees: updatedJournees
+    };
   };
 
-  const startDay = () => {
-    const preparation = savePreparation("valide");
+  const markDayStartedLocal = (journeeId) => {
+    const now = new Date().toISOString();
+    const missionId = state.stockMission.mission_id;
+
+    const updatedMission = {
+      ...state.stockMission,
+      statut: "en_cours",
+      stock_prepare: true,
+      updated_at: now
+    };
+
+    const updatedJournees = state.missionJournees.map((journee) => {
+      if (journee.journee_id !== journeeId) return journee;
+
+      return {
+        ...journee,
+        stock_mission_id: missionId,
+        statut: "en_cours",
+        started_at: journee.started_at || now,
+        updated_at: now
+      };
+    });
+
+    upsertLocalStockMission(updatedMission);
+    upsertLocalJournees(updatedJournees);
+
+    return {
+      mission: updatedMission,
+      journees: updatedJournees
+    };
+  };
+
+  const savePreparation = async (status = "brouillon") => {
+    if (state.isSaving) return null;
+
+    const payload = buildPreparationPayload(status);
+
+    if (!payload) return null;
+
+    const readyPatch =
+      status === "valide" ? markStockMissionReadyLocal() : null;
+
+    saveLocalPreparation(payload);
+
+    setSaving(true);
+    setStatus(status === "valide" ? "Validation du stock..." : "Enregistrement du brouillon...");
+
+    try {
+      await savePreparationToApi(payload);
+
+      if (readyPatch) {
+        await saveStockMissionToApi(readyPatch.mission);
+        await saveJourneesToApi(readyPatch.journees);
+      }
+
+      const pendingCount = getPendingWritesCount();
+
+      setStatus(
+        pendingCount > 0
+          ? `${status === "valide" ? "Stock validé" : "Brouillon enregistré"} · ${pendingCount} écriture(s) en attente de synchronisation.`
+          : status === "valide"
+            ? "Stock validé."
+            : "Brouillon enregistré.",
+        pendingCount > 0 ? "isError" : "isSuccess"
+      );
+
+      renderAll();
+
+      return payload;
+    } catch (error) {
+      setStatus(`Erreur enregistrement : ${error.message}`, "isError");
+      renderAll();
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startDay = async () => {
+    const preparation = await savePreparation("valide");
 
     if (!preparation) return;
 
     const missionId = state.stockMission.mission_id;
-    const preferredDayId = state.context?.journee_id || "";
+    const preferredDayId = getActiveJourneeId();
+
     const firstOpenDay =
-      state.journees.find((journee) => journee.journee_id === preferredDayId) ||
-      state.journees.find((journee) => journee.statut !== "cloture" && journee.statut !== "annule") ||
-      state.journees[0];
+      state.missionJournees.find((journee) => journee.journee_id === preferredDayId) ||
+      state.missionJournees.find((journee) => journee.statut !== "cloture" && journee.statut !== "annule") ||
+      state.missionJournees[0];
 
     if (!firstOpenDay) {
       setStatus("Impossible de trouver une journée à démarrer.", "isError");
       return;
     }
 
-    const now = new Date().toISOString();
+    const startedPatch = markDayStartedLocal(firstOpenDay.journee_id);
 
-    const missions = getStockMissions().map((mission) => {
-      if (mission.mission_id !== missionId) return mission;
+    setSaving(true);
+    setStatus("Démarrage de la journée...");
 
-      return {
-        ...mission,
-        statut: "en_cours",
-        stock_prepare: true,
-        updated_at: now
-      };
-    });
+    try {
+      await saveStockMissionToApi(startedPatch.mission);
+      await saveJourneesToApi(startedPatch.journees);
 
-    const journees = getJournees().map((journee) => {
-      if (journee.journee_id !== firstOpenDay.journee_id) return journee;
+      localStorage.setItem(STORAGE_KEYS.activeMissionId, missionId);
+      localStorage.setItem(STORAGE_KEYS.activeStockMissionId, missionId);
+      localStorage.setItem(STORAGE_KEYS.activeJourneeId, firstOpenDay.journee_id);
 
-      return {
-        ...journee,
-        statut: "en_cours",
-        updated_at: now
-      };
-    });
+      writeJson(STORAGE_KEYS.preparationContext, {
+        mission_id: missionId,
+        stock_mission_id: missionId,
+        journee_id: firstOpenDay.journee_id,
+        step: "vente_rapide",
+        updated_at: new Date().toISOString()
+      });
 
-    setStockMissions(missions);
-    setJournees(journees);
-
-    localStorage.setItem(STORAGE_KEYS.activeMissionId, missionId);
-    localStorage.setItem(STORAGE_KEYS.activeStockMissionId, missionId);
-    localStorage.setItem(STORAGE_KEYS.activeJourneeId, firstOpenDay.journee_id);
-
-    writeJson(STORAGE_KEYS.preparationContext, {
-      mission_id: missionId,
-      stock_mission_id: missionId,
-      journee_id: firstOpenDay.journee_id,
-      step: "vente_rapide",
-      updated_at: now
-    });
-
-    window.location.href = "./vente-rapide.html";
+      window.location.href = "./vente-rapide.html";
+    } catch (error) {
+      setStatus(`Stock validé, mais démarrage incomplet : ${error.message}`, "isError");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const renderMissionContext = () => {
@@ -492,15 +797,15 @@
   };
 
   const renderDays = () => {
-    if (!state.journees.length) {
+    if (!state.missionJournees.length) {
       els.stockDayChips.innerHTML =
         `<p class="stockEmpty">Aucune journée liée à cette mission de stock.</p>`;
       return;
     }
 
-    els.stockDayChips.innerHTML = state.journees
+    els.stockDayChips.innerHTML = state.missionJournees
       .map((journee) => {
-        const eventItem = getEventById(journee.evenement_id);
+        const eventItem = getEventById(getDayEventId(journee));
         const eventName = eventItem ? eventItem.nom : "Évènement inconnu";
         const city = eventItem?.ville ? ` · ${eventItem.ville}` : "";
 
@@ -509,45 +814,9 @@
             <strong>${escapeHtml(formatDisplayDate(journee.date))}</strong>
             <span>
               ${escapeHtml(eventName)}
-              ${eventItem && eventItem.date_debut !== eventItem.date_fin ? ` ${escapeHtml(journee.jour_label)}` : ""}
+              ${eventItem && eventItem.date_debut !== eventItem.date_fin ? ` ${escapeHtml(journee.jour_label || "")}` : ""}
               ${escapeHtml(city)}
             </span>
-          </article>
-        `;
-      })
-      .join("");
-  };
-
-  const renderStockRows = () => {
-    if (!state.dataLoaded && state.catalogue.length === 0) {
-      els.stockRows.innerHTML = `<p class="stockEmpty">Chargement du catalogue…</p>`;
-      return;
-    }
-
-    const groups = getGroupedCatalogue();
-
-    if (groups.length === 0) {
-      els.stockRows.innerHTML =
-        `<p class="stockEmpty">Aucun produit actif trouvé dans le catalogue.</p>`;
-      return;
-    }
-
-    els.stockRows.innerHTML = groups
-      .map((group) => {
-        const product50 = group.products.find((product) => product.format_cl === 50);
-        const product20 = group.products.find((product) => product.format_cl === 20);
-
-        return `
-          <article class="stockRow">
-            <div class="stockProductTitle">
-              <strong>${escapeHtml(group.parfum_code)}</strong>
-              <span>${escapeHtml(group.parfum_nom)}</span>
-            </div>
-
-            <div class="stockFormatGrid">
-              ${renderFormatControl(product50, "50 cL")}
-              ${renderFormatControl(product20, "20 cL")}
-            </div>
           </article>
         `;
       })
@@ -603,6 +872,42 @@
     `;
   };
 
+  const renderStockRows = () => {
+    if (!state.dataLoaded && state.catalogue.length === 0) {
+      els.stockRows.innerHTML = `<p class="stockEmpty">Chargement du catalogue…</p>`;
+      return;
+    }
+
+    const groups = getGroupedCatalogue();
+
+    if (groups.length === 0) {
+      els.stockRows.innerHTML =
+        `<p class="stockEmpty">Aucun produit actif trouvé dans le catalogue.</p>`;
+      return;
+    }
+
+    els.stockRows.innerHTML = groups
+      .map((group) => {
+        const product50 = group.products.find((product) => product.format_cl === 50);
+        const product20 = group.products.find((product) => product.format_cl === 20);
+
+        return `
+          <article class="stockRow">
+            <div class="stockProductTitle">
+              <strong>${escapeHtml(group.parfum_code)}</strong>
+              <span>${escapeHtml(group.parfum_nom)}</span>
+            </div>
+
+            <div class="stockFormatGrid">
+              ${renderFormatControl(product50, "50 cL")}
+              ${renderFormatControl(product20, "20 cL")}
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  };
+
   const renderTotals = () => {
     const totals = getTotals();
 
@@ -619,75 +924,54 @@
     renderTotals();
   };
 
-  const loadContext = () => {
-    const context = readJson(STORAGE_KEYS.preparationContext, null);
-
-    if (!context || (!context.stock_mission_id && !context.mission_id)) {
-      state.context = null;
-      state.stockMission = null;
-      state.journees = [];
-
-      setStatus(
-        "Aucune mission de stock active. Retourne dans Évènements puis clique sur préparer le stock.",
-        "isError"
-      );
-
-      return false;
+  const loadRemoteData = async () => {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
     }
 
-    const missionId = context.stock_mission_id || context.mission_id;
-    const missions = getStockMissions();
-    const journees = getJournees();
+    const optional = async (fnName, fallback = []) => {
+      if (typeof api()[fnName] !== "function") return fallback;
 
-    state.context = context;
-    state.events = getEvents();
-    state.stockMission = missions.find((mission) => mission.mission_id === missionId) || null;
-    state.journees = journees
-      .filter((journee) => journee.mission_id === missionId || journee.stock_mission_id === missionId)
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-
-    if (!state.stockMission) {
-      setStatus("Mission de stock introuvable.", "isError");
-      return false;
-    }
-
-    return true;
-  };
-
-  const loadCatalogue = async () => {
-    try {
-      if (!window.LugdurumAPI || typeof window.LugdurumAPI.getCatalogue !== "function") {
-        throw new Error("lugdurum-api.js n’est pas chargé.");
+      try {
+        const result = await api()[fnName]();
+        return Array.isArray(result) ? result : fallback;
+      } catch {
+        return fallback;
       }
+    };
 
-      const rows = await window.LugdurumAPI.getCatalogue();
+    const [
+      events,
+      stockMissions,
+      journees,
+      catalogue,
+      stockPreparations,
+      stockPreparationLines
+    ] = await Promise.all([
+      api().getMissions(),
+      api().getMissionsStock(),
+      api().getJournees(),
+      api().getCatalogue(),
+      optional("getStockPreparations", state.stockPreparations),
+      optional("getStockPreparationLines", state.stockPreparationLines)
+    ]);
 
-      state.catalogue = rows
-        .map((row, index) => normalizeProduct(row, index))
-        .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
+    state.events = Array.isArray(events) ? events : [];
+    state.stockMissions = Array.isArray(stockMissions) ? stockMissions : [];
+    state.journees = Array.isArray(journees) ? journees : [];
+    state.stockPreparations = stockPreparations;
+    state.stockPreparationLines = stockPreparationLines;
 
-      state.dataLoaded = true;
+    state.catalogue = catalogue
+      .map((row, index) => normalizeProduct(row, index))
+      .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
 
-      writeJson(STORAGE_KEYS.catalogueCache, state.catalogue);
-    } catch (error) {
-      const cached = readJson(STORAGE_KEYS.catalogueCache, []);
+    state.dataLoaded = true;
 
-      if (cached.length > 0) {
-        state.catalogue = cached
-          .map((row, index) => normalizeProduct(row, index))
-          .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
+    cacheCoreData();
+    cachePreparationData();
 
-        state.dataLoaded = true;
-
-        setStatus("Catalogue chargé depuis le cache local.", "isError");
-        return;
-      }
-
-      state.catalogue = [];
-      state.dataLoaded = true;
-
-      setStatus(`Impossible de charger le catalogue : ${error.message}`, "isError");
-    }
+    refreshMissionContextFromState();
   };
 
   document.addEventListener("click", (event) => {
@@ -700,7 +984,6 @@
       setQuantity(skuId, current + delta);
       setStatus("");
       renderAll();
-      return;
     }
   });
 
@@ -729,17 +1012,38 @@
 
   els.startDayBtn.addEventListener("click", startDay);
 
+  window.addEventListener("lugdurum:sync-status", (event) => {
+    const detail = event.detail || {};
+
+    if (Number(detail.pending_count || 0) > 0) {
+      setStatus(`${detail.pending_count} écriture(s) en attente de synchronisation.`, "isError");
+    }
+  });
+
   const init = async () => {
-    renderAll();
-
-    const hasContext = loadContext();
-    renderAll();
-
-    if (!hasContext) return;
-
-    await loadCatalogue();
+    loadLocalCaches();
+    loadContext();
     hydrateExistingPreparation();
     renderAll();
+
+    try {
+      setStatus("Chargement depuis Google Sheets...");
+      await loadRemoteData();
+
+      const hasContext = loadContext();
+      hydrateExistingPreparation();
+      renderAll();
+
+      if (hasContext) {
+        setStatus("");
+      }
+    } catch (error) {
+      setStatus(
+        `Lecture Sheets impossible. Données locales affichées : ${error.message}`,
+        "isError"
+      );
+      renderAll();
+    }
   };
 
   init();
