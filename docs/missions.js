@@ -2,14 +2,15 @@
   "use strict";
 
   /*
-    Missions V5 :
+    Missions V6 — connecté Google Sheets :
     - La page ne crée plus d’évènements.
-    - Les évènements / journées viennent de la page inscriptions-evenements.
-    - Cette page sert à créer une mission de stock à partir d’une ou plusieurs journées.
-    - Une mission de stock peut regrouper plusieurs évènements.
-    - Une seule journée suffit pour un évènement simple.
-    - Après création, on peut envoyer vers preparation-stock.html.
-    - Stockage localStorage provisoire avant connexion Google Sheets.
+    - Les évènements viennent de missions_vente, créés depuis inscriptions-evenements.
+    - Les journées viennent de journees_vente.
+    - Cette page crée des missions de stock dans missions_stock.
+    - Une mission de stock rattache une ou plusieurs journées via stock_mission_id.
+    - Le champ mission_id des journées reste l’évènement / mission de vente d’origine.
+    - Écriture via LugdurumAPI, avec file d’attente offline gérée dans lugdurum-api.js.
+    - Cache localStorage conservé pour affichage de secours.
   */
 
   const CURRENT_USER = {
@@ -49,7 +50,13 @@
 
   const state = {
     selectedDayIds: new Set(),
-    stockSubmitAction: "save"
+    stockSubmitAction: "save",
+    events: [],
+    stockMissions: [],
+    journees: [],
+    isLoading: false,
+    isSaving: false,
+    usingCache: false
   };
 
   const els = {
@@ -63,6 +70,10 @@
     resetStockMissionBtn: document.getElementById("resetStockMissionBtn"),
     stockMissionStatus: document.getElementById("stockMissionStatus")
   };
+
+  const api = () => window.LugdurumAPI || null;
+
+  const hasApi = () => Boolean(api());
 
   const readJson = (key, fallback) => {
     try {
@@ -99,7 +110,7 @@
   const parseLocalDate = (value) => {
     if (!value) return null;
 
-    const [year, month, day] = value.split("-").map(Number);
+    const [year, month, day] = String(value).split("-").map(Number);
 
     if (!year || !month || !day) return null;
 
@@ -127,33 +138,66 @@
     }).format(date);
   };
 
-  const getEvents = () => readJson(STORAGE_KEYS.events, []);
+  const getEventId = (eventItem) =>
+    String(eventItem?.mission_id || eventItem?.evenement_id || "").trim();
 
-  const setEvents = (events) => writeJson(STORAGE_KEYS.events, events);
+  const getDayEventId = (journee) =>
+    String(journee?.mission_id || journee?.evenement_id || "").trim();
 
-  const getStockMissions = () => readJson(STORAGE_KEYS.stockMissions, []);
+  const cacheAll = () => {
+    writeJson(STORAGE_KEYS.events, state.events);
+    writeJson(STORAGE_KEYS.stockMissions, state.stockMissions);
+    writeJson(STORAGE_KEYS.journees, state.journees);
+  };
 
-  const setStockMissions = (stockMissions) =>
-    writeJson(STORAGE_KEYS.stockMissions, stockMissions);
+  const loadFromCache = () => {
+    state.events = readJson(STORAGE_KEYS.events, []);
+    state.stockMissions = readJson(STORAGE_KEYS.stockMissions, []);
+    state.journees = readJson(STORAGE_KEYS.journees, []);
+    state.usingCache = true;
+  };
 
-  const getJournees = () => readJson(STORAGE_KEYS.journees, []);
+  const getEvents = () => state.events;
 
-  const setJournees = (journees) => writeJson(STORAGE_KEYS.journees, journees);
+  const getStockMissions = () => state.stockMissions;
+
+  const getJournees = () => state.journees;
+
+  const upsertLocal = (collectionName, idKey, item) => {
+    const collection = state[collectionName];
+    const id = String(item[idKey] || "");
+    const index = collection.findIndex((entry) => String(entry[idKey] || "") === id);
+
+    if (index >= 0) {
+      collection[index] = item;
+    } else {
+      collection.push(item);
+    }
+
+    cacheAll();
+  };
+
+  const upsertManyLocal = (collectionName, idKey, items) => {
+    items.forEach((item) => upsertLocal(collectionName, idKey, item));
+    cacheAll();
+  };
 
   const getEventById = (eventId) =>
-    getEvents().find((eventItem) => eventItem.evenement_id === eventId);
+    getEvents().find((eventItem) => getEventId(eventItem) === String(eventId || ""));
 
   const getStockMissionById = (missionId) =>
-    getStockMissions().find((mission) => mission.mission_id === missionId);
+    getStockMissions().find((mission) => String(mission.mission_id || "") === String(missionId || ""));
 
   const getEventJournees = (eventId) =>
     getJournees()
-      .filter((journee) => journee.evenement_id === eventId)
+      .filter((journee) => getDayEventId(journee) === String(eventId || ""))
+      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   const getStockMissionJournees = (missionId) =>
     getJournees()
-      .filter((journee) => journee.mission_id === missionId || journee.stock_mission_id === missionId)
+      .filter((journee) => String(journee.stock_mission_id || "") === String(missionId || ""))
+      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   const getFirstOpenDayForStockMission = (missionId) => {
@@ -183,7 +227,7 @@
   };
 
   const getDayEventTitle = (journee) => {
-    const eventItem = getEventById(journee.evenement_id);
+    const eventItem = getEventById(getDayEventId(journee));
 
     if (!eventItem) {
       return `${journee.jour_label || "J?"} · ${formatDisplayDate(journee.date)}`;
@@ -206,27 +250,38 @@
     }
   };
 
-  const setPreparationContext = (missionId, journeeId) => {
-    localStorage.setItem(STORAGE_KEYS.activeMissionId, missionId);
-    localStorage.setItem(STORAGE_KEYS.activeStockMissionId, missionId);
+  const setSaving = (isSaving) => {
+    state.isSaving = isSaving;
+
+    [
+      els.resetStockMissionBtn,
+      els.stockMissionForm?.querySelector("[type='submit']")
+    ].forEach((button) => {
+      if (button) button.disabled = isSaving;
+    });
+  };
+
+  const setPreparationContext = (stockMissionId, journeeId) => {
+    localStorage.setItem(STORAGE_KEYS.activeMissionId, stockMissionId);
+    localStorage.setItem(STORAGE_KEYS.activeStockMissionId, stockMissionId);
     localStorage.setItem(STORAGE_KEYS.activeJourneeId, journeeId);
 
     writeJson(STORAGE_KEYS.preparationContext, {
-      mission_id: missionId,
-      stock_mission_id: missionId,
+      mission_id: stockMissionId,
+      stock_mission_id: stockMissionId,
       journee_id: journeeId,
       step: "preparation_stock",
       updated_at: new Date().toISOString()
     });
   };
 
-  const setFraisContext = (missionId) => {
-    localStorage.setItem(STORAGE_KEYS.activeMissionId, missionId);
-    localStorage.setItem(STORAGE_KEYS.activeStockMissionId, missionId);
+  const setFraisContext = (stockMissionId) => {
+    localStorage.setItem(STORAGE_KEYS.activeMissionId, stockMissionId);
+    localStorage.setItem(STORAGE_KEYS.activeStockMissionId, stockMissionId);
 
     writeJson(STORAGE_KEYS.fraisContext, {
-      mission_id: missionId,
-      stock_mission_id: missionId,
+      mission_id: stockMissionId,
+      stock_mission_id: stockMissionId,
       journee_id: "",
       source: "missions",
       updated_at: new Date().toISOString()
@@ -235,14 +290,14 @@
 
   const getSelectableDays = () =>
     getJournees()
-      .filter((journee) => journee.statut !== "annule")
-      .filter((journee) => !journee.mission_id && !journee.stock_mission_id)
+      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
+      .filter((journee) => !String(journee.stock_mission_id || "").trim())
       .sort((a, b) => {
         const byDate = String(a.date).localeCompare(String(b.date));
         if (byDate !== 0) return byDate;
 
-        const eventA = getEventById(a.evenement_id);
-        const eventB = getEventById(b.evenement_id);
+        const eventA = getEventById(getDayEventId(a));
+        const eventB = getEventById(getDayEventId(b));
 
         return String(eventA?.nom || "").localeCompare(String(eventB?.nom || ""));
       });
@@ -250,7 +305,7 @@
   const buildDefaultStockMissionName = (days) => {
     if (!days.length) return "";
 
-    const events = [...new Set(days.map((day) => day.evenement_id))]
+    const events = [...new Set(days.map((day) => getDayEventId(day)))]
       .map((eventId) => getEventById(eventId))
       .filter(Boolean);
 
@@ -277,16 +332,14 @@
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   };
 
-  const createStockMission = ({ fromDays = null, nameOverride = "" } = {}) => {
-    const selectedDays = getSelectedDays(fromDays);
-
+  const buildStockMissionPayload = ({ selectedDays, nameOverride = "" }) => {
     if (selectedDays.length === 0) {
       setStockStatus("Sélectionne au moins une journée pour cette mission de stock.", "isError");
       return null;
     }
 
-    const alreadyLinked = selectedDays.find(
-      (journee) => journee.mission_id || journee.stock_mission_id
+    const alreadyLinked = selectedDays.find((journee) =>
+      String(journee.stock_mission_id || "").trim()
     );
 
     if (alreadyLinked) {
@@ -325,42 +378,90 @@
 
     const selectedSet = new Set(selectedDays.map((journee) => journee.journee_id));
 
-    const updatedJournees = getJournees().map((journee) => {
-      if (!selectedSet.has(journee.journee_id)) return journee;
-
-      return {
+    const updatedJournees = getJournees()
+      .filter((journee) => selectedSet.has(journee.journee_id))
+      .map((journee) => ({
         ...journee,
-        mission_id: missionId,
         stock_mission_id: missionId,
         statut: journee.statut === "prevu" ? "stock_a_preparer" : journee.statut,
         updated_at: now
-      };
-    });
-
-    const stockMissions = getStockMissions();
-
-    stockMissions.push(mission);
-
-    setStockMissions(stockMissions);
-    setJournees(updatedJournees);
-
-    state.selectedDayIds = new Set();
-
-    setStockStatus("Mission de stock enregistrée.", "isSuccess");
+      }));
 
     return {
       mission,
-      jours: selectedDays
+      jours: updatedJournees
     };
   };
 
-  const prepareEventStock = (eventId) => {
+  const saveStockMissionBundle = async ({ mission, jours }) => {
+    if (
+      hasApi() &&
+      typeof api().saveMissionStockBundle === "function"
+    ) {
+      try {
+        await api().saveMissionStockBundle({
+          mission,
+          mission_stock: mission,
+          journees: jours
+        });
+
+        upsertLocal("stockMissions", "mission_id", mission);
+        upsertManyLocal("journees", "journee_id", jours);
+        return;
+      } catch (error) {
+        console.warn("Bundle mission stock impossible, tentative en écritures séparées.", error);
+      }
+    }
+
+    if (hasApi() && typeof api().saveMissionStock === "function") {
+      await api().saveMissionStock(mission);
+    }
+
+    if (hasApi() && typeof api().saveJournee === "function") {
+      for (const journee of jours) {
+        await api().saveJournee(journee);
+      }
+    }
+
+    upsertLocal("stockMissions", "mission_id", mission);
+    upsertManyLocal("journees", "journee_id", jours);
+  };
+
+  const createStockMission = async ({ fromDays = null, nameOverride = "" } = {}) => {
+    const selectedDays = getSelectedDays(fromDays);
+    const payload = buildStockMissionPayload({
+      selectedDays,
+      nameOverride
+    });
+
+    if (!payload) return null;
+
+    setSaving(true);
+    setStockStatus("Enregistrement de la mission de stock...");
+
+    try {
+      await saveStockMissionBundle(payload);
+
+      state.selectedDayIds = new Set();
+
+      setStockStatus("Mission de stock enregistrée.", "isSuccess");
+
+      return payload;
+    } catch (error) {
+      setStockStatus(`Erreur enregistrement : ${error.message}`, "isError");
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const prepareEventStock = async (eventId) => {
     const eventItem = getEventById(eventId);
 
     if (!eventItem) return;
 
     const availableDays = getEventJournees(eventId).filter(
-      (journee) => !journee.mission_id && !journee.stock_mission_id
+      (journee) => !String(journee.stock_mission_id || "").trim()
     );
 
     if (availableDays.length === 0) {
@@ -368,7 +469,7 @@
       return;
     }
 
-    const result = createStockMission({
+    const result = await createStockMission({
       fromDays: availableDays,
       nameOverride: eventItem.nom
     });
@@ -383,7 +484,7 @@
 
   const selectEventDays = (eventId) => {
     const availableDays = getEventJournees(eventId).filter(
-      (journee) => !journee.mission_id && !journee.stock_mission_id
+      (journee) => !String(journee.stock_mission_id || "").trim()
     );
 
     if (availableDays.length === 0) {
@@ -416,13 +517,19 @@
 
     const events = getEvents()
       .slice()
-      .filter((eventItem) => eventItem.statut !== "annule")
-      .filter((eventItem) => eventItem.statut !== "cloture" || eventItem.date_fin >= today)
+      .filter((eventItem) => String(eventItem.statut || "").toLowerCase() !== "annule")
+      .filter((eventItem) => String(eventItem.statut || "").toLowerCase() !== "cloture" || eventItem.date_fin >= today)
       .sort((a, b) => {
         const byDate = String(a.date_debut).localeCompare(String(b.date_debut));
         if (byDate !== 0) return byDate;
-        return String(a.created_at).localeCompare(String(b.created_at));
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       });
+
+    if (state.isLoading) {
+      els.eventsList.innerHTML =
+        `<p class="missionEmpty">Chargement des évènements...</p>`;
+      return;
+    }
 
     if (events.length === 0) {
       els.eventsList.innerHTML = `
@@ -438,11 +545,12 @@
 
     els.eventsList.innerHTML = events
       .map((eventItem) => {
-        const jours = getEventJournees(eventItem.evenement_id);
-        const availableDays = jours.filter((journee) => !journee.mission_id && !journee.stock_mission_id);
+        const eventId = getEventId(eventItem);
+        const jours = getEventJournees(eventId);
+        const availableDays = jours.filter((journee) => !String(journee.stock_mission_id || "").trim());
         const place = [eventItem.lieu, eventItem.ville].filter(Boolean).join(" · ");
         const statusClass = getStatusClass(eventItem.statut);
-        const statusLabel = STATUS_LABELS[eventItem.statut] || eventItem.statut;
+        const statusLabel = STATUS_LABELS[eventItem.statut] || eventItem.statut || "Prévu";
 
         return `
           <article class="missionListItem">
@@ -466,9 +574,9 @@
                 jours.length > 0
                   ? jours
                       .map((jour) => {
-                        const linked = Boolean(jour.mission_id || jour.stock_mission_id);
+                        const linked = Boolean(String(jour.stock_mission_id || "").trim());
                         const mission = linked
-                          ? getStockMissionById(jour.stock_mission_id || jour.mission_id)
+                          ? getStockMissionById(jour.stock_mission_id)
                           : null;
 
                         return `
@@ -487,7 +595,7 @@
               <button
                 class="missionSmallBtn"
                 type="button"
-                data-select-event-days="${escapeAttr(eventItem.evenement_id)}"
+                data-select-event-days="${escapeAttr(eventId)}"
                 ${availableDays.length === 0 ? "disabled" : ""}
               >
                 Sélectionner
@@ -496,7 +604,7 @@
               <button
                 class="missionSmallBtn primary"
                 type="button"
-                data-prepare-event="${escapeAttr(eventItem.evenement_id)}"
+                data-prepare-event="${escapeAttr(eventId)}"
                 ${availableDays.length === 0 ? "disabled" : ""}
               >
                 Préparer le stock
@@ -513,12 +621,12 @@
 
     const stockMissions = getStockMissions()
       .slice()
-      .filter((mission) => mission.statut !== "annule")
-      .filter((mission) => mission.statut !== "cloture" || mission.date_fin >= today)
+      .filter((mission) => String(mission.statut || "").toLowerCase() !== "annule")
+      .filter((mission) => String(mission.statut || "").toLowerCase() !== "cloture" || mission.date_fin >= today)
       .sort((a, b) => {
         const byDate = String(a.date_debut).localeCompare(String(b.date_debut));
         if (byDate !== 0) return byDate;
-        return String(a.created_at).localeCompare(String(b.created_at));
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       });
 
     if (stockMissions.length === 0) {
@@ -554,7 +662,7 @@
                 jours.length > 0
                   ? jours
                       .map((jour) => {
-                        const eventItem = getEventById(jour.evenement_id);
+                        const eventItem = getEventById(getDayEventId(jour));
 
                         return `
                           <span class="missionDayChip isLinked">
@@ -596,13 +704,13 @@
   const renderStockDayList = () => {
     const allJournees = getJournees()
       .slice()
-      .filter((journee) => journee.statut !== "annule")
+      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
       .sort((a, b) => {
         const byDate = String(a.date).localeCompare(String(b.date));
         if (byDate !== 0) return byDate;
 
-        const eventA = getEventById(a.evenement_id);
-        const eventB = getEventById(b.evenement_id);
+        const eventA = getEventById(getDayEventId(a));
+        const eventB = getEventById(getDayEventId(b));
 
         return String(eventA?.nom || "").localeCompare(String(eventB?.nom || ""));
       });
@@ -615,10 +723,10 @@
 
     els.stockDayList.innerHTML = allJournees
       .map((journee) => {
-        const eventItem = getEventById(journee.evenement_id);
+        const eventItem = getEventById(getDayEventId(journee));
         const checked = state.selectedDayIds.has(journee.journee_id);
-        const linked = Boolean(journee.mission_id || journee.stock_mission_id);
-        const linkedMission = linked ? getStockMissionById(journee.stock_mission_id || journee.mission_id) : null;
+        const linked = Boolean(String(journee.stock_mission_id || "").trim());
+        const linkedMission = linked ? getStockMissionById(journee.stock_mission_id) : null;
 
         return `
           <label class="stockDayOption ${checked ? "isSelected" : ""} ${linked ? "isLinked" : ""}">
@@ -668,7 +776,7 @@
       <div class="missionDayChips">
         ${selectedDays
           .map((journee) => {
-            const eventItem = getEventById(journee.evenement_id);
+            const eventItem = getEventById(getDayEventId(journee));
 
             return `
               <span class="missionDayChip isLinked">
@@ -701,7 +809,43 @@
     renderStockMissionPreview();
   };
 
-  document.addEventListener("click", (event) => {
+  const loadData = async () => {
+    state.isLoading = true;
+    renderAll();
+    setStockStatus("Chargement depuis Google Sheets...");
+
+    try {
+      if (!hasApi()) {
+        throw new Error("lugdurum-api.js n’est pas chargé.");
+      }
+
+      const [events, stockMissions, journees] = await Promise.all([
+        api().getMissions(),
+        api().getMissionsStock(),
+        api().getJournees()
+      ]);
+
+      state.events = Array.isArray(events) ? events : [];
+      state.stockMissions = Array.isArray(stockMissions) ? stockMissions : [];
+      state.journees = Array.isArray(journees) ? journees : [];
+      state.usingCache = false;
+
+      cacheAll();
+      setStockStatus("");
+    } catch (error) {
+      loadFromCache();
+
+      setStockStatus(
+        `Lecture Sheets impossible. Données locales affichées : ${error.message}`,
+        "isError"
+      );
+    } finally {
+      state.isLoading = false;
+      renderAll();
+    }
+  };
+
+  document.addEventListener("click", async (event) => {
     const stockSubmitButton = event.target.closest("[data-stock-submit-action]");
     if (stockSubmitButton) {
       state.stockSubmitAction = stockSubmitButton.dataset.stockSubmitAction;
@@ -716,7 +860,7 @@
 
     const prepareEventButton = event.target.closest("[data-prepare-event]");
     if (prepareEventButton) {
-      prepareEventStock(prepareEventButton.dataset.prepareEvent);
+      await prepareEventStock(prepareEventButton.dataset.prepareEvent);
       return;
     }
 
@@ -759,10 +903,12 @@
     renderStockMissionPreview();
   });
 
-  els.stockMissionForm.addEventListener("submit", (event) => {
+  els.stockMissionForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const result = createStockMission();
+    if (state.isSaving) return;
+
+    const result = await createStockMission();
 
     if (!result) return;
 
@@ -776,5 +922,7 @@
 
   els.resetStockMissionBtn.addEventListener("click", resetStockMissionForm);
 
+  loadFromCache();
   renderAll();
+  loadData();
 })();
