@@ -230,9 +230,9 @@
 .stockVisualCard {
   position: relative;
   overflow: hidden;
-  min-height: 292px;
+  min-height: 230px;
   border: 1px solid rgba(86, 65, 42, 0.18);
-  border-radius: 30px;
+  border-radius: 26px;
   background-color: #d8c7aa;
   box-shadow: var(--shadow);
   isolation: isolate;
@@ -284,30 +284,30 @@
 .stockVisualContent {
   position: relative;
   z-index: 1;
-  min-height: 292px;
+  min-height: 230px;
   display: grid;
   align-content: space-between;
-  gap: 18px;
-  padding: 20px;
+  gap: 14px;
+  padding: 18px;
 }
 
 .stockVisualTitle {
   display: grid;
-  gap: 4px;
-  max-width: 72%;
+  gap: 3px;
+  max-width: 74%;
   color: #fffaf1;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.34);
 }
 
 .stockVisualTitle strong {
-  font-size: clamp(1.9rem, 8vw, 2.8rem);
+  font-size: clamp(1.65rem, 7vw, 2.35rem);
   line-height: 0.94;
   font-weight: 950;
   letter-spacing: -0.055em;
 }
 
 .stockVisualTitle span {
-  font-size: clamp(1.18rem, 5vw, 1.75rem);
+  font-size: clamp(1.02rem, 4.4vw, 1.45rem);
   line-height: 1.04;
   font-weight: 900;
   letter-spacing: -0.04em;
@@ -316,21 +316,21 @@
 .stockGlassPanel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .stockGlassFormat {
   min-width: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid rgba(255, 255, 255, 0.34);
-  border-radius: 24px;
-  padding: 12px;
-  background: rgba(255, 250, 241, 0.2);
+  border-radius: 22px;
+  padding: 10px;
+  background: rgba(255, 250, 241, 0.22);
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
   box-shadow:
-    0 12px 26px rgba(36, 22, 8, 0.16),
+    0 10px 22px rgba(36, 22, 8, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
@@ -347,7 +347,7 @@
 
 .stockGlassFormatHead span {
   color: rgba(255, 250, 241, 0.96);
-  font-size: clamp(0.98rem, 4vw, 1.18rem);
+  font-size: 1rem;
   font-weight: 950;
   letter-spacing: -0.035em;
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.26);
@@ -355,14 +355,15 @@
 
 .stockGlassQtyControl {
   display: grid;
-  grid-template-columns: 50px minmax(0, 1fr) 50px;
+  grid-template-columns: 40px 48px 40px;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
 .stockGlassQtyControl button {
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   border: 0;
   border-radius: 999px;
   color: #fffaf1;
@@ -371,7 +372,7 @@
     0 8px 18px rgba(72, 42, 12, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
   font: inherit;
-  font-size: 1.65rem;
+  font-size: 1.35rem;
   font-weight: 950;
 }
 
@@ -380,31 +381,46 @@
 }
 
 .stockGlassQtyControl input {
-  width: 100%;
-  height: 50px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.44);
   border-radius: 999px;
-  padding: 0 8px;
+  padding: 0;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   box-shadow:
     inset 0 0 0 1px rgba(86, 65, 42, 0.04),
     0 6px 14px rgba(36, 22, 8, 0.08);
   font: inherit;
-  font-size: 1.45rem;
+  font-size: 1.25rem;
   font-weight: 950;
   text-align: center;
   outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.stockGlassQtyControl input::-webkit-outer-spin-button,
+.stockGlassQtyControl input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .stockGlassUnavailable {
-  height: 50px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  height: 40px;
   display: grid;
   place-items: center;
+  justify-self: center;
   border-radius: 999px;
   color: rgba(255, 250, 241, 0.9);
   background: rgba(255, 255, 255, 0.18);
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   font-weight: 950;
 }
 
@@ -494,11 +510,11 @@
   }
 
   .stockVisualCard {
-    min-height: 318px;
+    min-height: 250px;
   }
 
   .stockVisualContent {
-    min-height: 318px;
+    min-height: 250px;
   }
 
   .stockActions {
@@ -520,13 +536,13 @@
   }
 
   .stockVisualCard {
-    min-height: 302px;
-    border-radius: 28px;
+    min-height: 230px;
+    border-radius: 26px;
   }
 
   .stockVisualContent {
-    min-height: 302px;
-    padding: 18px;
+    min-height: 230px;
+    padding: 16px;
   }
 
   .stockVisualTitle {
@@ -534,28 +550,39 @@
   }
 
   .stockGlassPanel {
-    gap: 10px;
+    gap: 8px;
   }
 
   .stockGlassFormat {
-    border-radius: 22px;
-    padding: 10px;
+    border-radius: 20px;
+    padding: 9px;
   }
 
   .stockGlassQtyControl {
-    grid-template-columns: 46px minmax(0, 1fr) 46px;
-    gap: 7px;
+    grid-template-columns: 38px 46px 38px;
+    gap: 6px;
   }
 
   .stockGlassQtyControl button {
-    width: 46px;
-    height: 46px;
-    font-size: 1.55rem;
+    width: 38px;
+    height: 38px;
+    font-size: 1.28rem;
   }
 
   .stockGlassQtyControl input {
-    height: 46px;
-    font-size: 1.28rem;
+    width: 46px;
+    min-width: 46px;
+    max-width: 46px;
+    height: 38px;
+    font-size: 1.18rem;
+  }
+
+  .stockGlassUnavailable {
+    width: 46px;
+    min-width: 46px;
+    max-width: 46px;
+    height: 38px;
+    font-size: 1.18rem;
   }
 }
 
@@ -565,11 +592,11 @@
   }
 
   .stockVisualCard {
-    min-height: 420px;
+    min-height: 300px;
   }
 
   .stockVisualContent {
-    min-height: 420px;
+    min-height: 300px;
   }
 
   .stockGlassPanel {
@@ -577,15 +604,25 @@
   }
 
   .stockGlassQtyControl {
-    grid-template-columns: 50px minmax(0, 1fr) 50px;
+    grid-template-columns: 42px 52px 42px;
   }
 
   .stockGlassQtyControl button {
-    width: 50px;
-    height: 50px;
+    width: 42px;
+    height: 42px;
   }
 
   .stockGlassQtyControl input {
-    height: 50px;
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    height: 42px;
+  }
+
+  .stockGlassUnavailable {
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    height: 42px;
   }
 }
