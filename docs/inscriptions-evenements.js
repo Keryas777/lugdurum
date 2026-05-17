@@ -2,23 +2,26 @@
   "use strict";
 
   /*
-    Inscriptions évènements V4 :
-    - Suppression du statut "Dossier envoyé" pour éviter le doublon avec "En attente de réponse".
-    - "Dossier envoyé" devient uniquement une case de suivi.
-    - Adresse visible directement dans la carte.
-    - L’adresse devient cliquable vers Waze avec un badge compact.
-    - Ajout électricité dans le matériel fourni.
-    - Date de fin conservée en modification, même si égale à la date de début.
-    - Création automatique de J1/J2/J3 si l’évènement dure plusieurs jours.
-    - Cartes colorées selon le statut :
-      accepté = vert, dossier à envoyer = rouge, dossier envoyé + attente = jaune.
-    - Mode modification plus clair :
-      bouton "Enregistrer les modifications"
-      titre "Modifier une inscription"
-    - Si une inscription a déjà créé un évènement, les modifications sont synchronisées
-      vers l’évènement lié.
-    - Si les dates changent, les journées liées sont régénérées uniquement si elles
-      sont encore sûres à modifier : statut prévu, pas de mission_id, pas de stock_mission_id.
+    Inscriptions évènements V5 — connecté Google Sheets :
+    - Source principale : Google Sheets via window.LugdurumAPI.
+    - Cache localStorage conservé en secours si l’API est indisponible.
+    - Lecture :
+      - inscriptions_evenements
+      - missions_vente
+      - journees_vente
+    - Écriture :
+      - création / modification inscription
+      - annulation logique d’une inscription
+      - création d’un évènement confirmé dans missions_vente
+      - génération des journées liées dans journees_vente
+    - Une inscription acceptée peut créer un évènement.
+    - L’évènement créé est stocké dans missions_vente avec mission_id.
+    - L’inscription conserve ce lien dans evenement_id pour compatibilité avec l’interface.
+    - Les journées utilisent mission_id = mission_id de missions_vente.
+    - Si une inscription liée est modifiée :
+      - les infos générales sont synchronisées vers missions_vente ;
+      - les dates ne régénèrent les journées que si elles sont encore sûres à modifier.
+    - Si une journée doit disparaître après changement de dates, elle passe en statut ANNULE.
   */
 
   const CURRENT_USER = {
@@ -54,14 +57,20 @@
 
   const STORAGE_KEYS = {
     inscriptions: "lugdurum_inscriptions_evenements",
-    events: "lugdurum_evenements",
+    missions: "lugdurum_evenements",
     journees: "lugdurum_journees"
   };
 
   const state = {
     filterStatus: "ALL",
     search: "",
-    editingId: ""
+    editingId: "",
+    inscriptions: [],
+    missions: [],
+    journees: [],
+    isLoading: false,
+    isSaving: false,
+    usingCache: false
   };
 
   const els = {
@@ -120,17 +129,9 @@
     localStorage.setItem(key, JSON.stringify(value));
   };
 
-  const getInscriptions = () => readJson(STORAGE_KEYS.inscriptions, []);
+  const api = () => window.LugdurumAPI || null;
 
-  const setInscriptions = (items) => writeJson(STORAGE_KEYS.inscriptions, items);
-
-  const getEvents = () => readJson(STORAGE_KEYS.events, []);
-
-  const setEvents = (items) => writeJson(STORAGE_KEYS.events, items);
-
-  const getJournees = () => readJson(STORAGE_KEYS.journees, []);
-
-  const setJournees = (items) => writeJson(STORAGE_KEYS.journees, items);
+  const hasApi = () => Boolean(api());
 
   const escapeHtml = (value) =>
     String(value ?? "")
@@ -167,10 +168,33 @@
     return Number.isFinite(number) ? number : fallback;
   };
 
+  const toBoolean = (value, fallback = false) => {
+    if (value === true) return true;
+    if (value === false) return false;
+
+    if (typeof value === "number") return value !== 0;
+
+    const normalized = String(value ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!normalized) return fallback;
+
+    if (["true", "vrai", "oui", "yes", "1", "x", "actif"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "faux", "non", "no", "0", "inactif"].includes(normalized)) {
+      return false;
+    }
+
+    return fallback;
+  };
+
   const parseLocalDate = (value) => {
     if (!value) return null;
 
-    const [year, month, day] = value.split("-").map(Number);
+    const [year, month, day] = String(value).split("-").map(Number);
 
     if (!year || !month || !day) return null;
 
@@ -243,10 +267,68 @@
     }
   };
 
+  const setSaving = (isSaving) => {
+    state.isSaving = isSaving;
+
+    [
+      els.saveInscriptionBtn,
+      els.resetFormBtn
+    ].forEach((button) => {
+      if (button) button.disabled = isSaving;
+    });
+  };
+
   const setDefaultDate = () => {
     if (!els.startDateInput.value) {
       els.startDateInput.value = formatIsoDate(new Date());
     }
+  };
+
+  const cacheAll = () => {
+    writeJson(STORAGE_KEYS.inscriptions, state.inscriptions);
+    writeJson(STORAGE_KEYS.missions, state.missions);
+    writeJson(STORAGE_KEYS.journees, state.journees);
+  };
+
+  const loadFromCache = () => {
+    state.inscriptions = readJson(STORAGE_KEYS.inscriptions, []);
+    state.missions = readJson(STORAGE_KEYS.missions, []);
+    state.journees = readJson(STORAGE_KEYS.journees, []);
+    state.usingCache = true;
+  };
+
+  const getInscriptions = () => state.inscriptions;
+
+  const getMissions = () => state.missions;
+
+  const getJournees = () => state.journees;
+
+  const getMissionIdFromInscription = (inscription) =>
+    String(inscription.evenement_id || inscription.mission_id || "").trim();
+
+  const getMissionById = (missionId) =>
+    getMissions().find((mission) => String(mission.mission_id || "") === String(missionId || ""));
+
+  const upsertLocal = (collectionName, idKey, item) => {
+    const collection = state[collectionName];
+    const id = String(item[idKey] || "");
+    const index = collection.findIndex((entry) => String(entry[idKey] || "") === id);
+
+    if (index >= 0) {
+      collection[index] = item;
+    } else {
+      collection.push(item);
+    }
+
+    cacheAll();
+  };
+
+  const upsertManyLocal = (collectionName, idKey, items) => {
+    items.forEach((item) => {
+      upsertLocal(collectionName, idKey, item);
+    });
+
+    cacheAll();
   };
 
   const buildWazeUrl = (item) => {
@@ -262,6 +344,23 @@
 
     return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
   };
+
+  const buildNoteFromInscription = (inscription) =>
+    [
+      inscription.commentaire ? `Commentaire : ${inscription.commentaire}` : "",
+      inscription.paiement_statut ? `Paiement/caution : ${inscription.paiement_statut}` : "",
+      inscription.contact_nom ? `Contact : ${inscription.contact_nom}` : "",
+      inscription.contact_mail ? `Mail : ${inscription.contact_mail}` : "",
+      inscription.contact_tel ? `Téléphone : ${inscription.contact_tel}` : ""
+    ].filter(Boolean).join("\n");
+
+  const buildVendorCell = (inscription) =>
+    JSON.stringify([
+      {
+        user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
+        nom: OPERATORS[inscription.responsable_user_id] || CURRENT_USER.nom
+      }
+    ]);
 
   const buildInscriptionFromForm = () => {
     const now = new Date().toISOString();
@@ -322,6 +421,7 @@
         ? existing?.date_acceptation || now.slice(0, 10)
         : "",
       paiement_statut: els.paymentInput.value.trim(),
+      caution: existing?.caution || "",
       table_fournie: els.tableInput.checked,
       barnum_fourni: els.barnumInput.checked,
       chaises_fournies: els.chairsInput.checked,
@@ -342,90 +442,16 @@
     };
   };
 
-  const saveInscription = (inscription) => {
-    const items = getInscriptions();
-    const index = items.findIndex((item) => item.inscription_id === inscription.inscription_id);
-
-    if (index >= 0) {
-      items[index] = inscription;
-    } else {
-      items.push(inscription);
-    }
-
-    setInscriptions(items);
-  };
-
-  const getEventJournees = (eventId) =>
-    getJournees()
-      .filter((journee) => journee.evenement_id === eventId)
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-
-  const isJourneeSafeToRegenerate = (journee) => {
-    const statut = String(journee.statut || "prevu").trim();
-    const missionId = String(journee.mission_id || "").trim();
-    const stockMissionId = String(journee.stock_mission_id || "").trim();
-
-    return (
-      statut === "prevu" &&
-      !missionId &&
-      !stockMissionId &&
-      !journee.started_at &&
-      !journee.closed_at
-    );
-  };
-
-  const canRegenerateEventJournees = (eventId) => {
-    const linkedDays = getEventJournees(eventId);
-
-    if (linkedDays.length === 0) return true;
-
-    return linkedDays.every(isJourneeSafeToRegenerate);
-  };
-
-  const regenerateEventJournees = (eventId, inscription, dates) => {
+  const buildMissionFromInscription = (inscription, missionId, existingMission = null, dates = null) => {
+    const resolvedDates = dates || getDateRange(inscription.date_debut, inscription.date_fin);
     const now = new Date().toISOString();
-    const slug = slugify(inscription.nom, "EVENEMENT");
-    const stamp = Date.now().toString(36).toUpperCase();
-
-    const allJournees = getJournees();
-    const otherJournees = allJournees.filter((journee) => journee.evenement_id !== eventId);
-
-    const newJournees = dates.map((date, dayIndex) => ({
-      journee_id: `J_${date.replaceAll("-", "")}_${slug}_J${dayIndex + 1}_${stamp}`,
-      evenement_id: eventId,
-      mission_id: "",
-      stock_mission_id: "",
-      date,
-      jour_label: `J${dayIndex + 1}`,
-      statut: "prevu",
-      meteo: "",
-      affluence_ressentie: "",
-      note: "",
-      created_at: now,
-      updated_at: now
-    }));
-
-    setJournees([...otherJournees, ...newJournees]);
-
-    return newJournees;
-  };
-
-  const buildLinkedEventPatch = (existingEvent, inscription, dates, { allowDateUpdate }) => {
-    const now = new Date().toISOString();
-
-    const dateDebut = allowDateUpdate
-      ? dates[0] || inscription.date_debut
-      : existingEvent.date_debut;
-
-    const dateFin = allowDateUpdate
-      ? dates[dates.length - 1] || inscription.date_fin
-      : existingEvent.date_fin;
 
     return {
-      ...existingEvent,
+      mission_id: missionId,
+      inscription_id: inscription.inscription_id,
       nom: inscription.nom,
-      date_debut: dateDebut,
-      date_fin: dateFin,
+      date_debut: resolvedDates[0] || inscription.date_debut,
+      date_fin: resolvedDates[resolvedDates.length - 1] || inscription.date_fin,
       lieu: inscription.lieu,
       ville: inscription.ville,
       adresse: inscription.adresse,
@@ -433,64 +459,200 @@
       mise_en_place: inscription.mise_en_place,
       type_evenement: inscription.type_evenement,
       type_evenement_label: inscription.type_evenement_label,
-      duree_type: allowDateUpdate
-        ? dates.length > 1
-          ? "PLUSIEURS_JOURS"
-          : "JOURNEE_UNIQUE"
-        : existingEvent.duree_type,
-      vendeurs_prevus: [
-        {
-          user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
-          nom: inscription.responsable_nom || CURRENT_USER.nom
-        }
-      ],
+      duree_type: resolvedDates.length > 1 ? "PLUSIEURS_JOURS" : "JOURNEE_UNIQUE",
+      statut: existingMission?.statut || "prevu",
+      vendeurs_prevus: buildVendorCell(inscription),
       responsable_user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
-      note: [
-        inscription.commentaire ? `Commentaire : ${inscription.commentaire}` : "",
-        inscription.paiement_statut ? `Paiement/caution : ${inscription.paiement_statut}` : "",
-        inscription.contact_mail ? `Mail : ${inscription.contact_mail}` : "",
-        inscription.contact_tel ? `Téléphone : ${inscription.contact_tel}` : ""
-      ].filter(Boolean).join("\n"),
+      note: buildNoteFromInscription(inscription),
+      created_at: existingMission?.created_at || now,
       updated_at: now
     };
   };
 
-  const syncLinkedEventFromInscription = (inscription) => {
-    if (!inscription.evenement_id) {
+  const getAllMissionJournees = (missionId) =>
+    getJournees()
+      .filter((journee) => {
+        return (
+          String(journee.mission_id || "") === String(missionId || "") ||
+          String(journee.evenement_id || "") === String(missionId || "")
+        );
+      })
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  const getEventJournees = (missionId) =>
+    getAllMissionJournees(missionId)
+      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule");
+
+  const isJourneeSafeToRegenerate = (journee) => {
+    const statut = String(journee.statut || "prevu").trim().toLowerCase();
+    const stockMissionId = String(journee.stock_mission_id || "").trim();
+
+    return (
+      statut === "prevu" &&
+      !stockMissionId &&
+      !journee.started_at &&
+      !journee.closed_at
+    );
+  };
+
+  const canRegenerateEventJournees = (missionId) => {
+    const linkedDays = getEventJournees(missionId);
+
+    if (linkedDays.length === 0) return true;
+
+    return linkedDays.every(isJourneeSafeToRegenerate);
+  };
+
+  const buildJourneesForMission = (missionId, inscription, dates, existingDays = []) => {
+    const now = new Date().toISOString();
+    const slug = slugify(inscription.nom, "EVENEMENT");
+    const stamp = Date.now().toString(36).toUpperCase();
+
+    const activeRows = dates.map((date, dayIndex) => {
+      const existing = existingDays[dayIndex];
+
+      return {
+        journee_id: existing?.journee_id || `J_${date.replaceAll("-", "")}_${slug}_J${dayIndex + 1}_${stamp}`,
+        mission_id: missionId,
+        stock_mission_id: existing?.stock_mission_id || "",
+        date,
+        jour_label: `J${dayIndex + 1}`,
+        statut: "prevu",
+        meteo: existing?.meteo || "",
+        affluence_ressentie: existing?.affluence_ressentie || "",
+        note: existing?.note || "",
+        started_at: existing?.started_at || "",
+        closed_at: existing?.closed_at || "",
+        created_at: existing?.created_at || now,
+        updated_at: now
+      };
+    });
+
+    const cancelledRows = existingDays
+      .slice(dates.length)
+      .map((journee) => ({
+        ...journee,
+        statut: "annule",
+        updated_at: now
+      }));
+
+    return [...activeRows, ...cancelledRows];
+  };
+
+  const saveInscriptionOnly = async (inscription) => {
+    if (hasApi() && typeof api().saveInscriptionEvenement === "function") {
+      await api().saveInscriptionEvenement(inscription);
+    }
+
+    upsertLocal("inscriptions", "inscription_id", inscription);
+  };
+
+  const saveMissionOnly = async (mission) => {
+    if (hasApi() && typeof api().saveMission === "function") {
+      await api().saveMission(mission);
+    }
+
+    upsertLocal("missions", "mission_id", mission);
+  };
+
+  const saveJourneesOnly = async (journees) => {
+    if (hasApi() && typeof api().saveJournee === "function") {
+      for (const journee of journees) {
+        await api().saveJournee(journee);
+      }
+    }
+
+    upsertManyLocal("journees", "journee_id", journees);
+  };
+
+  const saveInscriptionMissionBundle = async ({ inscription, mission, journees = [] }) => {
+    if (
+      hasApi() &&
+      typeof api().saveInscriptionEventBundle === "function"
+    ) {
+      try {
+        await api().saveInscriptionEventBundle({
+          inscription,
+          event: mission,
+          mission,
+          journees
+        });
+
+        upsertLocal("inscriptions", "inscription_id", inscription);
+        upsertLocal("missions", "mission_id", mission);
+
+        if (journees.length > 0) {
+          upsertManyLocal("journees", "journee_id", journees);
+        }
+
+        return;
+      } catch (error) {
+        console.warn("Bundle API impossible, tentative en écritures séparées.", error);
+      }
+    }
+
+    await saveInscriptionOnly(inscription);
+    await saveMissionOnly(mission);
+
+    if (journees.length > 0) {
+      await saveJourneesOnly(journees);
+    }
+  };
+
+  const syncLinkedEventFromInscription = async (inscription) => {
+    const missionId = getMissionIdFromInscription(inscription);
+
+    if (!missionId) {
+      await saveInscriptionOnly(inscription);
+
       return {
         status: "none",
         message: ""
       };
     }
 
-    const events = getEvents();
-    const eventIndex = events.findIndex(
-      (event) => event.evenement_id === inscription.evenement_id
-    );
+    const existingMission = getMissionById(missionId);
 
-    if (eventIndex < 0) {
+    if (!existingMission) {
+      await saveInscriptionOnly(inscription);
+
       return {
         status: "warning",
-        message: "Inscription modifiée, mais l’évènement lié est introuvable."
+        message: "Inscription modifiée, mais l’évènement lié est introuvable dans missions_vente."
       };
     }
 
-    const existingEvent = events[eventIndex];
     const dates = getDateRange(inscription.date_debut, inscription.date_fin);
 
     const newDateDebut = dates[0] || inscription.date_debut;
     const newDateFin = dates[dates.length - 1] || inscription.date_fin;
 
     const datesChanged =
-      String(existingEvent.date_debut || "") !== String(newDateDebut || "") ||
-      String(existingEvent.date_fin || "") !== String(newDateFin || "");
+      String(existingMission.date_debut || "") !== String(newDateDebut || "") ||
+      String(existingMission.date_fin || "") !== String(newDateFin || "");
 
-    if (datesChanged && !canRegenerateEventJournees(existingEvent.evenement_id)) {
-      events[eventIndex] = buildLinkedEventPatch(existingEvent, inscription, dates, {
-        allowDateUpdate: false
+    if (datesChanged && !canRegenerateEventJournees(missionId)) {
+      const missionWithoutDateChange = buildMissionFromInscription(
+        inscription,
+        missionId,
+        {
+          ...existingMission,
+          date_debut: existingMission.date_debut,
+          date_fin: existingMission.date_fin,
+          duree_type: existingMission.duree_type
+        },
+        getDateRange(existingMission.date_debut, existingMission.date_fin)
+      );
+
+      missionWithoutDateChange.date_debut = existingMission.date_debut;
+      missionWithoutDateChange.date_fin = existingMission.date_fin;
+      missionWithoutDateChange.duree_type = existingMission.duree_type;
+
+      await saveInscriptionMissionBundle({
+        inscription,
+        mission: missionWithoutDateChange,
+        journees: []
       });
-
-      setEvents(events);
 
       return {
         status: "warning",
@@ -499,24 +661,39 @@
       };
     }
 
-    events[eventIndex] = buildLinkedEventPatch(existingEvent, inscription, dates, {
-      allowDateUpdate: true
-    });
+    const updatedMission = buildMissionFromInscription(
+      inscription,
+      missionId,
+      existingMission,
+      dates
+    );
 
-    setEvents(events);
+    let journeesToSave = [];
 
     if (datesChanged) {
-      const newJournees = regenerateEventJournees(
-        existingEvent.evenement_id,
+      const existingDays = getAllMissionJournees(missionId);
+      journeesToSave = buildJourneesForMission(
+        missionId,
         inscription,
-        dates
+        dates,
+        existingDays
       );
+    }
+
+    await saveInscriptionMissionBundle({
+      inscription,
+      mission: updatedMission,
+      journees: journeesToSave
+    });
+
+    if (datesChanged) {
+      const activeCount = journeesToSave.filter((journee) => journee.statut !== "annule").length;
 
       return {
         status: "success",
         message:
-          newJournees.length > 1
-            ? `Modifications enregistrées. Évènement lié mis à jour avec ${newJournees.length} journées.`
+          activeCount > 1
+            ? `Modifications enregistrées. Évènement lié mis à jour avec ${activeCount} journées.`
             : "Modifications enregistrées. Évènement lié mis à jour avec 1 journée."
       };
     }
@@ -566,13 +743,13 @@
     els.locationInput.value = inscription.lieu || "";
     els.addressInput.value = inscription.adresse || "";
 
-    els.docSentInput.checked = Boolean(inscription.dossier_envoye);
-    els.acceptedInput.checked = Boolean(inscription.acceptation);
-    els.tableInput.checked = Boolean(inscription.table_fournie);
-    els.barnumInput.checked = Boolean(inscription.barnum_fourni);
-    els.chairsInput.checked = Boolean(inscription.chaises_fournies);
-    els.lightInput.checked = Boolean(inscription.eclairage_fourni);
-    els.electricityInput.checked = Boolean(inscription.electricite_fournie);
+    els.docSentInput.checked = toBoolean(inscription.dossier_envoye);
+    els.acceptedInput.checked = toBoolean(inscription.acceptation);
+    els.tableInput.checked = toBoolean(inscription.table_fournie);
+    els.barnumInput.checked = toBoolean(inscription.barnum_fourni);
+    els.chairsInput.checked = toBoolean(inscription.chaises_fournies);
+    els.lightInput.checked = toBoolean(inscription.eclairage_fourni);
+    els.electricityInput.checked = toBoolean(inscription.electricite_fournie);
 
     els.contactNameInput.value = inscription.contact_nom || "";
     els.contactMailInput.value = inscription.contact_mail || "";
@@ -596,35 +773,58 @@
     });
   };
 
-  const deleteInscription = (inscriptionId) => {
+  const deleteInscription = async (inscriptionId) => {
     const item = getInscriptions().find((inscription) => inscription.inscription_id === inscriptionId);
 
     if (!item) return;
 
-    const ok = window.confirm(`Supprimer "${item.nom}" du suivi ?`);
+    const ok = window.confirm(`Annuler "${item.nom}" dans le suivi ?`);
 
     if (!ok) return;
 
-    setInscriptions(
-      getInscriptions().filter((inscription) => inscription.inscription_id !== inscriptionId)
-    );
+    const cancelled = {
+      ...item,
+      statut: "ANNULE",
+      updated_at: new Date().toISOString()
+    };
 
-    renderAll();
+    setSaving(true);
+    setStatus("Annulation en cours...");
+
+    try {
+      if (
+        hasApi() &&
+        typeof api().cancelInscriptionEvenement === "function"
+      ) {
+        await api().cancelInscriptionEvenement(inscriptionId);
+      } else {
+        await saveInscriptionOnly(cancelled);
+      }
+
+      upsertLocal("inscriptions", "inscription_id", cancelled);
+
+      renderAll();
+      setStatus("Inscription annulée.", "isSuccess");
+    } catch (error) {
+      setStatus(`Erreur annulation : ${error.message}`, "isError");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const createEventFromInscription = (inscriptionId) => {
+  const createEventFromInscription = async (inscriptionId) => {
     const items = getInscriptions();
     const index = items.findIndex((item) => item.inscription_id === inscriptionId);
     const inscription = items[index];
 
     if (!inscription) return;
 
-    if (inscription.statut !== "ACCEPTE" && !inscription.acceptation) {
+    if (inscription.statut !== "ACCEPTE" && !toBoolean(inscription.acceptation)) {
       setStatus("L’inscription doit être acceptée avant de créer un évènement.", "isError");
       return;
     }
 
-    if (inscription.evenement_id) {
+    if (getMissionIdFromInscription(inscription)) {
       setStatus("Un évènement existe déjà pour cette inscription.", "isError");
       return;
     }
@@ -639,80 +839,51 @@
     const now = new Date().toISOString();
     const slug = slugify(inscription.nom, "EVENEMENT");
     const stamp = Date.now().toString(36).toUpperCase();
-    const eventId = `EVT_${dates[0].replaceAll("-", "")}_${slug}_${stamp}`;
+    const missionId = `EVT_${dates[0].replaceAll("-", "")}_${slug}_${stamp}`;
 
-    const eventItem = {
-      evenement_id: eventId,
-      inscription_id: inscription.inscription_id,
-      nom: inscription.nom,
-      date_debut: dates[0],
-      date_fin: dates[dates.length - 1],
-      lieu: inscription.lieu,
-      ville: inscription.ville,
-      adresse: inscription.adresse,
-      horaires: inscription.horaires,
-      mise_en_place: inscription.mise_en_place,
-      type_evenement: inscription.type_evenement,
-      type_evenement_label: inscription.type_evenement_label,
-      duree_type: dates.length > 1 ? "PLUSIEURS_JOURS" : "JOURNEE_UNIQUE",
-      statut: "prevu",
-      vendeurs_prevus: [
-        {
-          user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
-          nom: inscription.responsable_nom || CURRENT_USER.nom
-        }
-      ],
-      responsable_user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
-      note: [
-        inscription.commentaire ? `Commentaire : ${inscription.commentaire}` : "",
-        inscription.paiement_statut ? `Paiement/caution : ${inscription.paiement_statut}` : "",
-        inscription.contact_mail ? `Mail : ${inscription.contact_mail}` : "",
-        inscription.contact_tel ? `Téléphone : ${inscription.contact_tel}` : ""
-      ].filter(Boolean).join("\n"),
-      created_at: now,
-      updated_at: now
-    };
-
-    const jours = dates.map((date, dayIndex) => ({
-      journee_id: `J_${date.replaceAll("-", "")}_${slug}_J${dayIndex + 1}_${stamp}`,
-      evenement_id: eventId,
-      mission_id: "",
-      stock_mission_id: "",
-      date,
-      jour_label: `J${dayIndex + 1}`,
-      statut: "prevu",
-      meteo: "",
-      affluence_ressentie: "",
-      note: "",
-      created_at: now,
-      updated_at: now
-    }));
-
-    const events = getEvents();
-    const journees = getJournees();
-
-    events.push(eventItem);
-    journees.push(...jours);
-
-    setEvents(events);
-    setJournees(journees);
-
-    items[index] = {
+    const updatedInscription = {
       ...inscription,
-      evenement_id: eventId,
+      evenement_id: missionId,
       updated_at: now
     };
 
-    setInscriptions(items);
-
-    setStatus(
-      dates.length > 1
-        ? `Évènement créé avec ${dates.length} journées : ${dates.map((_, i) => `J${i + 1}`).join(", ")}.`
-        : "Évènement créé dans le planning.",
-      "isSuccess"
+    const mission = buildMissionFromInscription(
+      updatedInscription,
+      missionId,
+      null,
+      dates
     );
 
-    renderAll();
+    const journees = buildJourneesForMission(
+      missionId,
+      updatedInscription,
+      dates,
+      []
+    );
+
+    setSaving(true);
+    setStatus("Création de l’évènement dans le Sheets...");
+
+    try {
+      await saveInscriptionMissionBundle({
+        inscription: updatedInscription,
+        mission,
+        journees
+      });
+
+      setStatus(
+        dates.length > 1
+          ? `Évènement créé avec ${dates.length} journées : ${dates.map((_, i) => `J${i + 1}`).join(", ")}.`
+          : "Évènement créé dans le planning.",
+        "isSuccess"
+      );
+
+      renderAll();
+    } catch (error) {
+      setStatus(`Erreur création évènement : ${error.message}`, "isError");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const buildCalendarPayload = (inscription) => {
@@ -728,7 +899,7 @@
         .join(" · "),
       description: [
         inscription.mise_en_place ? `Mise en place : ${inscription.mise_en_place}` : "",
-        inscription.responsable_nom ? `Qui : ${inscription.responsable_nom}` : "",
+        OPERATORS[inscription.responsable_user_id] ? `Qui : ${OPERATORS[inscription.responsable_user_id]}` : "",
         inscription.prix_emplacement ? `Prix : ${formatCurrency(inscription.prix_emplacement)}` : "",
         inscription.contact_nom ? `Contact : ${inscription.contact_nom}` : "",
         inscription.contact_mail ? `Mail : ${inscription.contact_mail}` : "",
@@ -745,7 +916,7 @@
 
     if (!inscription) return;
 
-    if (inscription.statut !== "ACCEPTE" && !inscription.acceptation) {
+    if (inscription.statut !== "ACCEPTE" && !toBoolean(inscription.acceptation)) {
       setStatus("L’inscription doit être acceptée avant l’ajout calendrier.", "isError");
       return;
     }
@@ -753,10 +924,10 @@
     const payload = buildCalendarPayload(inscription);
 
     try {
-      if (window.LugdurumAPI && typeof window.LugdurumAPI.createCalendarEvent === "function") {
-        const result = await window.LugdurumAPI.createCalendarEvent(payload);
+      if (hasApi() && typeof api().createCalendarEvent === "function") {
+        const result = await api().createCalendarEvent(payload);
 
-        items[index] = {
+        const updated = {
           ...inscription,
           calendar_event_id: result.calendar_event_id || result.id || "",
           calendar_statut: "ajoute",
@@ -764,20 +935,22 @@
           updated_at: new Date().toISOString()
         };
 
-        setInscriptions(items);
+        await saveInscriptionOnly(updated);
+
         setStatus("Évènement ajouté au calendrier.", "isSuccess");
         renderAll();
         return;
       }
 
-      items[index] = {
+      const updated = {
         ...inscription,
         calendar_statut: "a_synchroniser",
         calendar_payload: payload,
         updated_at: new Date().toISOString()
       };
 
-      setInscriptions(items);
+      await saveInscriptionOnly(updated);
+
       setStatus("Calendrier marqué à synchroniser. Le branchement Apps Script viendra ensuite.", "isSuccess");
       renderAll();
     } catch (error) {
@@ -831,12 +1004,18 @@
   const getCardClass = (item) => {
     if (item.statut === "ACCEPTE") return "isAcceptedCard";
     if (item.statut === "DOSSIER_A_ENVOYER") return "isTodoCard";
-    if (item.statut === "EN_ATTENTE_REPONSE" && item.dossier_envoye) return "isWaitingCard";
+    if (item.statut === "EN_ATTENTE_REPONSE" && toBoolean(item.dossier_envoye)) return "isWaitingCard";
     return "";
   };
 
+  const getResponsibleLabel = (item) =>
+    item.responsable_nom ||
+    OPERATORS[item.responsable_user_id] ||
+    item.responsable_user_id ||
+    "";
+
   const renderStats = () => {
-    const items = getInscriptions();
+    const items = getInscriptions().filter((item) => item.statut !== "ANNULE");
 
     els.statRelance.textContent = items.filter((item) => item.statut === "A_RELANCER").length;
     els.statWaiting.textContent = items.filter((item) => item.statut === "EN_ATTENTE_REPONSE").length;
@@ -894,6 +1073,12 @@
   const renderList = () => {
     const items = getFilteredInscriptions();
 
+    if (state.isLoading) {
+      els.inscriptionsList.innerHTML =
+        `<p class="trackingEmpty">Chargement des inscriptions...</p>`;
+      return;
+    }
+
     if (items.length === 0) {
       els.inscriptionsList.innerHTML =
         `<p class="trackingEmpty">Aucune inscription ne correspond au filtre.</p>`;
@@ -914,13 +1099,15 @@
         const statusClass = getStatusClass(item.statut);
         const cardClass = getCardClass(item);
         const price = formatCurrency(item.prix_emplacement);
+        const responsibleLabel = getResponsibleLabel(item);
+        const missionId = getMissionIdFromInscription(item);
 
         const material = [
-          item.table_fournie ? "Table" : "",
-          item.barnum_fourni ? "Barnum" : "",
-          item.chaises_fournies ? "Chaises" : "",
-          item.eclairage_fourni ? "Éclairage" : "",
-          item.electricite_fournie ? "Électricité" : ""
+          toBoolean(item.table_fournie) ? "Table" : "",
+          toBoolean(item.barnum_fourni) ? "Barnum" : "",
+          toBoolean(item.chaises_fournies) ? "Chaises" : "",
+          toBoolean(item.eclairage_fourni) ? "Éclairage" : "",
+          toBoolean(item.electricite_fournie) ? "Électricité" : ""
         ].filter(Boolean);
 
         return `
@@ -947,7 +1134,7 @@
               ${item.horaires ? `<span>🕒 ${escapeHtml(item.horaires)}</span>` : ""}
               ${item.mise_en_place ? `<span>🚚 ${escapeHtml(item.mise_en_place)}</span>` : ""}
               ${price ? `<span>💶 ${escapeHtml(price)}</span>` : ""}
-              ${item.responsable_nom ? `<span>👤 ${escapeHtml(item.responsable_nom)}</span>` : ""}
+              ${responsibleLabel ? `<span>👤 ${escapeHtml(responsibleLabel)}</span>` : ""}
             </div>
 
             ${
@@ -979,11 +1166,12 @@
             }
 
             <div class="inscriptionFlags">
-              ${item.dossier_envoye ? `<span class="flagOk">Dossier envoyé</span>` : `<span>Dossier non envoyé</span>`}
-              ${item.acceptation ? `<span class="flagOk">Accepté</span>` : ""}
-              ${item.evenement_id ? `<span class="flagOk">Évènement créé</span>` : ""}
+              ${toBoolean(item.dossier_envoye) ? `<span class="flagOk">Dossier envoyé</span>` : `<span>Dossier non envoyé</span>`}
+              ${toBoolean(item.acceptation) ? `<span class="flagOk">Accepté</span>` : ""}
+              ${missionId ? `<span class="flagOk">Évènement créé</span>` : ""}
               ${item.calendar_statut === "ajoute" ? `<span class="flagOk">Calendrier OK</span>` : ""}
               ${item.calendar_statut === "a_synchroniser" ? `<span class="flagWarning">Calendrier à synchroniser</span>` : ""}
+              ${state.usingCache ? `<span class="flagWarning">Cache local</span>` : ""}
             </div>
 
             <div class="inscriptionActions">
@@ -999,7 +1187,7 @@
                 class="trackingSmallBtn primary"
                 type="button"
                 data-create-event="${escapeAttr(item.inscription_id)}"
-                ${item.evenement_id ? "disabled" : ""}
+                ${missionId ? "disabled" : ""}
               >
                 Créer l’évènement
               </button>
@@ -1017,7 +1205,7 @@
                 type="button"
                 data-delete-inscription="${escapeAttr(item.inscription_id)}"
               >
-                Supprimer
+                Annuler
               </button>
             </div>
           </article>
@@ -1032,7 +1220,48 @@
     renderList();
   };
 
-  document.addEventListener("click", (event) => {
+  const loadData = async () => {
+    state.isLoading = true;
+    renderAll();
+    setStatus("Chargement depuis Google Sheets...");
+
+    try {
+      if (!hasApi()) {
+        throw new Error("lugdurum-api.js n’est pas chargé.");
+      }
+
+      const [
+        inscriptions,
+        missions,
+        journees
+      ] = await Promise.all([
+        api().getInscriptionsEvenements(),
+        api().getMissions(),
+        api().getJournees()
+      ]);
+
+      state.inscriptions = Array.isArray(inscriptions) ? inscriptions : [];
+      state.missions = Array.isArray(missions) ? missions : [];
+      state.journees = Array.isArray(journees) ? journees : [];
+      state.usingCache = false;
+
+      cacheAll();
+
+      setStatus("");
+    } catch (error) {
+      loadFromCache();
+
+      setStatus(
+        `Lecture Sheets impossible. Données locales affichées : ${error.message}`,
+        "isError"
+      );
+    } finally {
+      state.isLoading = false;
+      renderAll();
+    }
+  };
+
+  document.addEventListener("click", async (event) => {
     const filterButton = event.target.closest("[data-filter-status]");
     if (filterButton) {
       state.filterStatus = filterButton.dataset.filterStatus;
@@ -1052,19 +1281,19 @@
 
     const createEventButton = event.target.closest("[data-create-event]");
     if (createEventButton) {
-      createEventFromInscription(createEventButton.dataset.createEvent);
+      await createEventFromInscription(createEventButton.dataset.createEvent);
       return;
     }
 
     const calendarButton = event.target.closest("[data-calendar-inscription]");
     if (calendarButton) {
-      addToCalendar(calendarButton.dataset.calendarInscription);
+      await addToCalendar(calendarButton.dataset.calendarInscription);
       return;
     }
 
     const deleteButton = event.target.closest("[data-delete-inscription]");
     if (deleteButton) {
-      deleteInscription(deleteButton.dataset.deleteInscription);
+      await deleteInscription(deleteButton.dataset.deleteInscription);
     }
   });
 
@@ -1100,31 +1329,43 @@
     }
   });
 
-  els.form.addEventListener("submit", (event) => {
+  els.form.addEventListener("submit", async (event) => {
     event.preventDefault();
+
+    if (state.isSaving) return;
 
     const wasEditing = Boolean(els.inscriptionIdInput.value.trim());
     const inscription = buildInscriptionFromForm();
 
     if (!inscription) return;
 
-    saveInscription(inscription);
+    setSaving(true);
+    setStatus(wasEditing ? "Enregistrement des modifications..." : "Enregistrement dans le Sheets...");
 
-    const syncResult = wasEditing
-      ? syncLinkedEventFromInscription(inscription)
-      : { status: "none", message: "" };
+    try {
+      const syncResult = wasEditing
+        ? await syncLinkedEventFromInscription(inscription)
+        : await saveInscriptionOnly(inscription).then(() => ({
+            status: "none",
+            message: ""
+          }));
 
-    renderAll();
-    resetForm({ keepStatus: true });
+      renderAll();
+      resetForm({ keepStatus: true });
 
-    if (wasEditing) {
-      const message = syncResult.message || "Modifications enregistrées.";
-      const type = syncResult.status === "warning" ? "isError" : "isSuccess";
-      setStatus(message, type);
-      return;
+      if (wasEditing) {
+        const message = syncResult.message || "Modifications enregistrées.";
+        const type = syncResult.status === "warning" ? "isError" : "isSuccess";
+        setStatus(message, type);
+        return;
+      }
+
+      setStatus("Inscription enregistrée dans le Sheets.", "isSuccess");
+    } catch (error) {
+      setStatus(`Erreur enregistrement : ${error.message}`, "isError");
+    } finally {
+      setSaving(false);
     }
-
-    setStatus("Inscription enregistrée.", "isSuccess");
   });
 
   els.resetFormBtn.addEventListener("click", () => {
@@ -1132,5 +1373,7 @@
   });
 
   setDefaultDate();
+  loadFromCache();
   renderAll();
+  loadData();
 })();
