@@ -162,6 +162,7 @@
 
   const render = () => {
     const products = state.catalogue
+      .filter((product) => product.actif)
       .filter((product) => product.visible_webapp !== false)
       .sort((a, b) => {
         const byOrder = a.ordre_affichage - b.ordre_affichage;
