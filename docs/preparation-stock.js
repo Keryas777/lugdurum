@@ -2,20 +2,27 @@
   "use strict";
 
   /*
-    Préparation stock V2 :
+    Préparation stock V3 :
     - Lit la mission de stock active depuis lugdurum_preparation_context.
-    - Charge missions_stock, journees_vente, missions_vente et catalogue depuis Google Sheets.
+    - Charge missions_stock, journees_vente, missions_vente, catalogue et mouvements_stock depuis Google Sheets.
     - Fallback localStorage si lecture Sheets impossible.
     - Permet de saisir le stock emmené par SKU, format 50 cL et 20 cL.
-    - Enregistre la préparation dans stock_preparations + stock_preparation_lignes via batchUpsert.
-    - Met à jour missions_stock et journees_vente via l’API.
+    - Enregistre le détail produit par produit dans mouvements_stock :
+      type_mouvement = PREPARATION
+      sens = ENTREE
+    - Met à jour les totaux dans missions_stock :
+      stock_prepare
+      total_bouteilles_preparees
+      total_50cl_prepare
+      total_20cl_prepare
+      parfums_prepare_count
+    - Met à jour journees_vente via l’API.
     - La file d’attente offline est gérée par lugdurum-api.js.
     - Le cache localStorage reste utilisé pour garder l’interface exploitable.
   */
 
   const SHEETS = {
-    stockPreparations: "stock_preparations",
-    stockPreparationLines: "stock_preparation_lignes"
+    mouvementsStock: "mouvements_stock"
   };
 
   const STORAGE_KEYS = {
@@ -26,9 +33,21 @@
     activeMissionId: "lugdurum_active_mission_id",
     activeStockMissionId: "lugdurum_active_stock_mission_id",
     activeJourneeId: "lugdurum_active_journee_id",
-    stockPreparations: "lugdurum_stock_preparations",
-    stockPreparationLines: "lugdurum_stock_preparation_lignes",
+    mouvementsStock: "lugdurum_mouvements_stock",
     catalogueCache: "lugdurum_catalogue_cache"
+  };
+
+  const CURRENT_USER = {
+    user_id: "U_JEROME",
+    nom: "Jérôme"
+  };
+
+  const MOVEMENT_TYPE = {
+    PREPARATION: "PREPARATION"
+  };
+
+  const MOVEMENT_SENS = {
+    ENTREE: "ENTREE"
   };
 
   const state = {
@@ -39,8 +58,7 @@
     stockMissions: [],
     journees: [],
     catalogue: [],
-    stockPreparations: [],
-    stockPreparationLines: [],
+    mouvementsStock: [],
     quantities: new Map(),
     dataLoaded: false,
     isSaving: false
@@ -225,9 +243,8 @@
     writeJson(STORAGE_KEYS.catalogueCache, state.catalogue);
   };
 
-  const cachePreparationData = () => {
-    writeJson(STORAGE_KEYS.stockPreparations, state.stockPreparations);
-    writeJson(STORAGE_KEYS.stockPreparationLines, state.stockPreparationLines);
+  const cacheMouvementsStock = () => {
+    writeJson(STORAGE_KEYS.mouvementsStock, state.mouvementsStock);
   };
 
   const loadLocalCaches = () => {
@@ -235,8 +252,7 @@
     state.stockMissions = readJson(STORAGE_KEYS.stockMissions, []);
     state.journees = readJson(STORAGE_KEYS.journees, []);
     state.catalogue = readJson(STORAGE_KEYS.catalogueCache, []);
-    state.stockPreparations = readJson(STORAGE_KEYS.stockPreparations, []);
-    state.stockPreparationLines = readJson(STORAGE_KEYS.stockPreparationLines, []);
+    state.mouvementsStock = readJson(STORAGE_KEYS.mouvementsStock, []);
 
     state.catalogue = state.catalogue
       .map((row, index) => normalizeProduct(row, index))
@@ -386,46 +402,58 @@
     });
   };
 
-  const getPreparationId = () => {
-    const missionId = getStockMissionId();
-    return missionId ? `STOCK_PREP_${missionId}` : "";
-  };
+  const getPreparationJourneeId = () => {
+    const activeJourneeId = getActiveJourneeId();
 
-  const getExistingPreparation = () => {
-    const preparationId = getPreparationId();
-
-    if (!preparationId) return null;
-
-    return state.stockPreparations.find(
-      (item) => item.stock_preparation_id === preparationId
-    );
-  };
-
-  const getExistingPreparationLines = () => {
-    const preparationId = getPreparationId();
-
-    if (!preparationId) return [];
-
-    return state.stockPreparationLines.filter(
-      (line) => line.stock_preparation_id === preparationId
-    );
-  };
-
-  const hydrateExistingPreparation = () => {
-    const existing = getExistingPreparation();
-
-    if (existing?.note) {
-      els.stockNoteInput.value = existing.note;
+    if (
+      activeJourneeId &&
+      state.missionJournees.some((journee) => journee.journee_id === activeJourneeId)
+    ) {
+      return activeJourneeId;
     }
 
-    getExistingPreparationLines().forEach((line) => {
-      setQuantity(line.sku_id, line.quantite_preparee);
+    return state.missionJournees[0]?.journee_id || "";
+  };
+
+  const buildPreparationMovementId = (skuId) => {
+    const missionId = getStockMissionId();
+    return `MVT_${missionId}_${skuId}_PREPARATION`;
+  };
+
+  const getExistingPreparationMovements = () => {
+    const missionId = getStockMissionId();
+
+    if (!missionId) return [];
+
+    return state.mouvementsStock.filter((movement) => {
+      return (
+        String(movement.stock_mission_id || movement.mission_id || "") === missionId &&
+        String(movement.type_mouvement || "") === MOVEMENT_TYPE.PREPARATION &&
+        String(movement.statut || "").toLowerCase() !== "annule"
+      );
     });
   };
 
-  const buildBatchOperation = ({ sheet, keyField, row }) => ({
+  const hydrateExistingPreparation = () => {
+    const existingMovements = getExistingPreparationMovements();
+
+    existingMovements.forEach((movement) => {
+      setQuantity(movement.sku_id, movement.quantite);
+    });
+
+    const firstNote = existingMovements.find((movement) => movement.note)?.note || "";
+
+    if (firstNote && !els.stockNoteInput.value.trim()) {
+      els.stockNoteInput.value = firstNote;
+    }
+  };
+
+  const buildBatchOperation = ({ sheet, sheetKey, keyField, row }) => ({
     action: "upsert",
     type: "upsert",
+
+    sheetKey,
+    sheet_key: sheetKey,
 
     sheet,
     sheet_name: sheet,
@@ -438,26 +466,6 @@
     row,
     data: row
   });
-
-  const saveLocalPreparation = ({ preparation, lignes }) => {
-    const preparationIndex = state.stockPreparations.findIndex(
-      (item) => item.stock_preparation_id === preparation.stock_preparation_id
-    );
-
-    if (preparationIndex >= 0) {
-      state.stockPreparations[preparationIndex] = preparation;
-    } else {
-      state.stockPreparations.push(preparation);
-    }
-
-    state.stockPreparationLines = state.stockPreparationLines.filter(
-      (line) => line.stock_preparation_id !== preparation.stock_preparation_id
-    );
-
-    state.stockPreparationLines.push(...lignes);
-
-    cachePreparationData();
-  };
 
   const upsertLocalStockMission = (mission) => {
     const index = state.stockMissions.findIndex(
@@ -491,6 +499,22 @@
     cacheCoreData();
   };
 
+  const upsertLocalMouvementsStock = (movements) => {
+    movements.forEach((movement) => {
+      const index = state.mouvementsStock.findIndex(
+        (item) => item.mouvement_stock_id === movement.mouvement_stock_id
+      );
+
+      if (index >= 0) {
+        state.mouvementsStock[index] = movement;
+      } else {
+        state.mouvementsStock.push(movement);
+      }
+    });
+
+    cacheMouvementsStock();
+  };
+
   const getPendingWritesCount = () => {
     if (hasApi() && typeof api().getPendingWritesCount === "function") {
       return api().getPendingWritesCount();
@@ -499,40 +523,147 @@
     return 0;
   };
 
-  const savePreparationToApi = async ({ preparation, lignes }) => {
+  const buildPreparationMovements = (status = "brouillon") => {
+    if (!state.stockMission) {
+      setStatus("Aucune mission de stock active.", "isError");
+      return null;
+    }
+
+    const totals = getTotals();
+
+    if (status !== "brouillon" && totals.total <= 0) {
+      setStatus("Indique au moins une bouteille emmenée avant de valider.", "isError");
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const missionId = state.stockMission.mission_id;
+    const journeeId = getPreparationJourneeId();
+    const note = els.stockNoteInput.value.trim();
+
+    const existingMovements = getExistingPreparationMovements();
+    const nextMovementIds = new Set();
+
+    const activeMovements = state.catalogue
+      .map((product) => {
+        const quantity = getQuantity(product.sku_id);
+
+        if (quantity <= 0) return null;
+
+        const movementId = buildPreparationMovementId(product.sku_id);
+        const existing = existingMovements.find(
+          (movement) => movement.mouvement_stock_id === movementId
+        );
+
+        nextMovementIds.add(movementId);
+
+        return {
+          mouvement_stock_id: movementId,
+          date_heure: existing?.date_heure || now,
+          mission_id: missionId,
+          stock_mission_id: missionId,
+          journee_id: journeeId,
+          type_mouvement: MOVEMENT_TYPE.PREPARATION,
+          sens: MOVEMENT_SENS.ENTREE,
+          sku_id: product.sku_id,
+          parfum_code: product.parfum_code,
+          parfum_nom: product.parfum_nom,
+          format_cl: product.format_cl,
+          quantite: quantity,
+          source: "PREPARATION_STOCK",
+          statut: status,
+          note,
+          user_id: CURRENT_USER.user_id,
+          created_at: existing?.created_at || now,
+          updated_at: now
+        };
+      })
+      .filter(Boolean);
+
+    const cancelledMovements = existingMovements
+      .filter((movement) => !nextMovementIds.has(movement.mouvement_stock_id))
+      .map((movement) => ({
+        ...movement,
+        quantite: 0,
+        statut: "annule",
+        note: note || movement.note || "",
+        updated_at: now
+      }));
+
+    return {
+      movements: [...activeMovements, ...cancelledMovements],
+      activeMovements,
+      totals
+    };
+  };
+
+  const buildStockMissionPatch = ({ status = "brouillon", totals }) => {
+    const now = new Date().toISOString();
+
+    const shouldMarkPrepared = status === "valide";
+
+    let nextStatus = state.stockMission.statut || "stock_a_preparer";
+
+    if (shouldMarkPrepared && nextStatus !== "en_cours") {
+      nextStatus = "pret";
+    }
+
+    if (!shouldMarkPrepared && (!nextStatus || nextStatus === "brouillon")) {
+      nextStatus = "stock_a_preparer";
+    }
+
+    return {
+      ...state.stockMission,
+      statut: nextStatus,
+      stock_prepare: shouldMarkPrepared || state.stockMission.stock_prepare === true,
+      total_bouteilles_preparees: totals.total,
+      total_50cl_prepare: totals.total50,
+      total_20cl_prepare: totals.total20,
+      parfums_prepare_count: totals.flavourCount,
+      updated_at: now
+    };
+  };
+
+  const buildJourneesReadyPatch = (status = "brouillon") => {
+    if (status !== "valide") return [];
+
+    const now = new Date().toISOString();
+    const missionId = state.stockMission.mission_id;
+
+    return state.missionJournees.map((journee) => {
+      const nextStatus =
+        journee.statut === "en_cours" || journee.statut === "cloture"
+          ? journee.statut
+          : "pret";
+
+      return {
+        ...journee,
+        stock_mission_id: missionId,
+        statut: nextStatus,
+        updated_at: now
+      };
+    });
+  };
+
+  const saveMouvementsStockToApi = async (movements) => {
     if (!hasApi()) {
       throw new Error("lugdurum-api.js n’est pas chargé.");
     }
 
-    if (typeof api().saveStockPreparation === "function") {
-      await api().saveStockPreparation({
-        ...preparation,
-        lignes
-      });
-      return;
+    if (typeof api().batchUpsert !== "function") {
+      throw new Error("LugdurumAPI.batchUpsert() est indisponible.");
     }
 
-    if (typeof api().batchUpsert === "function") {
-      const operations = [
-        buildBatchOperation({
-          sheet: SHEETS.stockPreparations,
-          keyField: "stock_preparation_id",
-          row: preparation
-        }),
-        ...lignes.map((line) =>
-          buildBatchOperation({
-            sheet: SHEETS.stockPreparationLines,
-            keyField: "stock_preparation_ligne_id",
-            row: line
-          })
-        )
-      ];
+    const operations = movements.map((movement) =>
+      buildBatchOperation({
+        sheet: SHEETS.mouvementsStock,
+        sheetKey: "mouvementsStock",
+        keyField: "mouvement_stock_id",
+        row: movement
+      })
+    );
 
-      await api().batchUpsert(operations);
-      return;
-    }
-
-    throw new Error("Aucune méthode API disponible pour écrire la préparation stock.");
+    await api().batchUpsert(operations);
   };
 
   const saveStockMissionToApi = async (mission) => {
@@ -561,98 +692,63 @@
     }
   };
 
-  const buildPreparationPayload = (status = "brouillon") => {
-    if (!state.stockMission) {
-      setStatus("Aucune mission de stock active.", "isError");
-      return null;
-    }
+  const savePreparation = async (status = "brouillon") => {
+    if (state.isSaving) return null;
 
-    const totals = getTotals();
+    const payload = buildPreparationMovements(status);
 
-    if (status !== "brouillon" && totals.total <= 0) {
-      setStatus("Indique au moins une bouteille emmenée avant de valider.", "isError");
-      return null;
-    }
+    if (!payload) return null;
 
-    const now = new Date().toISOString();
-    const preparationId = getPreparationId();
-    const existing = getExistingPreparation();
-
-    const lignes = state.catalogue
-      .map((product) => {
-        const quantity = getQuantity(product.sku_id);
-
-        if (quantity <= 0) return null;
-
-        return {
-          stock_preparation_ligne_id: `${preparationId}_${product.sku_id}`,
-          stock_preparation_id: preparationId,
-          mission_id: state.stockMission.mission_id,
-          stock_mission_id: state.stockMission.mission_id,
-          sku_id: product.sku_id,
-          parfum_code: product.parfum_code,
-          parfum_nom: product.parfum_nom,
-          format_cl: product.format_cl,
-          quantite_preparee: quantity,
-          created_at: existing?.created_at || now,
-          updated_at: now
-        };
-      })
-      .filter(Boolean);
-
-    const preparation = {
-      stock_preparation_id: preparationId,
-      mission_id: state.stockMission.mission_id,
-      stock_mission_id: state.stockMission.mission_id,
-      statut: status,
-      total_bouteilles: totals.total,
-      total_50cl: totals.total50,
-      total_20cl: totals.total20,
-      parfums_count: totals.flavourCount,
-      lignes_count: lignes.length,
-      note: els.stockNoteInput.value.trim(),
-      created_at: existing?.created_at || now,
-      updated_at: now
-    };
-
-    return {
-      preparation,
-      lignes
-    };
-  };
-
-  const markStockMissionReadyLocal = () => {
-    const now = new Date().toISOString();
-    const missionId = state.stockMission.mission_id;
-
-    const updatedMission = {
-      ...state.stockMission,
-      statut: state.stockMission.statut === "en_cours" ? "en_cours" : "pret",
-      stock_prepare: true,
-      updated_at: now
-    };
-
-    const updatedJournees = state.missionJournees.map((journee) => {
-      const nextStatus =
-        journee.statut === "en_cours" || journee.statut === "cloture"
-          ? journee.statut
-          : "pret";
-
-      return {
-        ...journee,
-        stock_mission_id: missionId,
-        statut: nextStatus,
-        updated_at: now
-      };
+    const missionPatch = buildStockMissionPatch({
+      status,
+      totals: payload.totals
     });
 
-    upsertLocalStockMission(updatedMission);
-    upsertLocalJournees(updatedJournees);
+    const journeesPatch = buildJourneesReadyPatch(status);
 
-    return {
-      mission: updatedMission,
-      journees: updatedJournees
-    };
+    upsertLocalMouvementsStock(payload.movements);
+    upsertLocalStockMission(missionPatch);
+
+    if (journeesPatch.length > 0) {
+      upsertLocalJournees(journeesPatch);
+    }
+
+    setSaving(true);
+    setStatus(status === "valide" ? "Validation du stock..." : "Enregistrement du brouillon...");
+
+    try {
+      await saveMouvementsStockToApi(payload.movements);
+      await saveStockMissionToApi(missionPatch);
+
+      if (journeesPatch.length > 0) {
+        await saveJourneesToApi(journeesPatch);
+      }
+
+      const pendingCount = getPendingWritesCount();
+
+      setStatus(
+        pendingCount > 0
+          ? `${status === "valide" ? "Stock validé" : "Brouillon enregistré"} · ${pendingCount} écriture(s) en attente de synchronisation.`
+          : status === "valide"
+            ? "Stock validé."
+            : "Brouillon enregistré.",
+        pendingCount > 0 ? "isError" : "isSuccess"
+      );
+
+      renderAll();
+
+      return {
+        movements: payload.activeMovements,
+        mission: missionPatch,
+        journees: journeesPatch
+      };
+    } catch (error) {
+      setStatus(`Erreur enregistrement : ${error.message}`, "isError");
+      renderAll();
+      return null;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const markDayStartedLocal = (journeeId) => {
@@ -685,52 +781,6 @@
       mission: updatedMission,
       journees: updatedJournees
     };
-  };
-
-  const savePreparation = async (status = "brouillon") => {
-    if (state.isSaving) return null;
-
-    const payload = buildPreparationPayload(status);
-
-    if (!payload) return null;
-
-    const readyPatch =
-      status === "valide" ? markStockMissionReadyLocal() : null;
-
-    saveLocalPreparation(payload);
-
-    setSaving(true);
-    setStatus(status === "valide" ? "Validation du stock..." : "Enregistrement du brouillon...");
-
-    try {
-      await savePreparationToApi(payload);
-
-      if (readyPatch) {
-        await saveStockMissionToApi(readyPatch.mission);
-        await saveJourneesToApi(readyPatch.journees);
-      }
-
-      const pendingCount = getPendingWritesCount();
-
-      setStatus(
-        pendingCount > 0
-          ? `${status === "valide" ? "Stock validé" : "Brouillon enregistré"} · ${pendingCount} écriture(s) en attente de synchronisation.`
-          : status === "valide"
-            ? "Stock validé."
-            : "Brouillon enregistré.",
-        pendingCount > 0 ? "isError" : "isSuccess"
-      );
-
-      renderAll();
-
-      return payload;
-    } catch (error) {
-      setStatus(`Erreur enregistrement : ${error.message}`, "isError");
-      renderAll();
-      return null;
-    } finally {
-      setSaving(false);
-    }
   };
 
   const startDay = async () => {
@@ -945,22 +995,19 @@
       stockMissions,
       journees,
       catalogue,
-      stockPreparations,
-      stockPreparationLines
+      mouvementsStock
     ] = await Promise.all([
       api().getMissions(),
       api().getMissionsStock(),
       api().getJournees(),
       api().getCatalogue(),
-      optional("getStockPreparations", state.stockPreparations),
-      optional("getStockPreparationLines", state.stockPreparationLines)
+      optional("getMouvementsStock", state.mouvementsStock)
     ]);
 
     state.events = Array.isArray(events) ? events : [];
     state.stockMissions = Array.isArray(stockMissions) ? stockMissions : [];
     state.journees = Array.isArray(journees) ? journees : [];
-    state.stockPreparations = stockPreparations;
-    state.stockPreparationLines = stockPreparationLines;
+    state.mouvementsStock = mouvementsStock;
 
     state.catalogue = catalogue
       .map((row, index) => normalizeProduct(row, index))
@@ -969,7 +1016,7 @@
     state.dataLoaded = true;
 
     cacheCoreData();
-    cachePreparationData();
+    cacheMouvementsStock();
 
     refreshMissionContextFromState();
   };
