@@ -24,7 +24,11 @@
   border-radius: 999px;
   color: var(--text);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 250, 241, 0.68));
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.88),
+      rgba(255, 250, 241, 0.68)
+    );
   box-shadow: var(--shadow-soft);
   font-size: 1.4rem;
   font-weight: 900;
@@ -57,7 +61,11 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(160deg, rgba(255, 250, 241, 0.96), rgba(245, 231, 208, 0.72));
+    linear-gradient(
+      160deg,
+      rgba(255, 250, 241, 0.96),
+      rgba(245, 231, 208, 0.72)
+    );
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
@@ -99,7 +107,11 @@
   border-radius: var(--radius-md);
   padding: 12px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 250, 241, 0.56));
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 250, 241, 0.56)
+    );
   box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
 }
 
@@ -131,7 +143,11 @@
   border-radius: var(--radius-md);
   padding: 12px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 241, 0.56));
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.78),
+      rgba(255, 250, 241, 0.56)
+    );
 }
 
 .stockDayCard strong {
@@ -166,7 +182,11 @@
   border-radius: var(--radius-md);
   padding: 12px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.52));
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.72),
+      rgba(255, 250, 241, 0.52)
+    );
 }
 
 .stockPrepStats span {
@@ -198,107 +218,199 @@
   font-weight: 900;
 }
 
+/* ==============================
+   Tuiles visuelles stock
+   ============================== */
+
 .stockRows {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 
-.stockRow {
-  display: grid;
-  gap: 12px;
-  border: 1px solid rgba(86, 65, 42, 0.14);
-  border-radius: var(--radius-md);
-  padding: 12px;
+.stockVisualCard {
+  position: relative;
+  overflow: hidden;
+  min-height: 292px;
+  border: 1px solid rgba(86, 65, 42, 0.18);
+  border-radius: 30px;
+  background-color: #d8c7aa;
+  box-shadow: var(--shadow);
+  isolation: isolate;
+}
+
+.stockVisualBg,
+.stockVisualShade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stockVisualBg {
+  background-image: var(--stock-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(1.025);
+}
+
+.stockVisualShade {
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 250, 241, 0.58));
+    linear-gradient(
+      90deg,
+      rgba(26, 18, 10, 0.54) 0%,
+      rgba(26, 18, 10, 0.26) 42%,
+      rgba(26, 18, 10, 0.08) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 250, 241, 0.02) 0%,
+      rgba(0, 0, 0, 0.18) 100%
+    );
 }
 
-.stockProductTitle {
+.stockVisualCard::after {
+  content: "";
+  position: absolute;
+  right: -52px;
+  bottom: -58px;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: rgba(255, 250, 241, 0.12);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.stockVisualContent {
+  position: relative;
+  z-index: 1;
+  min-height: 292px;
   display: grid;
-  gap: 2px;
+  align-content: space-between;
+  gap: 18px;
+  padding: 20px;
 }
 
-.stockProductTitle strong {
-  color: var(--rum);
-  font-size: 1.15rem;
-  line-height: 1;
-  letter-spacing: -0.035em;
+.stockVisualTitle {
+  display: grid;
+  gap: 4px;
+  max-width: 72%;
+  color: #fffaf1;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.34);
 }
 
-.stockProductTitle span {
-  color: var(--text);
-  font-size: 0.92rem;
-  font-weight: 850;
-  line-height: 1.15;
+.stockVisualTitle strong {
+  font-size: clamp(1.9rem, 8vw, 2.8rem);
+  line-height: 0.94;
+  font-weight: 950;
+  letter-spacing: -0.055em;
 }
 
-.stockFormatGrid {
+.stockVisualTitle span {
+  font-size: clamp(1.18rem, 5vw, 1.75rem);
+  line-height: 1.04;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.stockGlassPanel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stockGlassFormat {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 24px;
+  padding: 12px;
+  background: rgba(255, 250, 241, 0.2);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  box-shadow:
+    0 12px 26px rgba(36, 22, 8, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.stockGlassFormat.isUnavailable {
+  opacity: 0.62;
+}
+
+.stockGlassFormatHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
-.stockFormatControl {
+.stockGlassFormatHead span {
+  color: rgba(255, 250, 241, 0.96);
+  font-size: clamp(0.98rem, 4vw, 1.18rem);
+  font-weight: 950;
+  letter-spacing: -0.035em;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.26);
+}
+
+.stockGlassQtyControl {
   display: grid;
-  gap: 7px;
-  border: 1px solid rgba(86, 65, 42, 0.12);
-  border-radius: 18px;
-  padding: 10px;
-  background: rgba(255, 250, 241, 0.58);
-}
-
-.stockFormatControl > span {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
-.stockFormatControl.isUnavailable {
-  opacity: 0.45;
-  place-items: center;
-  align-content: center;
-}
-
-.stockFormatControl.isUnavailable em {
-  color: var(--muted);
-  font-style: normal;
-  font-weight: 900;
-}
-
-.stockQtyControl {
-  display: grid;
-  grid-template-columns: 38px 1fr 38px;
-  gap: 6px;
+  grid-template-columns: 50px minmax(0, 1fr) 50px;
   align-items: center;
+  gap: 8px;
 }
 
-.stockQtyControl button {
-  width: 38px;
-  height: 38px;
+.stockGlassQtyControl button {
+  width: 50px;
+  height: 50px;
   border: 0;
   border-radius: 999px;
   color: #fffaf1;
-  background: var(--rum);
+  background: rgba(157, 109, 51, 0.96);
+  box-shadow:
+    0 8px 18px rgba(72, 42, 12, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
   font: inherit;
-  font-size: 1.15rem;
+  font-size: 1.65rem;
   font-weight: 950;
 }
 
-.stockQtyControl input {
+.stockGlassQtyControl button:active {
+  transform: scale(0.96);
+}
+
+.stockGlassQtyControl input {
   width: 100%;
-  height: 38px;
-  border: 1px solid var(--border);
+  height: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.44);
   border-radius: 999px;
   padding: 0 8px;
   color: var(--text);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgba(86, 65, 42, 0.04),
+    0 6px 14px rgba(36, 22, 8, 0.08);
   font: inherit;
-  font-size: 16px;
+  font-size: 1.45rem;
   font-weight: 950;
   text-align: center;
   outline: none;
 }
+
+.stockGlassUnavailable {
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: rgba(255, 250, 241, 0.9);
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+/* ==============================
+   Champ note + actions
+   ============================== */
 
 .stockNoteField {
   display: grid;
@@ -319,7 +431,11 @@
   padding: 12px 14px;
   color: var(--text);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 250, 241, 0.62));
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.86),
+      rgba(255, 250, 241, 0.62)
+    );
   font: inherit;
   font-size: 16px;
   font-weight: 850;
@@ -364,14 +480,25 @@
   background: rgba(255, 250, 241, 0.42);
 }
 
+/* ==============================
+   Responsive
+   ============================== */
+
 @media (min-width: 620px) {
   .stockDayChips {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .stockRow {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
-    align-items: center;
+  .stockRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stockVisualCard {
+    min-height: 318px;
+  }
+
+  .stockVisualContent {
+    min-height: 318px;
   }
 
   .stockActions {
@@ -391,6 +518,45 @@
   .stockPrepPanel {
     padding: 14px;
   }
+
+  .stockVisualCard {
+    min-height: 302px;
+    border-radius: 28px;
+  }
+
+  .stockVisualContent {
+    min-height: 302px;
+    padding: 18px;
+  }
+
+  .stockVisualTitle {
+    max-width: 78%;
+  }
+
+  .stockGlassPanel {
+    gap: 10px;
+  }
+
+  .stockGlassFormat {
+    border-radius: 22px;
+    padding: 10px;
+  }
+
+  .stockGlassQtyControl {
+    grid-template-columns: 46px minmax(0, 1fr) 46px;
+    gap: 7px;
+  }
+
+  .stockGlassQtyControl button {
+    width: 46px;
+    height: 46px;
+    font-size: 1.55rem;
+  }
+
+  .stockGlassQtyControl input {
+    height: 46px;
+    font-size: 1.28rem;
+  }
 }
 
 @media (max-width: 370px) {
@@ -398,7 +564,28 @@
     grid-template-columns: 1fr;
   }
 
-  .stockFormatGrid {
+  .stockVisualCard {
+    min-height: 420px;
+  }
+
+  .stockVisualContent {
+    min-height: 420px;
+  }
+
+  .stockGlassPanel {
     grid-template-columns: 1fr;
+  }
+
+  .stockGlassQtyControl {
+    grid-template-columns: 50px minmax(0, 1fr) 50px;
+  }
+
+  .stockGlassQtyControl button {
+    width: 50px;
+    height: 50px;
+  }
+
+  .stockGlassQtyControl input {
+    height: 50px;
   }
 }
