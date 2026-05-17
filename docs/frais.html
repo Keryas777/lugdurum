@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Frais</title>
+
+    <link rel="stylesheet" href="./style.css?v=14" />
+    <link rel="stylesheet" href="./frais.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=5" defer></script>
+    <script src="./frais.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-expenses">
+    <div class="appShell expensesShell">
+      <header class="topbar expensesTopbar">
+        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">
+          ←
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Frais</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="expensesLayout">
+        <section class="expensesHero" aria-labelledby="expensesTitle">
+          <div>
+            <p class="sectionKicker">Mission</p>
+            <h2 id="expensesTitle">Chargement…</h2>
+            <p class="missionMeta" id="expensesMissionMeta">
+              Recherche du contexte actif.
+            </p>
+          </div>
+
+          <div class="expensesHeroStats" aria-label="Résumé des frais">
+            <article class="expenseStatCard">
+              <span>Total frais</span>
+              <strong id="expensesTotal">—</strong>
+            </article>
+
+            <article class="expenseStatCard">
+              <span>Nombre</span>
+              <strong id="expensesCount">—</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="expensesPanel" aria-labelledby="contextTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Contexte</p>
+              <h2 id="contextTitle">Journées liées</h2>
+            </div>
+          </div>
+
+          <div class="expenseDayChips" id="expenseDayChips">
+            <p class="expenseEmpty">Chargement des journées…</p>
+          </div>
+        </section>
+
+        <section class="expensesPanel" aria-labelledby="expenseFormTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Saisie</p>
+              <h2 id="expenseFormTitle">Ajouter un frais</h2>
+            </div>
+
+            <button class="smallTextBtn" type="button" id="resetExpenseBtn">
+              Réinitialiser
+            </button>
+          </div>
+
+          <form class="expenseForm" id="expenseForm">
+            <input id="expenseIdInput" type="hidden" />
+
+            <div class="formGrid">
+              <label class="fieldBlock">
+                <span>Date</span>
+                <input id="expenseDateInput" type="date" required />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Journée</span>
+                <select id="expenseDayInput">
+                  <option value="">Toute la mission</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Catégorie</span>
+                <select id="expenseCategoryInput" required>
+                  <option value="EMPLACEMENT">Emplacement</option>
+                  <option value="ESSENCE">Essence</option>
+                  <option value="PEAGE">Péage</option>
+                  <option value="REPAS">Repas</option>
+                  <option value="HEBERGEMENT">Hébergement</option>
+                  <option value="MATERIEL">Matériel</option>
+                  <option value="COMMUNICATION">Communication</option>
+                  <option value="CONSOMMABLES">Consommables</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Montant</span>
+                <input
+                  id="expenseAmountInput"
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0,00"
+                  required
+                />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Payé par</span>
+                <select id="expensePaidByInput">
+                  <option value="U_JEROME">Jérôme</option>
+                  <option value="U_ANTHO">Antho</option>
+                  <option value="U_WILL">Will</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Mode de paiement</span>
+                <select id="expensePaymentInput">
+                  <option value="CB">CB</option>
+                  <option value="ESP">Espèces</option>
+                  <option value="CHQ">Chèque</option>
+                  <option value="VIR">Virement</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="fieldBlock">
+              <span>Libellé</span>
+              <input
+                id="expenseLabelInput"
+                type="text"
+                placeholder="Ex : emplacement marché, péage aller, repas samedi…"
+              />
+            </label>
+
+            <label class="fieldBlock">
+              <span>Note</span>
+              <textarea
+                id="expenseNoteInput"
+                rows="3"
+                placeholder="Détail, commentaire, justificatif à ajouter plus tard…"
+              ></textarea>
+            </label>
+
+            <div class="expenseActions">
+              <button class="btn btnGhost" type="button" id="cancelEditBtn" hidden>
+                Annuler modification
+              </button>
+
+              <button class="btn btnPrimary" type="submit" id="saveExpenseBtn">
+                Enregistrer le frais
+              </button>
+            </div>
+
+            <p class="expenseStatus" id="expenseStatus" role="status"></p>
+          </form>
+        </section>
+
+        <section class="expensesPanel" aria-labelledby="expensesListTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Historique</p>
+              <h2 id="expensesListTitle">Frais saisis</h2>
+            </div>
+          </div>
+
+          <div class="expensesList" id="expensesList">
+            <p class="expenseEmpty">Aucun frais saisi.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
