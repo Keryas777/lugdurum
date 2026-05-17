@@ -2,22 +2,21 @@
   "use strict";
 
   /*
-    Vente rapide V14 :
+    Vente rapide V15 :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
     - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
     - Fallback cache localStorage.
-    - Ajout intégration SumUp niveau V1 :
-      - Paiement CB → bouton principal “Encaisser avec SumUp”.
-      - Création d’un ticket temporaire en attente.
-      - Ouverture de l’app SumUp via Payment Switch.
-      - Au retour manuel, affichage d’une popup :
-        - Paiement validé.
-        - Refusé / annulé.
-        - Retourner dans SumUp.
-      - Le ticket n’est enregistré définitivement qu’après confirmation verte.
+    - Contexte journée lu depuis lugdurum_preparation_context / active ids.
+    - Enregistrement des tickets via LugdurumAPI.saveTransaction().
+    - La file d’attente offline est gérée dans lugdurum-api.js.
+    - SumUp V1 :
+      - CB → bouton “Encaisser avec SumUp”.
+      - Ouverture app SumUp via Payment Switch.
+      - Retour manuel → popup de confirmation.
+      - Ticket enregistré seulement après confirmation verte.
   */
 
-  const JOURNEE_ACTIVE = {
+  const FALLBACK_JOURNEE_ACTIVE = {
     journee_id: "JOUR_SALAGNON_2026_05_04",
     mission_id: "MISSION_SALAGNON_2026",
     label: "Salagnon — J2",
@@ -27,11 +26,6 @@
   };
 
   const SUMUP_CONFIG = {
-    /*
-      À renseigner quand tu auras ta clé SumUp.
-      Tu peux aussi la poser en localStorage avec :
-      localStorage.setItem("lugdurum_sumup_affiliate_key", "TA_CLE_SUMUP")
-    */
     affiliateKey: "sup_afk_XKnrqZNyKlv6T1c29eBSYdrco9uwKz0j",
     currency: "EUR",
     titlePrefix: "Lugdurum",
@@ -60,12 +54,18 @@
     }
   };
 
-  const STORAGE_KEY = "lugdurum_pending_transactions";
-  const LAST_TICKET_KEY = "lugdurum_last_ticket";
-  const CATALOGUE_CACHE_KEY = "lugdurum_catalogue_cache";
-  const OFFRES_VENTE_CACHE_KEY = "lugdurum_offres_vente_cache";
-  const SUMUP_PENDING_KEY = "lugdurum_pending_sumup_ticket";
-  const SUMUP_AFFILIATE_KEY_STORAGE = "lugdurum_sumup_affiliate_key";
+  const STORAGE_KEYS = {
+    preparationContext: "lugdurum_preparation_context",
+    activeMissionId: "lugdurum_active_mission_id",
+    activeStockMissionId: "lugdurum_active_stock_mission_id",
+    activeJourneeId: "lugdurum_active_journee_id",
+    lastTicket: "lugdurum_last_ticket",
+    localTransactionsBackup: "lugdurum_transactions_backup",
+    catalogueCache: "lugdurum_catalogue_cache",
+    offresVenteCache: "lugdurum_offres_vente_cache",
+    sumupPending: "lugdurum_pending_sumup_ticket",
+    sumupAffiliateKey: "lugdurum_sumup_affiliate_key"
+  };
 
   const state = {
     selectedMode: "BOTTLE_50",
@@ -75,7 +75,11 @@
     amountManuallyEdited: false,
     catalogue: [],
     offresVente: [],
-    dataLoaded: false
+    missionsStock: [],
+    journees: [],
+    dataLoaded: false,
+    contextLoaded: false,
+    journeeActive: { ...FALLBACK_JOURNEE_ACTIVE }
   };
 
   const els = {
@@ -83,6 +87,8 @@
     ticketLines: document.getElementById("ticketLines"),
     ticketTotal: document.getElementById("ticketTotal"),
     ticketPanelTotal: document.getElementById("ticketPanelTotal"),
+    saleSummaryTitle: document.getElementById("saleSummaryTitle"),
+    missionMeta: document.querySelector(".saleSummary .missionMeta"),
     packComposer: document.getElementById("packComposer"),
     packProgressLabel: document.getElementById("packProgressLabel"),
     packPricePreview: document.getElementById("packPricePreview"),
@@ -103,6 +109,22 @@
     sumupConfirmSuccessBtn: document.getElementById("sumupConfirmSuccessBtn"),
     sumupConfirmFailBtn: document.getElementById("sumupConfirmFailBtn"),
     sumupReturnBtn: document.getElementById("sumupReturnBtn")
+  };
+
+  const api = () => window.LugdurumAPI || null;
+
+  const hasApi = () => Boolean(api());
+
+  const readJson = (key, fallback) => {
+    try {
+      return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    } catch {
+      return fallback;
+    }
+  };
+
+  const writeJson = (key, value) => {
+    localStorage.setItem(key, JSON.stringify(value));
   };
 
   const formatCurrency = (value) =>
@@ -152,7 +174,6 @@
   const toBoolean = (value, fallback = false) => {
     if (value === true) return true;
     if (value === false) return false;
-
     if (typeof value === "number") return value !== 0;
 
     const normalized = String(value ?? "")
@@ -161,15 +182,33 @@
 
     if (!normalized) return fallback;
 
-    if (["true", "vrai", "oui", "yes", "1", "x", "actif"].includes(normalized)) {
-      return true;
-    }
-
-    if (["false", "faux", "non", "no", "0", "inactif"].includes(normalized)) {
-      return false;
-    }
+    if (["true", "vrai", "oui", "yes", "1", "x", "actif"].includes(normalized)) return true;
+    if (["false", "faux", "non", "no", "0", "inactif"].includes(normalized)) return false;
 
     return fallback;
+  };
+
+  const parseLocalDate = (value) => {
+    if (!value) return null;
+
+    const [year, month, day] = String(value).split("-").map(Number);
+
+    if (!year || !month || !day) return null;
+
+    return new Date(year, month - 1, day);
+  };
+
+  const formatDisplayDateLong = (isoDate) => {
+    const date = parseLocalDate(isoDate);
+
+    if (!date) return "date non définie";
+
+    return new Intl.DateTimeFormat("fr-FR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric"
+    }).format(date);
   };
 
   const normalizeProduct = (rawProduct, index) => {
@@ -232,16 +271,12 @@
   };
 
   const readCachedArray = (key) => {
-    try {
-      const value = JSON.parse(localStorage.getItem(key) || "[]");
-      return Array.isArray(value) ? value : [];
-    } catch {
-      return [];
-    }
+    const value = readJson(key, []);
+    return Array.isArray(value) ? value : [];
   };
 
   const writeCachedArray = (key, value) => {
-    localStorage.setItem(key, JSON.stringify(value));
+    writeJson(key, value);
   };
 
   const setStatus = (message, type = "") => {
@@ -358,7 +393,6 @@
       .sort((a, b) => {
         const byOrder = a.ordre_affichage - b.ordre_affichage;
         if (byOrder !== 0) return byOrder;
-
         return String(a.parfum_code).localeCompare(String(b.parfum_code));
       });
   };
@@ -395,6 +429,16 @@
     return state.ticketItems
       .filter((item) => item.type === "bottle" && item.sku_id === skuId)
       .reduce((sum, item) => sum + item.quantite, 0);
+  };
+
+  const renderContext = () => {
+    if (els.saleSummaryTitle) {
+      els.saleSummaryTitle.textContent = state.journeeActive.label || "Journée active";
+    }
+
+    if (els.missionMeta) {
+      els.missionMeta.textContent = state.journeeActive.date_label || "date non définie";
+    }
   };
 
   const renderModes = () => {
@@ -648,6 +692,7 @@
   };
 
   const renderAll = ({ refreshProducts = false } = {}) => {
+    renderContext();
     renderModes();
     renderPackComposer();
 
@@ -702,10 +747,7 @@
     const mode = getMode();
 
     if (state.draftPack.length >= mode.box_size) {
-      setStatus(
-        "Le coffret est complet. Ajoute-le au ticket ou vide la composition.",
-        "isError"
-      );
+      setStatus("Le coffret est complet. Ajoute-le au ticket ou vide la composition.", "isError");
       return;
     }
 
@@ -785,19 +827,11 @@
     renderAll();
   };
 
-  const readPendingTransactions = () => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    } catch {
-      return [];
-    }
-  };
-
-  const savePendingTransaction = (transaction) => {
-    const pending = readPendingTransactions();
-    pending.push(transaction);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pending));
-    localStorage.setItem(LAST_TICKET_KEY, JSON.stringify(transaction));
+  const saveLocalTransactionBackup = (transaction) => {
+    const backup = readCachedArray(STORAGE_KEYS.localTransactionsBackup);
+    backup.push(transaction);
+    writeJson(STORAGE_KEYS.localTransactionsBackup, backup);
+    writeJson(STORAGE_KEYS.lastTicket, transaction);
   };
 
   const getSourceForPayment = ({ provider = "" } = {}) => {
@@ -816,8 +850,8 @@
         lines.push({
           ligne_id: `${transactionId}_L${String(lines.length + 1).padStart(2, "0")}`,
           transaction_id: transactionId,
-          mission_id: JOURNEE_ACTIVE.mission_id,
-          journee_id: JOURNEE_ACTIVE.journee_id,
+          mission_id: state.journeeActive.mission_id,
+          journee_id: state.journeeActive.journee_id,
           sku_id: item.sku_id,
           quantite: item.quantite,
           prix_unitaire_ttc: item.prix_unitaire_ttc,
@@ -826,8 +860,12 @@
           montant_tva_ligne: 0,
           total_catalogue_ligne_ttc: item.quantite * item.prix_unitaire_ttc,
           total_catalogue_ligne_ht: item.quantite * item.prix_unitaire_ht,
+          cout_unitaire: 0,
+          marge_brute_ligne: 0,
           source: getSourceForPayment({ provider }),
-          note: item.offre_id ? `Offre : ${item.offre_id}` : ""
+          note: item.offre_id ? `Offre : ${item.offre_id}` : "",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         });
         return;
       }
@@ -866,8 +904,8 @@
           lines.push({
             ligne_id: `${transactionId}_L${String(lines.length + 1).padStart(2, "0")}`,
             transaction_id: transactionId,
-            mission_id: JOURNEE_ACTIVE.mission_id,
-            journee_id: JOURNEE_ACTIVE.journee_id,
+            mission_id: state.journeeActive.mission_id,
+            journee_id: state.journeeActive.journee_id,
             sku_id: product.sku_id,
             quantite: qty,
             prix_unitaire_ttc: unitPriceTtc,
@@ -876,8 +914,12 @@
             montant_tva_ligne: 0,
             total_catalogue_ligne_ttc: totalLineTtc,
             total_catalogue_ligne_ht: totalLineHt,
+            cout_unitaire: 0,
+            marge_brute_ligne: 0,
             source: getSourceForPayment({ provider }),
-            note: `${item.label} · ${item.composition.map((p) => p.parfum_code).join(" ")}`
+            note: `${item.label} · ${item.composition.map((p) => p.parfum_code).join(" ")}`,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           });
         });
       }
@@ -898,12 +940,14 @@
     const totalEncaisse =
       Number.isFinite(amountInput) && amountInput > 0 ? amountInput : totalCatalogue;
 
+    const createdAt = new Date().toISOString();
+
     return {
       transaction_id: transactionId,
-      date_heure: new Date().toISOString(),
-      mission_id: JOURNEE_ACTIVE.mission_id,
-      journee_id: JOURNEE_ACTIVE.journee_id,
-      user_id: JOURNEE_ACTIVE.user_id,
+      date_heure: createdAt,
+      mission_id: state.journeeActive.mission_id,
+      journee_id: state.journeeActive.journee_id,
+      user_id: state.journeeActive.user_id,
       mode_paiement: state.paymentMode,
       paiement_provider: provider,
       paiement_statut: paymentStatus,
@@ -918,16 +962,27 @@
       motif_remise: totalCatalogue !== totalEncaisse ? "Montant encaissé modifié" : "",
       statut: status,
       note: "",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      lignes: buildSaleLines(transactionId, { provider }),
-      detail_ticket: state.ticketItems
+      detail_ticket: JSON.stringify(state.ticketItems),
+      created_at: createdAt,
+      updated_at: createdAt,
+      lignes: buildSaleLines(transactionId, { provider })
     };
+  };
+
+  const saveTransactionToApi = async (transaction) => {
+    if (!hasApi() || typeof api().saveTransaction !== "function") {
+      throw new Error("LugdurumAPI.saveTransaction() est indisponible.");
+    }
+
+    const result = await api().saveTransaction(transaction);
+    saveLocalTransactionBackup(transaction);
+
+    return result;
   };
 
   const getSumupAffiliateKey = () => {
     return (
-      localStorage.getItem(SUMUP_AFFILIATE_KEY_STORAGE) ||
+      localStorage.getItem(STORAGE_KEYS.sumupAffiliateKey) ||
       SUMUP_CONFIG.affiliateKey ||
       ""
     ).trim();
@@ -963,24 +1018,20 @@
   };
 
   const getPendingSumup = () => {
-    try {
-      const value = JSON.parse(localStorage.getItem(SUMUP_PENDING_KEY) || "null");
-      return value && typeof value === "object" ? value : null;
-    } catch {
-      return null;
-    }
+    const value = readJson(STORAGE_KEYS.sumupPending, null);
+    return value && typeof value === "object" ? value : null;
   };
 
   const setPendingSumup = (payload) => {
-    localStorage.setItem(SUMUP_PENDING_KEY, JSON.stringify(payload));
+    writeJson(STORAGE_KEYS.sumupPending, payload);
   };
 
   const clearPendingSumup = () => {
-    localStorage.removeItem(SUMUP_PENDING_KEY);
+    localStorage.removeItem(STORAGE_KEYS.sumupPending);
   };
 
   const showSumupConfirm = (pending, message = "") => {
-    if (!pending || !pending.transaction) return;
+    if (!pending || !pending.transaction || !els.sumupConfirmOverlay) return;
 
     els.sumupPendingAmount.textContent = formatCurrency(pending.transaction.total_encaisse_ttc);
     els.sumupPendingReference.textContent =
@@ -994,13 +1045,19 @@
   };
 
   const hideSumupConfirm = () => {
-    els.sumupConfirmOverlay.hidden = true;
+    if (els.sumupConfirmOverlay) {
+      els.sumupConfirmOverlay.hidden = true;
+    }
   };
 
   const restoreTicketFromTransaction = (transaction) => {
-    state.ticketItems = Array.isArray(transaction.detail_ticket)
-      ? transaction.detail_ticket
-      : [];
+    try {
+      state.ticketItems = Array.isArray(transaction.detail_ticket)
+        ? transaction.detail_ticket
+        : JSON.parse(transaction.detail_ticket || "[]");
+    } catch {
+      state.ticketItems = [];
+    }
 
     state.draftPack = [];
     state.paymentMode = transaction.mode_paiement || "CB";
@@ -1104,7 +1161,7 @@
     window.location.href = sumupUrl;
   };
 
-  const confirmSumupSuccess = () => {
+  const confirmSumupSuccess = async () => {
     const pending = getPendingSumup();
 
     if (!pending || !pending.transaction) {
@@ -1123,20 +1180,31 @@
       ].filter(Boolean).join("\n")
     };
 
-    savePendingTransaction(transaction);
-    clearPendingSumup();
-    hideSumupConfirm();
+    try {
+      await saveTransactionToApi(transaction);
 
-    setStatus(
-      `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
-      "isSuccess"
-    );
+      clearPendingSumup();
+      hideSumupConfirm();
 
-    state.ticketItems = [];
-    state.draftPack = [];
-    els.amountPaidInput.value = "";
-    state.amountManuallyEdited = false;
-    renderAll();
+      const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
+        ? api().getPendingWritesCount()
+        : 0;
+
+      setStatus(
+        pendingCount > 0
+          ? `Paiement SumUp validé · ticket en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
+          : `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
+        pendingCount > 0 ? "isError" : "isSuccess"
+      );
+
+      state.ticketItems = [];
+      state.draftPack = [];
+      els.amountPaidInput.value = "";
+      state.amountManuallyEdited = false;
+      renderAll();
+    } catch (error) {
+      setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}`, "isError");
+    }
   };
 
   const confirmSumupFailure = () => {
@@ -1169,7 +1237,7 @@
     window.location.href = pending.sumup_url;
   };
 
-  const saveTicket = () => {
+  const saveTicket = async () => {
     if (state.paymentMode === "CB") {
       launchSumupPayment();
       return;
@@ -1191,39 +1259,112 @@
       status: "validee"
     });
 
-    savePendingTransaction(transaction);
+    try {
+      await saveTransactionToApi(transaction);
 
-    setStatus(
-      `Ticket enregistré en local · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
-      "isSuccess"
-    );
+      const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
+        ? api().getPendingWritesCount()
+        : 0;
 
-    state.ticketItems = [];
-    state.draftPack = [];
-    els.amountPaidInput.value = "";
-    state.amountManuallyEdited = false;
-    renderAll();
+      setStatus(
+        pendingCount > 0
+          ? `Ticket conservé localement · à synchroniser · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
+          : `Ticket enregistré · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
+        pendingCount > 0 ? "isError" : "isSuccess"
+      );
+
+      state.ticketItems = [];
+      state.draftPack = [];
+      els.amountPaidInput.value = "";
+      state.amountManuallyEdited = false;
+      renderAll();
+    } catch (error) {
+      setStatus(`Erreur enregistrement ticket : ${error.message}`, "isError");
+    }
+  };
+
+  const loadContext = async () => {
+    const context = readJson(STORAGE_KEYS.preparationContext, null);
+
+    const stockMissionId =
+      context?.stock_mission_id ||
+      context?.mission_id ||
+      localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
+      localStorage.getItem(STORAGE_KEYS.activeMissionId) ||
+      FALLBACK_JOURNEE_ACTIVE.mission_id;
+
+    const journeeId =
+      context?.journee_id ||
+      localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
+      FALLBACK_JOURNEE_ACTIVE.journee_id;
+
+    state.journeeActive = {
+      ...FALLBACK_JOURNEE_ACTIVE,
+      mission_id: stockMissionId,
+      journee_id: journeeId
+    };
+
+    renderContext();
+
+    try {
+      if (!hasApi()) return;
+
+      const [missionsStock, journees] = await Promise.all([
+        api().getMissionsStock(),
+        api().getJournees()
+      ]);
+
+      state.missionsStock = Array.isArray(missionsStock) ? missionsStock : [];
+      state.journees = Array.isArray(journees) ? journees : [];
+
+      const mission = state.missionsStock.find(
+        (item) => String(item.mission_id || "") === String(stockMissionId || "")
+      );
+
+      const journee = state.journees.find(
+        (item) => String(item.journee_id || "") === String(journeeId || "")
+      );
+
+      if (mission || journee) {
+        state.journeeActive = {
+          ...state.journeeActive,
+          label: [
+            mission?.nom || "Mission",
+            journee?.jour_label || ""
+          ].filter(Boolean).join(" — "),
+          date_label: journee?.date ? formatDisplayDateLong(journee.date) : state.journeeActive.date_label,
+          mission_id: stockMissionId,
+          journee_id: journeeId
+        };
+
+        renderContext();
+      }
+    } catch (error) {
+      console.warn("Contexte journée non chargé depuis Sheets.", error);
+    } finally {
+      state.contextLoaded = true;
+    }
   };
 
   const loadData = async () => {
     renderProducts();
 
     try {
-      if (!window.LugdurumAPI) {
+      if (!hasApi()) {
         throw new Error("lugdurum-api.js n’est pas chargé.");
       }
 
-      if (typeof window.LugdurumAPI.getCatalogue !== "function") {
+      if (typeof api().getCatalogue !== "function") {
         throw new Error("getCatalogue() est introuvable dans lugdurum-api.js.");
       }
 
-      if (typeof window.LugdurumAPI.getOffresVente !== "function") {
+      if (typeof api().getOffresVente !== "function") {
         throw new Error("getOffresVente() est introuvable dans lugdurum-api.js.");
       }
 
       const [catalogueRows, offresRows] = await Promise.all([
-        window.LugdurumAPI.getCatalogue(),
-        window.LugdurumAPI.getOffresVente()
+        api().getCatalogue(),
+        api().getOffresVente()
       ]);
 
       state.catalogue = catalogueRows
@@ -1236,8 +1377,8 @@
 
       state.dataLoaded = true;
 
-      writeCachedArray(CATALOGUE_CACHE_KEY, state.catalogue);
-      writeCachedArray(OFFRES_VENTE_CACHE_KEY, state.offresVente);
+      writeCachedArray(STORAGE_KEYS.catalogueCache, state.catalogue);
+      writeCachedArray(STORAGE_KEYS.offresVenteCache, state.offresVente);
 
       if (state.offresVente.length === 0) {
         setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
@@ -1247,8 +1388,8 @@
 
       renderAll({ refreshProducts: true });
     } catch (error) {
-      const cachedCatalogue = readCachedArray(CATALOGUE_CACHE_KEY);
-      const cachedOffres = readCachedArray(OFFRES_VENTE_CACHE_KEY);
+      const cachedCatalogue = readCachedArray(STORAGE_KEYS.catalogueCache);
+      const cachedOffres = readCachedArray(STORAGE_KEYS.offresVenteCache);
 
       if (cachedCatalogue.length > 0 || cachedOffres.length > 0) {
         state.catalogue = cachedCatalogue.map((row, index) => normalizeProduct(row, index));
@@ -1340,9 +1481,17 @@
   els.undoBtn.addEventListener("click", undoLast);
   els.saveTicketBtn.addEventListener("click", saveTicket);
 
-  els.sumupConfirmSuccessBtn.addEventListener("click", confirmSumupSuccess);
-  els.sumupConfirmFailBtn.addEventListener("click", confirmSumupFailure);
-  els.sumupReturnBtn.addEventListener("click", reopenSumup);
+  if (els.sumupConfirmSuccessBtn) {
+    els.sumupConfirmSuccessBtn.addEventListener("click", confirmSumupSuccess);
+  }
+
+  if (els.sumupConfirmFailBtn) {
+    els.sumupConfirmFailBtn.addEventListener("click", confirmSumupFailure);
+  }
+
+  if (els.sumupReturnBtn) {
+    els.sumupReturnBtn.addEventListener("click", reopenSumup);
+  }
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
@@ -1354,8 +1503,17 @@
     checkPendingSumup();
   });
 
+  window.addEventListener("lugdurum:sync-status", (event) => {
+    const detail = event.detail || {};
+
+    if (Number(detail.pending_count || 0) > 0 && state.ticketItems.length === 0) {
+      setStatus(`${detail.pending_count} écriture(s) en attente de synchronisation.`, "isError");
+    }
+  });
+
   handleSumupCallbackParams();
   renderAll();
+  loadContext();
   loadData();
   checkPendingSumup();
 })();
