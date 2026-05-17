@@ -2,11 +2,12 @@
   "use strict";
 
   /*
-    Préparation stock V3 :
+    Préparation stock V4 :
     - Lit la mission de stock active depuis lugdurum_preparation_context.
     - Charge missions_stock, journees_vente, missions_vente, catalogue et mouvements_stock depuis Google Sheets.
     - Fallback localStorage si lecture Sheets impossible.
     - Permet de saisir le stock emmené par SKU, format 50 cL et 20 cL.
+    - Affiche les parfums en grandes tuiles visuelles, avec sélecteurs glass par-dessus.
     - Enregistre le détail produit par produit dans mouvements_stock :
       type_mouvement = PREPARATION
       sens = ENTREE
@@ -188,9 +189,14 @@
         ? toBoolean(rawProduct.visible_webapp, true)
         : true,
       ordre_affichage: toNumber(rawProduct.ordre_affichage, 1000 + index),
-      note: String(rawProduct.note || "").trim()
+      note: String(rawProduct.note || "").trim(),
+      image_src: String(rawProduct.image_src || "").trim()
     };
   };
+
+  const getProductImageSrc = (product) =>
+    String(product?.image_src || "").trim() ||
+    `./assets/parfums/${String(product?.parfum_code || "").toLowerCase()}.webp`;
 
   const setStatus = (message, type = "") => {
     els.stockStatus.textContent = message;
@@ -599,7 +605,6 @@
 
   const buildStockMissionPatch = ({ status = "brouillon", totals }) => {
     const now = new Date().toISOString();
-
     const shouldMarkPrepared = status === "valide";
 
     let nextStatus = state.stockMission.statut || "stock_a_preparer";
@@ -876,9 +881,12 @@
   const renderFormatControl = (product, label) => {
     if (!product) {
       return `
-        <div class="stockFormatControl isUnavailable">
-          <span>${escapeHtml(label)}</span>
-          <em>—</em>
+        <div class="stockGlassFormat isUnavailable">
+          <div class="stockGlassFormatHead">
+            <span>${escapeHtml(label)}</span>
+          </div>
+
+          <div class="stockGlassUnavailable">—</div>
         </div>
       `;
     }
@@ -886,10 +894,12 @@
     const qty = getQuantity(product.sku_id);
 
     return `
-      <div class="stockFormatControl">
-        <span>${escapeHtml(label)}</span>
+      <div class="stockGlassFormat">
+        <div class="stockGlassFormatHead">
+          <span>${escapeHtml(label)}</span>
+        </div>
 
-        <div class="stockQtyControl">
+        <div class="stockGlassQtyControl">
           <button
             type="button"
             data-stock-delta="-1"
@@ -940,17 +950,27 @@
       .map((group) => {
         const product50 = group.products.find((product) => product.format_cl === 50);
         const product20 = group.products.find((product) => product.format_cl === 20);
+        const imageProduct = product50 || product20;
+        const imageSrc = getProductImageSrc(imageProduct);
 
         return `
-          <article class="stockRow">
-            <div class="stockProductTitle">
-              <strong>${escapeHtml(group.parfum_code)}</strong>
-              <span>${escapeHtml(group.parfum_nom)}</span>
-            </div>
+          <article
+            class="stockVisualCard"
+            style="--stock-bg: url('${escapeAttr(imageSrc)}')"
+          >
+            <div class="stockVisualBg" aria-hidden="true"></div>
+            <div class="stockVisualShade" aria-hidden="true"></div>
 
-            <div class="stockFormatGrid">
-              ${renderFormatControl(product50, "50 cL")}
-              ${renderFormatControl(product20, "20 cL")}
+            <div class="stockVisualContent">
+              <div class="stockVisualTitle">
+                <strong>${escapeHtml(group.parfum_code)}</strong>
+                <span>${escapeHtml(group.parfum_nom)}</span>
+              </div>
+
+              <div class="stockGlassPanel">
+                ${renderFormatControl(product50, "50 cL")}
+                ${renderFormatControl(product20, "20 cL")}
+              </div>
             </div>
           </article>
         `;
