@@ -2,7 +2,10 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#a88f68" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -10,17 +13,20 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
     <title>Lugdurum — Dashboard</title>
+
     <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./dashboard.css?v=1" />
+    <link rel="stylesheet" href="./dashboard.css?v=2" />
+
     <script src="./lugdurum-api.js?v=5" defer></script>
-    <script src="./dashboard.js?v=1" defer></script>
+    <script src="./dashboard.js?v=2" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
   <body class="page-dashboard">
     <div class="appShell dashboardShell">
       <header class="topbar dashboardTopbar">
-        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">←</a>
+        <a class="backBtn" href="./index.html" aria-label="Retour à l’accueil">←</a>
+
         <div class="brandBlock">
           <div class="brandHeader">
             <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
@@ -35,23 +41,86 @@
       <main class="dashboardLayout">
         <section class="dashboardHero">
           <div>
-            <p class="sectionKicker">Pilotage</p>
+            <p class="sectionKicker">Chiffres & stats</p>
             <h2>Vue d’ensemble</h2>
-            <p class="dashboardHeroText">Résumé simple à partir des données déjà disponibles.</p>
+            <p class="dashboardHeroText">
+              Un point d’entrée unique pour consulter les journées clôturées, les résultats de l’année,
+              les produits et les performances des événements.
+            </p>
           </div>
-          <div class="dashboardStats"><article class="dashboardStatCard"><span>CA enregistré</span><strong id="dashboardRevenue">—</strong></article>
-            <article class="dashboardStatCard"><span>Frais</span><strong id="dashboardExpenses">—</strong></article></div>
+
+          <div class="dashboardStats">
+            <article class="dashboardStatCard">
+              <span>CA enregistré</span>
+              <strong id="dashboardRevenue">—</strong>
+            </article>
+
+            <article class="dashboardStatCard">
+              <span>Frais</span>
+              <strong id="dashboardExpenses">—</strong>
+            </article>
+          </div>
         </section>
+
         <section class="dashboardPanel">
           <div class="sectionHeader compact">
             <div>
-              <p class="sectionKicker">Indicateurs</p>
+              <p class="sectionKicker">Navigation</p>
+              <h2>Modules statistiques</h2>
+            </div>
+          </div>
+
+          <div class="dashboardNavGrid">
+            <a class="dashboardNavCard primary" href="./journees-cloturees.html">
+              <span class="dashboardNavIcon">📒</span>
+              <span class="dashboardNavText">
+                <strong>Journées clôturées</strong>
+                <small>Historique détaillé : ventes, paiements, stocks et bilan journalier.</small>
+              </span>
+              <span class="dashboardNavArrow">→</span>
+            </a>
+
+            <a class="dashboardNavCard" href="./stats-annee.html">
+              <span class="dashboardNavIcon">📅</span>
+              <span class="dashboardNavText">
+                <strong>Stats année</strong>
+                <small>CA annuel, moyenne par journée, nombre d’événements et comparaison globale.</small>
+              </span>
+              <span class="dashboardNavArrow">→</span>
+            </a>
+
+            <a class="dashboardNavCard" href="./stats-produits.html">
+              <span class="dashboardNavIcon">🍹</span>
+              <span class="dashboardNavText">
+                <strong>Stats produits</strong>
+                <small>Parfums les plus vendus, formats 50 cL / 20 cL, coffrets et chiffre d’affaires.</small>
+              </span>
+              <span class="dashboardNavArrow">→</span>
+            </a>
+
+            <a class="dashboardNavCard" href="./stats-evenements.html">
+              <span class="dashboardNavIcon">🎪</span>
+              <span class="dashboardNavText">
+                <strong>Stats événements</strong>
+                <small>Meilleurs marchés, salons rentables, moyennes par type et frais associés.</small>
+              </span>
+              <span class="dashboardNavArrow">→</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="dashboardPanel">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Résumé rapide</p>
               <h2>Terrain</h2>
             </div>
           </div>
+
           <div class="dashboardList" id="dashboardList">
             <p class="dashboardEmpty">Chargement des indicateurs…</p>
           </div>
+
           <p class="dashboardStatus" id="dashboardStatus" role="status"></p>
         </section>
       </main>
