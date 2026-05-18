@@ -1,0 +1,489 @@
+/* ==============================
+   Page saisie ancienne journée
+   ============================== */
+
+.page-old-day-entry .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.oldDayShell {
+  max-width: 860px;
+}
+
+.oldDayTopbar {
+  align-items: flex-start;
+}
+
+.backBtn {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.88),
+      rgba(255, 250, 241, 0.68)
+    );
+  box-shadow: var(--shadow-soft);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.page-old-day-entry .brandLogo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.page-old-day-entry .brandName {
+  margin-bottom: 5px;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+}
+
+.page-old-day-entry .brandBlock h1 {
+  max-width: none;
+  font-size: clamp(1.28rem, 5.6vw, 2.1rem);
+  white-space: nowrap;
+}
+
+.oldDayLayout,
+.oldDayForm {
+  display: grid;
+  gap: 14px;
+}
+
+.oldDayHero,
+.oldDayPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(
+      160deg,
+      rgba(255, 250, 241, 0.96),
+      rgba(245, 231, 208, 0.72)
+    );
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.oldDayHero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.oldDayHero h2,
+.oldDayPanel h2 {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.oldDayHero h2 {
+  font-size: clamp(1.55rem, 6vw, 2.45rem);
+}
+
+.oldDayPanel h2 {
+  font-size: clamp(1.25rem, 5vw, 1.8rem);
+}
+
+.oldDayHeroText,
+.oldDayHint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.oldDayHeroStats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.oldDayHeroStats article {
+  min-width: 0;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 250, 241, 0.56)
+    );
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+}
+
+.oldDayHeroStats span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.oldDayHeroStats strong {
+  display: block;
+  color: var(--rum);
+  font-size: clamp(1.2rem, 5.8vw, 2rem);
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.oldDayPanel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.formGrid,
+.paymentGrid,
+.expenseQuickForm {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.fieldBlock,
+.moneyBlock {
+  display: grid;
+  gap: 7px;
+}
+
+.fieldBlock span,
+.moneyBlock span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.fieldBlock input,
+.fieldBlock select,
+.fieldBlock textarea,
+.moneyBlock input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.86),
+      rgba(255, 250, 241, 0.62)
+    );
+  font: inherit;
+  font-size: 16px;
+  font-weight: 820;
+  outline: none;
+}
+
+.fieldBlock input,
+.fieldBlock select,
+.moneyBlock input {
+  min-height: var(--tap);
+  padding: 0 14px;
+}
+
+.fieldBlock textarea {
+  min-height: 92px;
+  resize: vertical;
+  padding: 12px 14px;
+  line-height: 1.35;
+}
+
+.moneyBlock {
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.78),
+      rgba(255, 250, 241, 0.56)
+    );
+}
+
+.moneyBlock input {
+  color: var(--rum);
+  font-size: 1.22rem;
+  font-weight: 950;
+}
+
+.oldDayTotalLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  color: var(--muted);
+  background: rgba(255, 250, 241, 0.52);
+  font-weight: 850;
+}
+
+.oldDayTotalLine strong {
+  color: var(--rum);
+  font-size: 1.18rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.oldDayToolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.smallTextBtn {
+  border: 0;
+  color: var(--rum);
+  background: transparent;
+  font: inherit;
+  font-weight: 900;
+}
+
+.oldProductRows {
+  display: grid;
+  gap: 10px;
+}
+
+.oldProductRow {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.82),
+      rgba(255, 250, 241, 0.58)
+    );
+}
+
+.oldProductTitle {
+  display: grid;
+  gap: 2px;
+}
+
+.oldProductTitle strong {
+  color: var(--rum);
+  font-size: 1.15rem;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.oldProductTitle span {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.oldProductControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.oldQtyField {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(86, 65, 42, 0.12);
+  border-radius: 18px;
+  padding: 10px;
+  background: rgba(255, 250, 241, 0.58);
+}
+
+.oldQtyField span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.oldQtyField input {
+  width: 100%;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--text);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.86),
+      rgba(255, 250, 241, 0.62)
+    );
+  font: inherit;
+  font-size: 16px;
+  font-weight: 950;
+  text-align: center;
+  outline: none;
+}
+
+.oldQtyField.isUnavailable {
+  opacity: 0.45;
+}
+
+.expenseList {
+  display: grid;
+  gap: 8px;
+}
+
+.expenseChip {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: rgba(255, 250, 241, 0.56);
+}
+
+.expenseChip strong {
+  color: var(--text);
+  font-size: 0.94rem;
+}
+
+.expenseChip span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 780;
+}
+
+.expenseChip button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(179, 92, 58, 0.22);
+  border-radius: 999px;
+  color: var(--red);
+  background: rgba(255, 250, 241, 0.72);
+  font: inherit;
+  font-weight: 950;
+}
+
+.secondaryBtn,
+.primaryBtn {
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 999px;
+  padding: 0 18px;
+  font: inherit;
+  font-weight: 950;
+}
+
+.secondaryBtn {
+  color: var(--rum);
+  background: var(--amber-soft);
+}
+
+.primaryBtn {
+  width: 100%;
+  color: #fffaf1;
+  background:
+    linear-gradient(
+      135deg,
+      var(--rum),
+      var(--kraft)
+    );
+  box-shadow: 0 12px 26px rgba(75, 48, 22, 0.18);
+}
+
+.primaryBtn:disabled,
+.secondaryBtn:disabled {
+  opacity: 0.55;
+}
+
+.finalPanel {
+  gap: 16px;
+}
+
+.oldDayStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.oldDayStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.oldDayStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+.oldDayEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 250, 241, 0.42);
+}
+
+@media (min-width: 620px) {
+  .oldDayHero {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .oldDayHeroStats {
+    width: 300px;
+  }
+
+  .formGrid,
+  .paymentGrid,
+  .expenseQuickForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fieldBlock.wide,
+  .expenseQuickForm .fieldBlock.wide {
+    grid-column: 1 / -1;
+  }
+
+  .oldProductRow {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
+    align-items: center;
+  }
+
+  .expenseQuickForm .secondaryBtn {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 430px) {
+  .oldDayPanel {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 370px) {
+  .oldDayHeroStats,
+  .oldProductControls {
+    grid-template-columns: 1fr;
+  }
+
+  .expenseChip {
+    grid-template-columns: 1fr auto;
+  }
+
+  .expenseChip span {
+    grid-column: 1 / -1;
+  }
+}

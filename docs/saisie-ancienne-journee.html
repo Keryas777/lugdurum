@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+    <title>Lugdurum — Saisie ancienne journée</title>
+
+    <link rel="stylesheet" href="./style.css?v=14" />
+    <link rel="stylesheet" href="./saisie-ancienne-journee.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=5" defer></script>
+    <script src="./saisie-ancienne-journee.js?v=1" defer></script>
+    <script src="./pwa.js?v=6" defer></script>
+  </head>
+
+  <body class="page-old-day-entry">
+    <div class="appShell oldDayShell">
+      <header class="topbar oldDayTopbar">
+        <a class="backBtn" href="./dashboard.html" aria-label="Retour au dashboard">←</a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Saisie historique</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="oldDayLayout">
+        <section class="oldDayHero">
+          <div>
+            <p class="sectionKicker">Rattrapage</p>
+            <h2>Ancienne journée</h2>
+            <p class="oldDayHeroText">
+              Ajoute une journée passée directement dans les stats, sans refaire tout le parcours terrain.
+            </p>
+          </div>
+
+          <div class="oldDayHeroStats">
+            <article>
+              <span>CA saisi</span>
+              <strong id="heroRevenue">0 €</strong>
+            </article>
+            <article>
+              <span>Bouteilles</span>
+              <strong id="heroBottles">0</strong>
+            </article>
+          </div>
+        </section>
+
+        <form class="oldDayForm" id="oldDayForm">
+          <section class="oldDayPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 1</p>
+                <h2>Informations journée</h2>
+              </div>
+            </div>
+
+            <div class="formGrid">
+              <label class="fieldBlock wide">
+                <span>Nom de l’évènement</span>
+                <input id="eventNameInput" type="text" autocomplete="off" placeholder="Ex : Marché de Noël Pérouges" required />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Date</span>
+                <input id="eventDateInput" type="date" required />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Type</span>
+                <select id="eventTypeInput">
+                  <option value="MARCHE_ARTISANAL">Marché artisanal</option>
+                  <option value="SALON_DES_VINS">Salon des vins</option>
+                  <option value="MARCHE_DE_NOEL">Marché de Noël</option>
+                  <option value="FOIRE">Foire</option>
+                  <option value="CAVISTE">Caviste / pro</option>
+                  <option value="COMMANDE_DIRECTE">Commande directe</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Ville</span>
+                <input id="cityInput" type="text" autocomplete="off" placeholder="Ex : Pérouges" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Lieu</span>
+                <input id="placeInput" type="text" autocomplete="off" placeholder="Place, salle, domaine…" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Journée</span>
+                <input id="dayLabelInput" type="text" autocomplete="off" placeholder="Ex : J1, J2, dimanche…" />
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Note</span>
+                <textarea id="noteInput" placeholder="Météo, emplacement, remarques, contexte…"></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="oldDayPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 2</p>
+                <h2>Paiements</h2>
+              </div>
+            </div>
+
+            <div class="paymentGrid">
+              <label class="moneyBlock">
+                <span>Carte bancaire</span>
+                <input id="amountCbInput" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" />
+              </label>
+
+              <label class="moneyBlock">
+                <span>Espèces</span>
+                <input id="amountCashInput" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" />
+              </label>
+
+              <label class="moneyBlock">
+                <span>Chèque</span>
+                <input id="amountCheckInput" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" />
+              </label>
+            </div>
+
+            <div class="oldDayTotalLine">
+              <span>Total encaissé</span>
+              <strong id="paymentTotal">0 €</strong>
+            </div>
+          </section>
+
+          <section class="oldDayPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 3</p>
+                <h2>Produits vendus</h2>
+              </div>
+            </div>
+
+            <p class="oldDayHint">
+              Saisis les quantités vendues. Les 20 cL sont considérés comme des ventes coffrets / petites bouteilles historiques.
+            </p>
+
+            <div class="oldDayToolbar">
+              <button class="smallTextBtn" id="clearProductsBtn" type="button">Vider les quantités</button>
+            </div>
+
+            <div class="oldProductRows" id="productRows">
+              <p class="oldDayEmpty">Chargement du catalogue…</p>
+            </div>
+
+            <div class="oldDayTotalLine">
+              <span>Total catalogue estimé</span>
+              <strong id="catalogueTotal">0 €</strong>
+            </div>
+          </section>
+
+          <section class="oldDayPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Optionnel</p>
+                <h2>Frais</h2>
+              </div>
+            </div>
+
+            <div class="expenseQuickForm">
+              <label class="fieldBlock">
+                <span>Catégorie</span>
+                <select id="expenseCategoryInput">
+                  <option value="EMPLACEMENT">Emplacement</option>
+                  <option value="ESSENCE">Essence</option>
+                  <option value="PEAGE">Péage</option>
+                  <option value="REPAS">Repas</option>
+                  <option value="HEBERGEMENT">Hébergement</option>
+                  <option value="MATERIEL">Matériel</option>
+                  <option value="COMMUNICATION">Communication</option>
+                  <option value="CONSOMMABLES">Consommables</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Montant</span>
+                <input id="expenseAmountInput" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" />
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Libellé / note</span>
+                <input id="expenseNoteInput" type="text" autocomplete="off" placeholder="Ex : emplacement, repas midi…" />
+              </label>
+
+              <button class="secondaryBtn" id="addExpenseBtn" type="button">Ajouter le frais</button>
+            </div>
+
+            <div class="expenseList" id="expenseList">
+              <p class="oldDayEmpty">Aucun frais ajouté.</p>
+            </div>
+          </section>
+
+          <section class="oldDayPanel finalPanel">
+            <div>
+              <p class="sectionKicker">Validation</p>
+              <h2>Créer la journée clôturée</h2>
+              <p class="oldDayHint">
+                Les écritures passent par l’API Lugdurum. Si la file d’attente offline est active, elle prendra le relais.
+              </p>
+            </div>
+
+            <button class="primaryBtn" id="saveOldDayBtn" type="submit">
+              Enregistrer l’ancienne journée
+            </button>
+
+            <p class="oldDayStatus" id="oldDayStatus" role="status"></p>
+          </section>
+        </form>
+      </main>
+    </div>
+  </body>
+</html>
