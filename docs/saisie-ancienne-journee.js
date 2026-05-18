@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Saisie ancienne journée V2 :
+    Saisie ancienne journée V3 :
     - Création OU modification d’une journée clôturée historique.
     - Mode édition via saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Charge catalogue + offres depuis Google Sheets.
@@ -11,6 +11,7 @@
     - IDs stables pour éviter les doublons.
     - Les lignes / transactions / frais retirés sont marqués annule/annulee.
     - Après succès réel API, retour automatique vers la page précédente ou journees-cloturees.html.
+    - Produits vendus affichés en cartes visuelles façon préparation stock.
   */
 
   const CURRENT_USER = {
@@ -340,7 +341,8 @@
         ? toBoolean(raw.visible_webapp, true)
         : true,
       ordre_affichage: toNumber(raw.ordre_affichage, 1000 + index),
-      note: String(raw.note || "").trim()
+      note: String(raw.note || "").trim(),
+      image_src: String(raw.image_src || "").trim()
     };
   };
 
@@ -542,6 +544,17 @@
   const getBottleTotal = () =>
     getProductLinesDraft().reduce((sum, line) => sum + line.quantity, 0);
 
+  const getProductImageSrc = (productOrGroup) => {
+    const code = String(productOrGroup?.parfum_code || "").trim().toLowerCase();
+
+    const imageSrc =
+      productOrGroup?.image_src ||
+      productOrGroup?.products?.find((product) => product.image_src)?.image_src ||
+      "";
+
+    return imageSrc || `./assets/parfums/${code}.webp`;
+  };
+
   const renderProducts = () => {
     if (!state.dataLoaded && state.catalogue.length === 0) {
       els.productRows.innerHTML = `<p class="oldDayEmpty">Chargement du catalogue…</p>`;
@@ -561,15 +574,22 @@
         const product20 = group.products.find((product) => product.format_cl === 20);
 
         return `
-          <article class="oldProductRow">
-            <div class="oldProductTitle">
-              <strong>${escapeHtml(group.parfum_code)}</strong>
-              <span>${escapeHtml(group.parfum_nom)}</span>
-            </div>
+          <article
+            class="oldProductVisualCard"
+            style="--old-product-bg: url('${escapeAttr(getProductImageSrc(group))}')"
+          >
+            <div class="oldProductVisualShade"></div>
 
-            <div class="oldProductControls">
-              ${renderQuantityInput(product50, "50 cL")}
-              ${renderQuantityInput(product20, "20 cL")}
+            <div class="oldProductVisualContent">
+              <div class="oldProductVisualTitle">
+                <strong>${escapeHtml(group.parfum_code)}</strong>
+                <span>${escapeHtml(group.parfum_nom)}</span>
+              </div>
+
+              <div class="oldProductVisualControls">
+                ${renderQuantityInput(product50, "50 cL")}
+                ${renderQuantityInput(product20, "20 cL")}
+              </div>
             </div>
           </article>
         `;
@@ -580,26 +600,54 @@
   const renderQuantityInput = (product, label) => {
     if (!product) {
       return `
-        <label class="oldQtyField isUnavailable">
-          <span>${escapeHtml(label)}</span>
-          <input type="number" value="" disabled />
-        </label>
+        <div class="oldGlassPanel isUnavailable">
+          <span class="oldGlassFormat">${escapeHtml(label)}</span>
+
+          <div class="oldQtyStepper">
+            <button type="button" disabled>−</button>
+            <input type="number" value="" disabled />
+            <button type="button" disabled>+</button>
+          </div>
+        </div>
       `;
     }
 
+    const quantity = getQuantity(product.sku_id);
+
     return `
-      <label class="oldQtyField">
-        <span>${escapeHtml(label)}</span>
-        <input
-          type="number"
-          inputmode="numeric"
-          min="0"
-          step="1"
-          value="${escapeAttr(getQuantity(product.sku_id))}"
-          data-product-quantity="${escapeAttr(product.sku_id)}"
-          aria-label="Quantité ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
-        />
-      </label>
+      <div class="oldGlassPanel">
+        <span class="oldGlassFormat">${escapeHtml(label)}</span>
+
+        <div class="oldQtyStepper">
+          <button
+            type="button"
+            data-quantity-step="-1"
+            data-product-quantity-step="${escapeAttr(product.sku_id)}"
+            aria-label="Retirer une bouteille ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
+          >
+            −
+          </button>
+
+          <input
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            value="${escapeAttr(quantity)}"
+            data-product-quantity="${escapeAttr(product.sku_id)}"
+            aria-label="Quantité ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
+          />
+
+          <button
+            type="button"
+            data-quantity-step="1"
+            data-product-quantity-step="${escapeAttr(product.sku_id)}"
+            aria-label="Ajouter une bouteille ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
+          >
+            +
+          </button>
+        </div>
+      </div>
     `;
   };
 
@@ -616,8 +664,16 @@
             <strong>${escapeHtml(EXPENSE_LABELS[expense.categorie] || expense.categorie)}</strong>
             <span>${escapeHtml(expense.note || "Sans note")}</span>
           </div>
+
           <strong>${escapeHtml(formatCurrency(expense.montant))}</strong>
-          <button type="button" data-remove-expense="${escapeAttr(expense.id)}" aria-label="Supprimer le frais">×</button>
+
+          <button
+            type="button"
+            data-remove-expense="${escapeAttr(expense.id)}"
+            aria-label="Supprimer le frais"
+          >
+            ×
+          </button>
         </article>
       `)
       .join("");
@@ -1482,6 +1538,20 @@
   });
 
   document.addEventListener("click", (event) => {
+    const quantityStepButton = event.target.closest("[data-product-quantity-step]");
+
+    if (quantityStepButton) {
+      const skuId = quantityStepButton.dataset.productQuantityStep;
+      const delta = toNumber(quantityStepButton.dataset.quantityStep, 0);
+      const current = getQuantity(skuId);
+
+      setQuantity(skuId, current + delta);
+      setStatus("");
+      renderProducts();
+      renderTotals();
+      return;
+    }
+
     const removeExpenseButton = event.target.closest("[data-remove-expense]");
 
     if (removeExpenseButton) {
@@ -1521,6 +1591,11 @@
     configureModeLabels();
 
     els.eventDateInput.value = formatIsoDate(new Date());
+
+    if (els.clearProductsBtn) {
+      els.clearProductsBtn.textContent = "Tout remettre à zéro";
+    }
+
     renderAll();
 
     try {
