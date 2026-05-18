@@ -2,12 +2,14 @@
   "use strict";
 
   /*
-    Saisie ancienne journée V1 :
-    - Crée une journée clôturée historique sans passer par le parcours terrain complet.
+    Saisie ancienne journée V2 :
+    - Création OU modification d’une journée clôturée historique.
+    - Mode édition via saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Charge catalogue + offres depuis Google Sheets.
-    - Écrit uniquement via LugdurumAPI : missions_vente, missions_stock, journees_vente,
-      transactions, ventes_lignes et frais.
-    - Pas d’écriture local-only : le cache local sert uniquement à afficher le catalogue si l’API de lecture échoue.
+    - En édition, charge journée, missions, transactions, ventes_lignes et frais.
+    - Écrit uniquement via LugdurumAPI.
+    - IDs stables pour éviter les doublons.
+    - Les lignes / transactions / frais retirés sont marqués annule/annulee.
   */
 
   const CURRENT_USER = {
@@ -63,16 +65,38 @@
     offresVenteCache: "lugdurum_offres_vente_cache"
   };
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const EDIT_JOURNEE_ID = String(urlParams.get("journee_id") || "").trim();
+  const IS_EDIT_MODE = Boolean(EDIT_JOURNEE_ID);
+
   const state = {
     catalogue: [],
     offresVente: [],
     quantities: new Map(),
     expenses: [],
     isSaving: false,
-    dataLoaded: false
+    dataLoaded: false,
+    edit: {
+      isEditMode: IS_EDIT_MODE,
+      journeeId: EDIT_JOURNEE_ID,
+      loaded: false,
+      existing: {
+        journee: null,
+        missionVente: null,
+        missionStock: null,
+        transactions: [],
+        saleLines: [],
+        frais: []
+      }
+    }
   };
 
   const els = {
+    pageTitle: document.getElementById("oldDayPageTitle"),
+    heroTitle: document.getElementById("oldDayHeroTitle"),
+    heroText: document.getElementById("oldDayHeroText"),
+    finalTitle: document.getElementById("oldDayFinalTitle"),
+
     form: document.getElementById("oldDayForm"),
     eventNameInput: document.getElementById("eventNameInput"),
     eventDateInput: document.getElementById("eventDateInput"),
@@ -213,6 +237,55 @@
     });
   };
 
+  const isValidStatus = (item) => {
+    const statut = String(item?.statut || item?.paiement_statut || "valide").toLowerCase();
+
+    return ![
+      "annule",
+      "annulee",
+      "annulé",
+      "annulée",
+      "refuse",
+      "refusé"
+    ].includes(statut);
+  };
+
+  const getJourneeId = (item) =>
+    String(item?.journee_id || "").trim();
+
+  const getMissionId = (item) =>
+    String(item?.stock_mission_id || item?.mission_id || "").trim();
+
+  const getTransactionId = (item) =>
+    String(item?.transaction_id || "").trim();
+
+  const getTransactionAmount = (transaction) =>
+    toNumber(
+      transaction.total_encaisse_ttc ??
+      transaction.total_encaisse ??
+      transaction.total_catalogue_ttc ??
+      transaction.total_catalogue,
+      0
+    );
+
+  const getPaymentKey = (transaction) =>
+    String(transaction.mode_paiement || transaction.paiement_provider || transaction.source || "")
+      .trim()
+      .toUpperCase();
+
+  const configureModeLabels = () => {
+    if (!state.edit.isEditMode) return;
+
+    if (els.pageTitle) els.pageTitle.textContent = "Modifier historique";
+    if (els.heroTitle) els.heroTitle.textContent = "Modifier une journée";
+    if (els.heroText) {
+      els.heroText.textContent =
+        "Complète ou corrige une journée historique existante sans créer de doublons.";
+    }
+    if (els.finalTitle) els.finalTitle.textContent = "Enregistrer les modifications";
+    if (els.saveOldDayBtn) els.saveOldDayBtn.textContent = "Enregistrer les modifications";
+  };
+
   const normalizeProduct = (raw, index) => {
     const code = String(raw.parfum_code || "")
       .trim()
@@ -334,12 +407,14 @@
   };
 
   const getUnitPriceForProduct = (product) => {
-    if (!product) return {
-      ttc: 0,
-      ht: 0,
-      offer: null,
-      typeVente: "HISTORIQUE"
-    };
+    if (!product) {
+      return {
+        ttc: 0,
+        ht: 0,
+        offer: null,
+        typeVente: "HISTORIQUE"
+      };
+    }
 
     if (product.format_cl === 50) {
       const offer = findBottleOffer(product);
@@ -532,6 +607,23 @@
     renderTotals();
   };
 
+  const deriveBaseIdFromExisting = () => {
+    const existingTx = state.edit.existing.transactions
+      .map((transaction) => getTransactionId(transaction))
+      .find((id) => /^TX_(.+)_(CB|ESP|CHQ|HISTORIQUE)$/.test(id));
+
+    if (existingTx) {
+      const match = existingTx.match(/^TX_(.+)_(CB|ESP|CHQ|HISTORIQUE)$/);
+      if (match?.[1]) return match[1];
+    }
+
+    if (state.edit.journeeId) {
+      return state.edit.journeeId.replace(/^J_/, "") || slugify(state.edit.journeeId, "HIST");
+    }
+
+    return "";
+  };
+
   const buildIds = () => {
     const date = els.eventDateInput.value;
     const name = els.eventNameInput.value.trim();
@@ -539,17 +631,41 @@
     const slug = slugify([name, dayLabel].filter(Boolean).join(" "), "ANCIENNE_JOURNEE");
     const datePart = String(date || "0000-00-00").replaceAll("-", "");
 
-    return {
+    const generated = {
       eventMissionId: `EVT_HIST_${datePart}_${slug}`,
       stockMissionId: `MST_HIST_${datePart}_${slug}`,
       journeeId: `J_HIST_${datePart}_${slug}`,
       baseId: `HIST_${datePart}_${slug}`
+    };
+
+    if (!state.edit.isEditMode || !state.edit.existing.journee) {
+      return generated;
+    }
+
+    const existingJournee = state.edit.existing.journee;
+    const existingMissionStock = state.edit.existing.missionStock;
+    const existingMissionVente = state.edit.existing.missionVente;
+
+    return {
+      eventMissionId:
+        String(existingJournee.evenement_id || existingMissionStock?.evenement_id || existingMissionVente?.mission_id || "").trim() ||
+        generated.eventMissionId,
+      stockMissionId:
+        String(existingJournee.stock_mission_id || existingMissionStock?.mission_id || "").trim() ||
+        generated.stockMissionId,
+      journeeId: state.edit.journeeId || generated.journeeId,
+      baseId: deriveBaseIdFromExisting() || generated.baseId
     };
   };
 
   const validateForm = () => {
     if (!hasApi()) {
       setStatus("lugdurum-api.js n’est pas chargé : aucune écriture locale directe ne sera faite.", "isError");
+      return false;
+    }
+
+    if (state.edit.isEditMode && !state.edit.loaded) {
+      setStatus("La journée à modifier n’est pas encore chargée.", "isError");
       return false;
     }
 
@@ -584,7 +700,12 @@
     const paymentTotal = getPaymentTotal();
     const fraisTotal = state.expenses.reduce((sum, item) => sum + toNumber(item.montant, 0), 0);
 
+    const existingMissionVente = state.edit.existing.missionVente;
+    const existingMissionStock = state.edit.existing.missionStock;
+    const existingJournee = state.edit.existing.journee;
+
     const missionVente = {
+      ...existingMissionVente,
       mission_id: ids.eventMissionId,
       nom: name,
       date_debut: date,
@@ -596,11 +717,12 @@
       statut: "cloture",
       source: "SAISIE_HISTORIQUE",
       note,
-      created_at: now,
+      created_at: existingMissionVente?.created_at || now,
       updated_at: now
     };
 
     const missionStock = {
+      ...existingMissionStock,
       mission_id: ids.stockMissionId,
       evenement_id: ids.eventMissionId,
       nom: name,
@@ -608,22 +730,23 @@
       date_fin: date,
       statut: "cloture",
       stock_prepare: true,
-      responsable_user_id: CURRENT_USER.user_id,
+      responsable_user_id: existingMissionStock?.responsable_user_id || CURRENT_USER.user_id,
       journees_count: 1,
-      total_bouteilles_preparees: "",
-      total_50cl_prepare: "",
-      total_20cl_prepare: "",
-      parfums_prepare_count: "",
+      total_bouteilles_preparees: existingMissionStock?.total_bouteilles_preparees || "",
+      total_50cl_prepare: existingMissionStock?.total_50cl_prepare || "",
+      total_20cl_prepare: existingMissionStock?.total_20cl_prepare || "",
+      parfums_prepare_count: existingMissionStock?.parfums_prepare_count || "",
       ca_total_ttc: paymentTotal,
       total_frais_ttc: fraisTotal,
       source: "SAISIE_HISTORIQUE",
       note,
-      created_at: now,
+      created_at: existingMissionStock?.created_at || now,
       updated_at: now,
-      closed_at: now
+      closed_at: existingMissionStock?.closed_at || now
     };
 
     const journee = {
+      ...existingJournee,
       journee_id: ids.journeeId,
       evenement_id: ids.eventMissionId,
       mission_id: ids.eventMissionId,
@@ -635,10 +758,10 @@
       total_frais_ttc: fraisTotal,
       source: "SAISIE_HISTORIQUE",
       note,
-      created_at: now,
+      created_at: existingJournee?.created_at || now,
       updated_at: now,
-      started_at: now,
-      closed_at: now
+      started_at: existingJournee?.started_at || now,
+      closed_at: existingJournee?.closed_at || now
     };
 
     return {
@@ -649,14 +772,31 @@
     };
   };
 
-  const buildSaleLines = ({ transactionId, stockMissionId, journeeId, eventMissionId }) => {
-    return getProductLinesDraft().map((line, index) => {
+  const getExistingLineForSku = (skuId) =>
+    state.edit.existing.saleLines.find((line) => String(line.sku_id || "").trim() === skuId) || null;
+
+  const getExistingTransactionForPayment = (key, ids) => {
+    const expectedId = `TX_${ids.baseId}_${key}`;
+
+    return (
+      state.edit.existing.transactions.find((transaction) => getTransactionId(transaction) === expectedId) ||
+      state.edit.existing.transactions.find((transaction) => getPaymentKey(transaction) === key) ||
+      null
+    );
+  };
+
+  const buildActiveSaleLines = ({ transactionId, stockMissionId, journeeId, eventMissionId }) => {
+    return getProductLinesDraft().map((line) => {
       const totalTtc = formatAmount(line.quantity * line.unit_ttc);
       const totalHt = formatAmount(line.quantity * line.unit_ht);
       const now = new Date().toISOString();
+      const existingLine = getExistingLineForSku(line.product.sku_id);
 
       return {
-        ligne_id: `${transactionId}_L${String(index + 1).padStart(2, "0")}`,
+        ...existingLine,
+        ligne_id:
+          existingLine?.ligne_id ||
+          `${transactionId}_${slugify(line.product.sku_id, "SKU")}`,
         transaction_id: transactionId,
         mission_id: stockMissionId,
         stock_mission_id: stockMissionId,
@@ -682,15 +822,44 @@
           ? formatAmount(totalTtc - line.product.cout_revient * line.quantity)
           : 0,
         source: "SAISIE_HISTORIQUE",
+        statut: "valide",
         note: "Saisie ancienne journée",
-        created_at: now,
+        created_at: existingLine?.created_at || now,
         updated_at: now
       };
     });
   };
 
+  const buildCancelledSaleLines = ({ activeLines, transactionId }) => {
+    if (!state.edit.isEditMode) return [];
+
+    const now = new Date().toISOString();
+    const activeLineIds = new Set(activeLines.map((line) => String(line.ligne_id || "")));
+    const activeSkus = new Set(activeLines.map((line) => String(line.sku_id || "")));
+
+    return state.edit.existing.saleLines
+      .filter(isValidStatus)
+      .filter((line) => {
+        const lineId = String(line.ligne_id || "");
+        const skuId = String(line.sku_id || "");
+        return !activeLineIds.has(lineId) && !activeSkus.has(skuId);
+      })
+      .map((line) => ({
+        ...line,
+        transaction_id: transactionId || line.transaction_id || "",
+        quantite: 0,
+        total_catalogue_ligne_ttc: 0,
+        total_catalogue_ligne_ht: 0,
+        marge_brute_ligne: 0,
+        statut: "annule",
+        note: [line.note || "", "Annulé depuis la modification historique"].filter(Boolean).join(" · "),
+        updated_at: now
+      }));
+  };
+
   const buildTransactions = ({ ids }) => {
     const now = new Date().toISOString();
+
     const paymentRows = PAYMENT_ROWS
       .map((row) => {
         const input = document.getElementById(row.inputId);
@@ -711,26 +880,50 @@
       });
     }
 
-    return paymentRows.map((row, index) => {
-      const transactionId = `TX_${ids.baseId}_${row.key}`;
-      const isFirstTransaction = index === 0;
-      const lines = isFirstTransaction
-        ? buildSaleLines({
-            transactionId,
-            stockMissionId: ids.stockMissionId,
-            journeeId: ids.journeeId,
-            eventMissionId: ids.eventMissionId
-          })
-        : [];
+    const currentTransactionMeta = paymentRows.map((row) => {
+      const existing = getExistingTransactionForPayment(row.key, ids);
 
       return {
+        row,
+        existing,
+        transactionId: existing?.transaction_id || `TX_${ids.baseId}_${row.key}`
+      };
+    });
+
+    const primaryTransactionId =
+      currentTransactionMeta[0]?.transactionId ||
+      state.edit.existing.saleLines.find((line) => line.transaction_id)?.transaction_id ||
+      `TX_${ids.baseId}_HISTORIQUE`;
+
+    const activeLines = buildActiveSaleLines({
+      transactionId: primaryTransactionId,
+      stockMissionId: ids.stockMissionId,
+      journeeId: ids.journeeId,
+      eventMissionId: ids.eventMissionId
+    });
+
+    const cancelledLines = buildCancelledSaleLines({
+      activeLines,
+      transactionId: primaryTransactionId
+    });
+
+    const allLinesToWrite = [...activeLines, ...cancelledLines];
+
+    const currentTransactions = currentTransactionMeta.map((meta, index) => {
+      const { row, existing, transactionId } = meta;
+      const isPrimary = index === 0;
+
+      const lines = isPrimary ? allLinesToWrite : [];
+
+      return {
+        ...existing,
         transaction_id: transactionId,
-        date_heure: now,
+        date_heure: existing?.date_heure || now,
         mission_id: ids.stockMissionId,
         stock_mission_id: ids.stockMissionId,
         evenement_id: ids.eventMissionId,
         journee_id: ids.journeeId,
-        user_id: CURRENT_USER.user_id,
+        user_id: existing?.user_id || CURRENT_USER.user_id,
         mode_paiement: row.key,
         mode_paiement_label: row.label,
         paiement_provider: row.provider,
@@ -745,43 +938,128 @@
         motif_remise: "",
         statut: "validee",
         note: els.noteInput.value.trim(),
-        detail_ticket: JSON.stringify(lines),
-        created_at: now,
+        detail_ticket: JSON.stringify(activeLines),
+        created_at: existing?.created_at || now,
         updated_at: now,
         lignes: lines
       };
     });
+
+    const currentIds = new Set(currentTransactions.map((transaction) => transaction.transaction_id));
+
+    const cancelledTransactions = state.edit.isEditMode
+      ? state.edit.existing.transactions
+          .filter(isValidStatus)
+          .filter((transaction) => !currentIds.has(getTransactionId(transaction)))
+          .map((transaction) => ({
+            ...transaction,
+            total_catalogue_ttc: 0,
+            total_catalogue_ht: 0,
+            total_tva: 0,
+            total_encaisse_ttc: 0,
+            remise_totale: 0,
+            statut: "annulee",
+            note: [transaction.note || "", "Annulé depuis la modification historique"].filter(Boolean).join(" · "),
+            updated_at: now,
+            lignes: []
+          }))
+      : [];
+
+    if (currentTransactions.length === 0 && cancelledTransactions.length > 0 && allLinesToWrite.length > 0) {
+      cancelledTransactions[0].lignes = allLinesToWrite;
+    }
+
+    return [...currentTransactions, ...cancelledTransactions];
   };
 
   const buildFraisRows = ({ ids }) => {
     const date = els.eventDateInput.value;
     const now = new Date().toISOString();
 
-    return state.expenses.map((expense, index) => ({
-      frais_id: `FR_${ids.baseId}_${String(index + 1).padStart(2, "0")}`,
-      date,
-      date_heure: now,
-      mission_id: ids.stockMissionId,
-      stock_mission_id: ids.stockMissionId,
-      evenement_id: ids.eventMissionId,
-      journee_id: ids.journeeId,
-      categorie: expense.categorie,
-      categorie_label: EXPENSE_LABELS[expense.categorie] || expense.categorie,
-      libelle: expense.note || EXPENSE_LABELS[expense.categorie] || "Frais",
-      montant: formatAmount(expense.montant),
-      montant_ttc: formatAmount(expense.montant),
-      paye_par: CURRENT_USER.user_id,
-      paye_par_nom: CURRENT_USER.nom,
-      mode_paiement: "AUTRE",
-      mode_paiement_label: "Autre",
-      justificatif_url: "",
-      statut: "valide",
-      note: expense.note,
-      user_id: CURRENT_USER.user_id,
-      source: "SAISIE_HISTORIQUE",
-      created_at: now,
-      updated_at: now
-    }));
+    const activeRows = state.expenses.map((expense, index) => {
+      const existing =
+        state.edit.existing.frais.find((item) => item.frais_id === expense.id) ||
+        null;
+
+      const fraisId = existing?.frais_id || `FR_${ids.baseId}_${String(index + 1).padStart(2, "0")}`;
+
+      return {
+        ...existing,
+        frais_id: fraisId,
+        date,
+        date_heure: existing?.date_heure || now,
+        mission_id: ids.stockMissionId,
+        stock_mission_id: ids.stockMissionId,
+        evenement_id: ids.eventMissionId,
+        journee_id: ids.journeeId,
+        categorie: expense.categorie,
+        categorie_label: EXPENSE_LABELS[expense.categorie] || expense.categorie,
+        libelle: expense.note || EXPENSE_LABELS[expense.categorie] || "Frais",
+        montant: formatAmount(expense.montant),
+        montant_ttc: formatAmount(expense.montant),
+        paye_par: existing?.paye_par || CURRENT_USER.user_id,
+        paye_par_nom: existing?.paye_par_nom || CURRENT_USER.nom,
+        mode_paiement: existing?.mode_paiement || "AUTRE",
+        mode_paiement_label: existing?.mode_paiement_label || "Autre",
+        justificatif_url: existing?.justificatif_url || "",
+        statut: "valide",
+        note: expense.note,
+        user_id: existing?.user_id || CURRENT_USER.user_id,
+        source: "SAISIE_HISTORIQUE",
+        created_at: existing?.created_at || now,
+        updated_at: now
+      };
+    });
+
+    if (!state.edit.isEditMode) return activeRows;
+
+    const activeIds = new Set(activeRows.map((item) => item.frais_id));
+
+    const cancelledRows = state.edit.existing.frais
+      .filter(isValidStatus)
+      .filter((item) => !activeIds.has(item.frais_id))
+      .map((item) => ({
+        ...item,
+        statut: "annule",
+        note: [item.note || "", "Annulé depuis la modification historique"].filter(Boolean).join(" · "),
+        updated_at: now
+      }));
+
+    return [...activeRows, ...cancelledRows];
+  };
+
+  const saveBundleFallback = async ({ rows, transactions, fraisRows }) => {
+    if (typeof api().saveMission !== "function") {
+      throw new Error("LugdurumAPI.saveMission() est indisponible.");
+    }
+
+    if (typeof api().saveMissionStock !== "function") {
+      throw new Error("LugdurumAPI.saveMissionStock() est indisponible.");
+    }
+
+    if (typeof api().saveJournee !== "function") {
+      throw new Error("LugdurumAPI.saveJournee() est indisponible.");
+    }
+
+    if (typeof api().saveTransaction !== "function") {
+      throw new Error("LugdurumAPI.saveTransaction() est indisponible.");
+    }
+
+    await api().saveMission(rows.missionVente);
+    await api().saveMissionStock(rows.missionStock);
+    await api().saveJournee(rows.journee);
+
+    for (const transaction of transactions) {
+      await api().saveTransaction(transaction);
+    }
+
+    if (typeof api().saveFrais === "function") {
+      for (const frais of fraisRows) {
+        await api().saveFrais(frais);
+      }
+    } else if (fraisRows.length > 0) {
+      throw new Error("LugdurumAPI.saveFrais() est indisponible pour enregistrer les frais.");
+    }
   };
 
   const saveOldDay = async () => {
@@ -793,39 +1071,27 @@
     const fraisRows = buildFraisRows(rows);
 
     setSaving(true);
-    setStatus("Enregistrement dans Google Sheets…");
+    setStatus(
+      state.edit.isEditMode
+        ? "Enregistrement des modifications dans Google Sheets…"
+        : "Enregistrement dans Google Sheets…"
+    );
 
     try {
-      if (typeof api().saveMission !== "function") {
-        throw new Error("LugdurumAPI.saveMission() est indisponible.");
-      }
-
-      if (typeof api().saveMissionStock !== "function") {
-        throw new Error("LugdurumAPI.saveMissionStock() est indisponible.");
-      }
-
-      if (typeof api().saveJournee !== "function") {
-        throw new Error("LugdurumAPI.saveJournee() est indisponible.");
-      }
-
-      if (typeof api().saveTransaction !== "function") {
-        throw new Error("LugdurumAPI.saveTransaction() est indisponible.");
-      }
-
-      await api().saveMission(rows.missionVente);
-      await api().saveMissionStock(rows.missionStock);
-      await api().saveJournee(rows.journee);
-
-      for (const transaction of transactions) {
-        await api().saveTransaction(transaction);
-      }
-
-      if (typeof api().saveFrais === "function") {
-        for (const frais of fraisRows) {
-          await api().saveFrais(frais);
-        }
-      } else if (fraisRows.length > 0) {
-        throw new Error("LugdurumAPI.saveFrais() est indisponible pour enregistrer les frais.");
+      if (typeof api().saveJourneeHistoriqueBundle === "function") {
+        await api().saveJourneeHistoriqueBundle({
+          mission: rows.missionVente,
+          mission_stock: rows.missionStock,
+          journee: rows.journee,
+          transactions,
+          frais: fraisRows
+        });
+      } else {
+        await saveBundleFallback({
+          rows,
+          transactions,
+          fraisRows
+        });
       }
 
       const pendingCount =
@@ -833,14 +1099,22 @@
           ? api().getPendingWritesCount()
           : 0;
 
+      const successMessage = state.edit.isEditMode
+        ? "Journée historique mise à jour."
+        : "Journée historique créée.";
+
       setStatus(
         pendingCount > 0
-          ? `Journée historique créée · ${pendingCount} écriture(s) en attente de synchronisation.`
-          : "Journée historique créée.",
+          ? `${successMessage} · ${pendingCount} écriture(s) en attente de synchronisation.`
+          : successMessage,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
 
-      resetAfterSave();
+      if (!state.edit.isEditMode) {
+        resetAfterSave();
+      } else {
+        state.edit.loaded = true;
+      }
     } catch (error) {
       setStatus(`Enregistrement impossible : ${error.message}`, "isError");
     } finally {
@@ -875,6 +1149,14 @@
     els.expenseNoteInput.value = "";
     setStatus("");
     renderExpenses();
+    renderTotals();
+  };
+
+  const callArray = async (fnName) => {
+    if (!hasApi() || typeof api()[fnName] !== "function") return [];
+
+    const result = await api()[fnName]();
+    return Array.isArray(result) ? result : [];
   };
 
   const loadLocalCatalogueFallback = () => {
@@ -925,6 +1207,222 @@
     writeJson(STORAGE_KEYS.offresVenteCache, state.offresVente);
   };
 
+  const parseDetailTicketLines = (transaction) => {
+    let ticket = [];
+
+    try {
+      ticket = Array.isArray(transaction.detail_ticket)
+        ? transaction.detail_ticket
+        : JSON.parse(transaction.detail_ticket || "[]");
+    } catch {
+      ticket = [];
+    }
+
+    const lines = [];
+
+    ticket.forEach((item) => {
+      if (item.type === "bottle") {
+        lines.push({
+          transaction_id: transaction.transaction_id,
+          mission_id: transaction.mission_id,
+          stock_mission_id: transaction.stock_mission_id,
+          evenement_id: transaction.evenement_id,
+          journee_id: transaction.journee_id,
+          sku_id: item.sku_id,
+          parfum_code: item.parfum_code,
+          parfum_nom: item.parfum_nom,
+          format_cl: item.format_cl,
+          quantite: item.quantite,
+          prix_unitaire_ttc: item.prix_unitaire_ttc,
+          total_catalogue_ligne_ttc: toNumber(item.quantite, 0) * toNumber(item.prix_unitaire_ttc, 0),
+          statut: "valide"
+        });
+        return;
+      }
+
+      if (item.type === "box" && Array.isArray(item.composition)) {
+        const unitShare =
+          item.composition.length > 0
+            ? toNumber(item.prix_ttc, 0) / item.composition.length
+            : 0;
+
+        item.composition.forEach((product) => {
+          lines.push({
+            transaction_id: transaction.transaction_id,
+            mission_id: transaction.mission_id,
+            stock_mission_id: transaction.stock_mission_id,
+            evenement_id: transaction.evenement_id,
+            journee_id: transaction.journee_id,
+            sku_id: product.sku_id,
+            parfum_code: product.parfum_code,
+            parfum_nom: product.parfum_nom,
+            format_cl: product.format_cl || item.format_cl || 20,
+            quantite: 1,
+            prix_unitaire_ttc: unitShare,
+            total_catalogue_ligne_ttc: unitShare,
+            statut: "valide"
+          });
+        });
+      }
+    });
+
+    return lines;
+  };
+
+  const hydrateQuantitiesFromExisting = () => {
+    state.quantities = new Map();
+
+    const activeLines = state.edit.existing.saleLines.filter(isValidStatus);
+
+    if (activeLines.length > 0) {
+      activeLines.forEach((line) => {
+        const skuId = String(line.sku_id || "").trim();
+        if (!skuId) return;
+
+        const current = getQuantity(skuId);
+        setQuantity(skuId, current + toNumber(line.quantite, 0));
+      });
+
+      return;
+    }
+
+    state.edit.existing.transactions
+      .filter(isValidStatus)
+      .flatMap(parseDetailTicketLines)
+      .forEach((line) => {
+        const skuId = String(line.sku_id || "").trim();
+        if (!skuId) return;
+
+        const current = getQuantity(skuId);
+        setQuantity(skuId, current + toNumber(line.quantite, 0));
+      });
+  };
+
+  const hydratePaymentsFromExisting = () => {
+    const totals = {
+      CB: 0,
+      ESP: 0,
+      CHQ: 0
+    };
+
+    state.edit.existing.transactions
+      .filter(isValidStatus)
+      .forEach((transaction) => {
+        const key = getPaymentKey(transaction);
+
+        if (!Object.prototype.hasOwnProperty.call(totals, key)) return;
+
+        totals[key] += getTransactionAmount(transaction);
+      });
+
+    els.amountCbInput.value = totals.CB > 0 ? String(formatAmount(totals.CB)) : "";
+    els.amountCashInput.value = totals.ESP > 0 ? String(formatAmount(totals.ESP)) : "";
+    els.amountCheckInput.value = totals.CHQ > 0 ? String(formatAmount(totals.CHQ)) : "";
+  };
+
+  const hydrateExpensesFromExisting = () => {
+    state.expenses = state.edit.existing.frais
+      .filter(isValidStatus)
+      .map((frais) => ({
+        id: frais.frais_id,
+        categorie: frais.categorie || "AUTRE",
+        montant: formatAmount(toNumber(frais.montant_ttc ?? frais.montant, 0)),
+        note: frais.note || frais.libelle || ""
+      }));
+  };
+
+  const loadEditData = async () => {
+    if (!state.edit.isEditMode) return;
+
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    const [
+      journees,
+      missionsStock,
+      missions,
+      transactions,
+      lignes,
+      frais
+    ] = await Promise.all([
+      callArray("getJournees"),
+      callArray("getMissionsStock"),
+      callArray("getMissions"),
+      callArray("getTransactions"),
+      callArray("getVentesLignes"),
+      callArray("getFrais")
+    ]);
+
+    const journee = journees.find((item) => getJourneeId(item) === state.edit.journeeId) || null;
+
+    if (!journee) {
+      throw new Error(`Journée introuvable : ${state.edit.journeeId}`);
+    }
+
+    const stockMissionId = String(journee.stock_mission_id || "").trim();
+    const eventMissionId = String(journee.evenement_id || journee.mission_id || "").trim();
+
+    const missionStock =
+      missionsStock.find((mission) => String(mission.mission_id || "") === stockMissionId) ||
+      null;
+
+    const missionVente =
+      missions.find((mission) => String(mission.mission_id || "") === eventMissionId) ||
+      missions.find((mission) => String(mission.mission_id || "") === String(missionStock?.evenement_id || "")) ||
+      null;
+
+    const dayTransactions = transactions.filter((transaction) => getJourneeId(transaction) === state.edit.journeeId);
+    const dayLines = lignes.filter((line) => getJourneeId(line) === state.edit.journeeId);
+    const dayFrais = frais.filter((item) => getJourneeId(item) === state.edit.journeeId);
+
+    state.edit.existing = {
+      journee,
+      missionVente,
+      missionStock,
+      transactions: dayTransactions,
+      saleLines: dayLines,
+      frais: dayFrais
+    };
+
+    els.eventNameInput.value =
+      missionStock?.nom ||
+      missionVente?.nom ||
+      journee.nom ||
+      "";
+
+    els.eventDateInput.value =
+      String(journee.date || missionStock?.date_debut || missionVente?.date_debut || "").slice(0, 10);
+
+    els.eventTypeInput.value =
+      missionVente?.type_evenement ||
+      missionStock?.type_evenement ||
+      "AUTRE";
+
+    els.cityInput.value =
+      missionVente?.ville ||
+      missionStock?.ville ||
+      journee.ville ||
+      "";
+
+    els.placeInput.value =
+      missionVente?.lieu ||
+      missionStock?.lieu ||
+      journee.lieu ||
+      "";
+
+    els.dayLabelInput.value = journee.jour_label || "J1";
+    els.noteInput.value = journee.note || missionStock?.note || missionVente?.note || "";
+
+    hydratePaymentsFromExisting();
+    hydrateQuantitiesFromExisting();
+    hydrateExpensesFromExisting();
+
+    state.edit.loaded = true;
+
+    renderAll();
+  };
+
   document.addEventListener("input", (event) => {
     const quantityInput = event.target.closest("[data-product-quantity]");
 
@@ -953,6 +1451,7 @@
         (expense) => expense.id !== removeExpenseButton.dataset.removeExpense
       );
       renderExpenses();
+      renderTotals();
       return;
     }
   });
@@ -981,6 +1480,8 @@
   });
 
   const init = async () => {
+    configureModeLabels();
+
     els.eventDateInput.value = formatIsoDate(new Date());
     renderAll();
 
@@ -994,6 +1495,16 @@
     }
 
     renderAll();
+
+    if (state.edit.isEditMode) {
+      try {
+        setStatus("Chargement de la journée à modifier…");
+        await loadEditData();
+        setStatus("Mode modification : les prochaines écritures mettront à jour cette journée.", "isSuccess");
+      } catch (error) {
+        setStatus(`Modification impossible : ${error.message}`, "isError");
+      }
+    }
   };
 
   init();
