@@ -1,0 +1,310 @@
+/* ==============================
+   Journées clôturées
+   ============================== */
+
+.page-closed-days .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.closedDaysShell {
+  max-width: 880px;
+}
+
+.closedDaysTopbar {
+  align-items: flex-start;
+}
+
+.backBtn {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,250,241,.68));
+  box-shadow: var(--shadow-soft);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.page-closed-days .brandLogo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.page-closed-days .brandName {
+  margin-bottom: 5px;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+}
+
+.page-closed-days .brandBlock h1 {
+  max-width: none;
+  font-size: clamp(1.35rem, 5.6vw, 2.15rem);
+  white-space: nowrap;
+}
+
+.closedDaysSubtitle,
+.closedDaysHero p,
+.detailMeta {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.closedDaysLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.closedDaysHero,
+.closedDaysPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, rgba(255,250,241,.96), rgba(245,231,208,.72));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.closedDaysHero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.sectionEyebrow {
+  margin: 0 0 6px;
+  color: var(--rum);
+  font-size: .75rem;
+  font-weight: 950;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+
+.closedDaysHero h2,
+.closedDaysPanel h2 {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.closedDaysHero h2 {
+  font-size: clamp(1.55rem, 6vw, 2.55rem);
+}
+
+.closedDaysPanel h2 {
+  font-size: clamp(1.25rem, 5vw, 1.9rem);
+}
+
+.closedDaysFilters {
+  display: grid;
+  gap: 10px;
+}
+
+.closedDaysFilters label {
+  display: grid;
+  gap: 7px;
+}
+
+.closedDaysFilters span {
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 900;
+}
+
+.closedDaysFilters select,
+.closedDaysFilters input {
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,250,241,.62));
+  font: inherit;
+  font-weight: 850;
+  outline: none;
+}
+
+.closedDaysPanel {
+  padding: 16px;
+}
+
+.panelHeaderLine,
+.detailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.closedDaysList {
+  display: grid;
+  gap: 10px;
+}
+
+.closedDayCard {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid rgba(86,65,42,.14);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: inherit;
+  text-align: left;
+  background: linear-gradient(145deg, rgba(255,255,255,.84), rgba(255,250,241,.58));
+  box-shadow: 0 8px 18px rgba(75,48,22,.06);
+}
+
+.closedDayCard.isActive {
+  border-color: rgba(138,90,43,.45);
+  box-shadow: 0 12px 24px rgba(138,90,43,.16);
+}
+
+.closedDayHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.closedDayTitle {
+  display: grid;
+  gap: 3px;
+}
+
+.closedDayTitle strong {
+  color: var(--text);
+  font-size: 1.02rem;
+  line-height: 1.15;
+}
+
+.closedDayTitle span,
+.closedDayMeta span,
+.detailLine span {
+  color: var(--muted);
+  font-size: .84rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.closedDayAmount {
+  color: var(--rum);
+  font-size: 1.15rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.closedDayMeta,
+.paymentCards,
+.salesCards,
+.feesCards,
+.stockCards {
+  display: grid;
+  gap: 8px;
+}
+
+.detailKpis {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.detailKpis article,
+.paymentCard,
+.salesCard,
+.feesCard,
+.stockCard {
+  border: 1px solid rgba(86,65,42,.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: rgba(255,250,241,.62);
+}
+
+.detailKpis span,
+.paymentCard span,
+.salesCard span,
+.feesCard span,
+.stockCard span {
+  display: block;
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 900;
+}
+
+.detailKpis strong,
+.paymentCard strong,
+.salesCard strong,
+.feesCard strong,
+.stockCard strong {
+  display: block;
+  color: var(--rum);
+  font-size: 1.25rem;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.detailBlock {
+  border: 1px solid rgba(86,65,42,.12);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: rgba(255,255,255,.42);
+}
+
+.detailBlock h3 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 1rem;
+  letter-spacing: -0.03em;
+}
+
+.detailEmpty,
+.closedDaysEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255,250,241,.42);
+}
+
+.closedDaysStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.closedDaysStatus.isSuccess { color: var(--green); font-weight: 850; }
+.closedDaysStatus.isError { color: var(--red); font-weight: 850; }
+
+@media (min-width: 680px) {
+  .closedDaysHero {
+    grid-template-columns: 1fr 320px;
+    align-items: end;
+  }
+
+  .detailGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 370px) {
+  .detailKpis,
+  .closedDayHeader {
+    display: grid;
+  }
+}

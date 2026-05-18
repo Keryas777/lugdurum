@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#a88f68" />
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+  <title>Lugdurum — Stats produits</title>
+
+  <link rel="stylesheet" href="./style.css?v=11" />
+  <link rel="stylesheet" href="./stats-produits.css?v=1" />
+
+  <script src="./lugdurum-api.js?v=2" defer></script>
+  <script src="./stats-produits.js?v=1" defer></script>
+  <script src="./pwa.js?v=6" defer></script>
+</head>
+<body class="page-stats-products">
+  <div class="appShell statsProductsShell">
+    <header class="topbar statsProductsTopbar">
+      <a class="backBtn" href="./dashboard.html" aria-label="Retour au dashboard">←</a>
+
+      <div class="brandBlock">
+        <div class="brandHeader">
+          <img class="brandLogo" src="./assets/icons/icon-180.png" alt="" />
+          <div>
+            <p class="brandName">Lugdurum</p>
+            <h1>Stats produits</h1>
+          </div>
+        </div>
+        <p class="statsProductsSubtitle">Parfums, formats, coffrets, quantités et chiffre d’affaires.</p>
+      </div>
+    </header>
+
+    <main class="statsProductsLayout">
+      <section class="statsProductsHero">
+        <div>
+          <p class="sectionEyebrow">Produits</p>
+          <h2>Ce qui se vend</h2>
+          <p>Analyse par parfum, SKU, format 50 cL / 20 cL et CA généré.</p>
+        </div>
+
+        <div class="statsProductsFilters">
+          <label>
+            <span>Année</span>
+            <select id="productYearSelect"></select>
+          </label>
+          <label>
+            <span>Format</span>
+            <select id="productFormatSelect">
+              <option value="ALL">Tous</option>
+              <option value="50">50 cL</option>
+              <option value="20">20 cL / coffrets</option>
+            </select>
+          </label>
+          <label class="searchField">
+            <span>Recherche</span>
+            <input id="productSearchInput" type="search" placeholder="AT, vanille, citron…" />
+          </label>
+        </div>
+      </section>
+
+      <section class="productKpis">
+        <article>
+          <span>Bouteilles</span>
+          <strong id="productTotalQty">—</strong>
+        </article>
+        <article>
+          <span>CA produits</span>
+          <strong id="productTotalRevenue">—</strong>
+        </article>
+        <article>
+          <span>Top produit</span>
+          <strong id="productTopProduct">—</strong>
+        </article>
+        <article>
+          <span>Références</span>
+          <strong id="productCount">—</strong>
+        </article>
+      </section>
+
+      <section class="statsProductsPanel">
+        <p class="sectionEyebrow">Formats</p>
+        <h2>Répartition 50 / 20</h2>
+        <div id="productFormatBreakdown" class="productFormatBreakdown"></div>
+      </section>
+
+      <section class="statsProductsPanel">
+        <p class="sectionEyebrow">Classement</p>
+        <h2>Produits vendus</h2>
+        <div id="productCards" class="productCards"></div>
+      </section>
+
+      <p id="statsProductsStatus" class="statsProductsStatus" role="status"></p>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#a88f68" />
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+  <title>Lugdurum — Journées clôturées</title>
+
+  <link rel="stylesheet" href="./style.css?v=11" />
+  <link rel="stylesheet" href="./journees-cloturees.css?v=1" />
+
+  <script src="./lugdurum-api.js?v=2" defer></script>
+  <script src="./journees-cloturees.js?v=1" defer></script>
+  <script src="./pwa.js?v=6" defer></script>
+</head>
+<body class="page-closed-days">
+  <div class="appShell closedDaysShell">
+    <header class="topbar closedDaysTopbar">
+      <a class="backBtn" href="./dashboard.html" aria-label="Retour au dashboard">←</a>
+
+      <div class="brandBlock">
+        <div class="brandHeader">
+          <img class="brandLogo" src="./assets/icons/icon-180.png" alt="" />
+          <div>
+            <p class="brandName">Lugdurum</p>
+            <h1>Journées clôturées</h1>
+          </div>
+        </div>
+        <p class="closedDaysSubtitle">Retrouve le carnet de bord : CA, paiements, ventes, frais et stock.</p>
+      </div>
+    </header>
+
+    <main class="closedDaysLayout">
+      <section class="closedDaysHero">
+        <div>
+          <p class="sectionEyebrow">Historique terrain</p>
+          <h2>Compte-rendu des journées</h2>
+          <p>Une journée = une fiche lisible, même plusieurs mois après le marché.</p>
+        </div>
+
+        <div class="closedDaysFilters" aria-label="Filtres des journées clôturées">
+          <label>
+            <span>Année</span>
+            <select id="closedYearSelect"></select>
+          </label>
+
+          <label>
+            <span>Recherche</span>
+            <input id="closedSearch" type="search" placeholder="Salagnon, Pérouges…" />
+          </label>
+        </div>
+      </section>
+
+      <section class="closedDaysPanel">
+        <div class="panelHeaderLine">
+          <div>
+            <p class="sectionEyebrow">Liste</p>
+            <h2>Journées</h2>
+          </div>
+        </div>
+
+        <div id="closedDaysList" class="closedDaysList"></div>
+      </section>
+
+      <section id="dayDetailPanel" class="closedDaysPanel detailPanel" hidden>
+        <div class="detailHeader">
+          <div>
+            <p class="sectionEyebrow">Détail journée</p>
+            <h2 id="dayDetailTitle">Journée</h2>
+            <p id="dayDetailMeta" class="detailMeta"></p>
+          </div>
+        </div>
+
+        <div class="detailKpis">
+          <article>
+            <span>CA</span>
+            <strong id="detailRevenue">—</strong>
+          </article>
+          <article>
+            <span>Tickets</span>
+            <strong id="detailTickets">—</strong>
+          </article>
+        </div>
+
+        <div class="detailGrid">
+          <section class="detailBlock">
+            <h3>Paiements</h3>
+            <div id="detailPayment"></div>
+          </section>
+
+          <section class="detailBlock">
+            <h3>Ventes par produit</h3>
+            <div id="detailSales"></div>
+          </section>
+
+          <section class="detailBlock">
+            <h3>Frais</h3>
+            <div id="detailFees"></div>
+          </section>
+
+          <section class="detailBlock">
+            <h3>Stock / écarts</h3>
+            <div id="detailStock"></div>
+          </section>
+        </div>
+      </section>
+
+      <p id="closedStatus" class="closedDaysStatus" role="status"></p>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#a88f68" />
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+  <title>Lugdurum — Stats évènements</title>
+
+  <link rel="stylesheet" href="./style.css?v=11" />
+  <link rel="stylesheet" href="./stats-evenements.css?v=1" />
+
+  <script src="./lugdurum-api.js?v=2" defer></script>
+  <script src="./stats-evenements.js?v=1" defer></script>
+  <script src="./pwa.js?v=6" defer></script>
+</head>
+<body class="page-stats-events">
+  <div class="appShell statsEventsShell">
+    <header class="topbar statsEventsTopbar">
+      <a class="backBtn" href="./dashboard.html" aria-label="Retour au dashboard">←</a>
+
+      <div class="brandBlock">
+        <div class="brandHeader">
+          <img class="brandLogo" src="./assets/icons/icon-180.png" alt="" />
+          <div>
+            <p class="brandName">Lugdurum</p>
+            <h1>Stats évènements</h1>
+          </div>
+        </div>
+        <p class="statsEventsSubtitle">Quels marchés valent le coup, lesquels coûtent trop cher, lesquels performent ?</p>
+      </div>
+    </header>
+
+    <main class="statsEventsLayout">
+      <section class="statsEventsHero">
+        <div>
+          <p class="sectionEyebrow">Marchés & salons</p>
+          <h2>Comparer les évènements</h2>
+          <p>CA, nombre de journées, moyenne, frais et résultat estimé.</p>
+        </div>
+
+        <div class="statsEventsFilters">
+          <label>
+            <span>Année</span>
+            <select id="eventYearSelect"></select>
+          </label>
+          <label>
+            <span>Type</span>
+            <select id="eventTypeSelect"></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="eventKpis">
+        <article>
+          <span>CA total</span>
+          <strong id="eventSummaryTotal">—</strong>
+        </article>
+        <article>
+          <span>Évènements</span>
+          <strong id="eventSummaryCount">—</strong>
+        </article>
+        <article>
+          <span>Moyenne / événement</span>
+          <strong id="eventSummaryAverage">—</strong>
+        </article>
+        <article>
+          <span>Meilleur</span>
+          <strong id="eventSummaryBest">—</strong>
+        </article>
+      </section>
+
+      <section class="statsEventsPanel">
+        <p class="sectionEyebrow">Classement</p>
+        <h2>Résultats par évènement</h2>
+        <div id="eventCards" class="eventCards"></div>
+      </section>
+
+      <p id="statsEventsStatus" class="statsEventsStatus" role="status"></p>
+    </main>
+  </div>
+</body>
+</html>

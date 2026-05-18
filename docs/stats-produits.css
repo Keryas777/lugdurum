@@ -1,0 +1,45 @@
+/* ==============================
+   Stats produits
+   ============================== */
+
+.page-stats-products .appShell { padding-bottom: calc(34px + env(safe-area-inset-bottom)); }
+.statsProductsShell { max-width: 900px; }
+.statsProductsTopbar { align-items: flex-start; }
+.backBtn { width:44px; height:44px; display:inline-grid; place-items:center; flex:0 0 auto; border:1px solid var(--border); border-radius:999px; color:var(--text); background:linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,250,241,.68)); box-shadow:var(--shadow-soft); font-size:1.4rem; font-weight:900; }
+.page-stats-products .brandLogo { width:52px; height:52px; border-radius:14px; }
+.page-stats-products .brandName { margin-bottom:5px; font-size:clamp(1rem,4vw,1.35rem); }
+.page-stats-products .brandBlock h1 { max-width:none; font-size:clamp(1.35rem,5.8vw,2.1rem); white-space:nowrap; }
+.statsProductsSubtitle { margin:8px 0 0; color:var(--muted); font-weight:760; line-height:1.35; }
+.statsProductsLayout { display:grid; gap:14px; }
+.statsProductsHero, .statsProductsPanel { border:1px solid var(--border); border-radius:var(--radius-lg); background:linear-gradient(160deg, rgba(255,250,241,.96), rgba(245,231,208,.72)); box-shadow:var(--shadow); backdrop-filter:blur(18px); }
+.statsProductsHero { display:grid; gap:16px; padding:18px; }
+.sectionEyebrow { margin:0 0 6px; color:var(--rum); font-size:.75rem; font-weight:950; letter-spacing:.2em; text-transform:uppercase; }
+.statsProductsHero h2, .statsProductsPanel h2 { margin:0; color:var(--text); line-height:1.03; letter-spacing:-.045em; }
+.statsProductsHero h2 { font-size:clamp(1.55rem,6vw,2.55rem); }
+.statsProductsPanel h2 { font-size:clamp(1.25rem,5vw,1.9rem); margin-bottom:12px; }
+.statsProductsHero p { margin:8px 0 0; color:var(--muted); font-weight:760; line-height:1.35; }
+.statsProductsFilters { display:grid; gap:10px; }
+.statsProductsFilters label { display:grid; gap:7px; }
+.statsProductsFilters span { color:var(--muted); font-size:.78rem; font-weight:900; }
+.statsProductsFilters select, .statsProductsFilters input { width:100%; min-height:var(--tap); border:1px solid var(--border); border-radius:var(--radius-md); padding:0 14px; color:var(--text); background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,250,241,.62)); font:inherit; font-weight:850; outline:none; }
+.productKpis { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.productKpis article, .formatCard, .productCard { border:1px solid rgba(86,65,42,.14); border-radius:var(--radius-md); padding:14px; background:linear-gradient(145deg, rgba(255,255,255,.84), rgba(255,250,241,.58)); box-shadow:0 8px 18px rgba(75,48,22,.06); }
+.productKpis span, .formatCard span, .productCard span { display:block; color:var(--muted); font-size:.76rem; font-weight:900; }
+.productKpis strong, .formatCard strong { display:block; color:var(--rum); font-size:clamp(1.2rem,5vw,1.8rem); line-height:1.05; letter-spacing:-.05em; }
+.statsProductsPanel { padding:16px; }
+.productFormatBreakdown, .productCards { display:grid; gap:10px; }
+.productCard { display:grid; gap:10px; }
+.productCardHeader { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.productCardTitle { display:grid; gap:3px; }
+.productCardTitle strong { color:var(--text); font-size:1.08rem; line-height:1.15; }
+.productCardTitle span { color:var(--muted); font-size:.86rem; font-weight:800; }
+.productCardAmount { color:var(--rum); font-size:1.15rem; font-weight:950; white-space:nowrap; }
+.productMetrics { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.productMetrics article { border:1px solid rgba(86,65,42,.1); border-radius:18px; padding:10px; background:rgba(255,250,241,.55); }
+.productMetrics strong { color:var(--rum); font-size:1.05rem; }
+.statsEmpty { margin:0; border:1px dashed var(--border-strong); border-radius:var(--radius-md); padding:14px; color:var(--muted); text-align:center; background:rgba(255,250,241,.42); }
+.statsProductsStatus { min-height:1.3em; margin:0; color:var(--muted); font-size:.9rem; line-height:1.35; text-align:center; }
+.statsProductsStatus.isSuccess { color:var(--green); font-weight:850; }
+.statsProductsStatus.isError { color:var(--red); font-weight:850; }
+@media (min-width:680px) { .statsProductsHero { grid-template-columns:1fr 360px; align-items:end; } .productKpis { grid-template-columns:repeat(4,1fr); } .productFormatBreakdown { grid-template-columns:repeat(2,minmax(0,1fr)); } .productCards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:370px) { .productKpis, .productMetrics { grid-template-columns:1fr; } .productCardHeader { display:grid; } }

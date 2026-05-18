@@ -1,0 +1,47 @@
+/* ==============================
+   Stats évènements
+   ============================== */
+
+.page-stats-events .appShell { padding-bottom: calc(34px + env(safe-area-inset-bottom)); }
+.statsEventsShell { max-width: 900px; }
+.statsEventsTopbar { align-items: flex-start; }
+.backBtn { width:44px; height:44px; display:inline-grid; place-items:center; flex:0 0 auto; border:1px solid var(--border); border-radius:999px; color:var(--text); background:linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,250,241,.68)); box-shadow:var(--shadow-soft); font-size:1.4rem; font-weight:900; }
+.page-stats-events .brandLogo { width:52px; height:52px; border-radius:14px; }
+.page-stats-events .brandName { margin-bottom:5px; font-size:clamp(1rem,4vw,1.35rem); }
+.page-stats-events .brandBlock h1 { max-width:none; font-size:clamp(1.35rem,5.8vw,2.1rem); white-space:nowrap; }
+.statsEventsSubtitle { margin:8px 0 0; color:var(--muted); font-weight:760; line-height:1.35; }
+.statsEventsLayout { display:grid; gap:14px; }
+.statsEventsHero, .statsEventsPanel { border:1px solid var(--border); border-radius:var(--radius-lg); background:linear-gradient(160deg, rgba(255,250,241,.96), rgba(245,231,208,.72)); box-shadow:var(--shadow); backdrop-filter:blur(18px); }
+.statsEventsHero { display:grid; gap:16px; padding:18px; }
+.sectionEyebrow { margin:0 0 6px; color:var(--rum); font-size:.75rem; font-weight:950; letter-spacing:.2em; text-transform:uppercase; }
+.statsEventsHero h2, .statsEventsPanel h2 { margin:0; color:var(--text); line-height:1.03; letter-spacing:-.045em; }
+.statsEventsHero h2 { font-size:clamp(1.55rem,6vw,2.55rem); }
+.statsEventsPanel h2 { font-size:clamp(1.25rem,5vw,1.9rem); margin-bottom:12px; }
+.statsEventsHero p { margin:8px 0 0; color:var(--muted); font-weight:760; line-height:1.35; }
+.statsEventsFilters { display:grid; gap:10px; }
+.statsEventsFilters label { display:grid; gap:7px; }
+.statsEventsFilters span { color:var(--muted); font-size:.78rem; font-weight:900; }
+.statsEventsFilters select { width:100%; min-height:var(--tap); border:1px solid var(--border); border-radius:var(--radius-md); padding:0 14px; color:var(--text); background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,250,241,.62)); font:inherit; font-weight:850; outline:none; }
+.eventKpis { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.eventKpis article, .eventCard { border:1px solid rgba(86,65,42,.14); border-radius:var(--radius-md); padding:14px; background:linear-gradient(145deg, rgba(255,255,255,.84), rgba(255,250,241,.58)); box-shadow:0 8px 18px rgba(75,48,22,.06); }
+.eventKpis span, .eventCard span { display:block; color:var(--muted); font-size:.76rem; font-weight:900; }
+.eventKpis strong { display:block; color:var(--rum); font-size:clamp(1.2rem,5vw,1.8rem); line-height:1.05; letter-spacing:-.05em; }
+.statsEventsPanel { padding:16px; }
+.eventCards { display:grid; gap:10px; }
+.eventCard { display:grid; gap:10px; }
+.eventCardHeader { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.eventCardTitle { display:grid; gap:3px; }
+.eventCardTitle strong { color:var(--text); font-size:1.08rem; line-height:1.15; }
+.eventCardTitle span { color:var(--muted); font-size:.86rem; font-weight:800; }
+.eventAmount { color:var(--rum); font-size:1.15rem; font-weight:950; white-space:nowrap; }
+.eventMetrics { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.eventMetrics article { border:1px solid rgba(86,65,42,.1); border-radius:18px; padding:10px; background:rgba(255,250,241,.55); }
+.eventMetrics strong { display:block; color:var(--rum); font-size:1.02rem; }
+.eventMeta { display:flex; flex-wrap:wrap; gap:6px; }
+.eventMeta span { min-height:28px; display:inline-flex; align-items:center; border-radius:999px; padding:0 10px; color:var(--rum); background:var(--amber-soft); font-weight:900; }
+.statsEmpty { margin:0; border:1px dashed var(--border-strong); border-radius:var(--radius-md); padding:14px; color:var(--muted); text-align:center; background:rgba(255,250,241,.42); }
+.statsEventsStatus { min-height:1.3em; margin:0; color:var(--muted); font-size:.9rem; line-height:1.35; text-align:center; }
+.statsEventsStatus.isSuccess { color:var(--green); font-weight:850; }
+.statsEventsStatus.isError { color:var(--red); font-weight:850; }
+@media (min-width:680px) { .statsEventsHero { grid-template-columns:1fr 320px; align-items:end; } .eventKpis { grid-template-columns:repeat(4,1fr); } .eventCards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:370px) { .eventKpis, .eventMetrics { grid-template-columns:1fr; } .eventCardHeader { display:grid; } }
