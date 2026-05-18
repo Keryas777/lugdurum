@@ -252,85 +252,167 @@
 
 .oldProductRows {
   display: grid;
+  gap: 14px;
+}
+
+.oldProductVisualCard {
+  position: relative;
+  min-height: 238px;
+  overflow: hidden;
+  border: 1px solid rgba(86, 65, 42, 0.18);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(31, 27, 22, 0.34), rgba(138, 90, 43, 0.18)),
+    var(--old-product-bg) center / cover no-repeat,
+    linear-gradient(145deg, rgba(168, 143, 104, 0.52), rgba(255, 250, 241, 0.72));
+  box-shadow: 0 14px 30px rgba(75, 48, 22, 0.14);
+  isolation: isolate;
+}
+
+.oldProductVisualShade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(31, 27, 22, 0.72) 0%,
+      rgba(31, 27, 22, 0.42) 42%,
+      rgba(31, 27, 22, 0.12) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(31, 27, 22, 0.16),
+      rgba(31, 27, 22, 0.34)
+    );
+}
+
+.oldProductVisualContent {
+  position: relative;
+  z-index: 1;
+  min-height: 238px;
+  display: grid;
+  align-content: space-between;
+  gap: 18px;
+  padding: 18px;
+}
+
+.oldProductVisualTitle {
+  display: grid;
+  gap: 2px;
+  max-width: 62%;
+  color: #fffaf1;
+  text-shadow: 0 2px 12px rgba(31, 27, 22, 0.42);
+}
+
+.oldProductVisualTitle strong {
+  font-size: clamp(2rem, 10vw, 3.4rem);
+  line-height: 0.9;
+  font-weight: 1000;
+  letter-spacing: -0.07em;
+}
+
+.oldProductVisualTitle span {
+  font-size: clamp(1.02rem, 4.4vw, 1.45rem);
+  line-height: 1.02;
+  font-weight: 950;
+  letter-spacing: -0.045em;
+}
+
+.oldProductVisualControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.oldProductRow {
-  display: grid;
-  gap: 12px;
-  border: 1px solid rgba(86, 65, 42, 0.14);
-  border-radius: var(--radius-md);
+.oldGlassPanel {
+  min-width: 0;
+  border: 1px solid rgba(255, 250, 241, 0.38);
+  border-radius: 24px;
   padding: 12px;
   background:
     linear-gradient(
       145deg,
-      rgba(255, 255, 255, 0.82),
-      rgba(255, 250, 241, 0.58)
+      rgba(255, 250, 241, 0.42),
+      rgba(168, 143, 104, 0.34)
     );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 250, 241, 0.32),
+    0 10px 22px rgba(31, 27, 22, 0.16);
+  backdrop-filter: blur(12px);
 }
 
-.oldProductTitle {
-  display: grid;
-  gap: 2px;
+.oldGlassPanel.isUnavailable {
+  opacity: 0.48;
 }
 
-.oldProductTitle strong {
-  color: var(--rum);
-  font-size: 1.15rem;
+.oldGlassFormat {
+  display: block;
+  margin-bottom: 10px;
+  color: #fffaf1;
+  font-size: clamp(1rem, 4vw, 1.28rem);
+  font-weight: 950;
   line-height: 1;
-  letter-spacing: -0.035em;
+  text-shadow: 0 2px 10px rgba(31, 27, 22, 0.32);
 }
 
-.oldProductTitle span {
-  color: var(--text);
-  font-size: 0.92rem;
-  font-weight: 850;
-  line-height: 1.15;
-}
-
-.oldProductControls {
+.oldQtyStepper {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 44px minmax(52px, 1fr) 44px;
+  align-items: center;
   gap: 8px;
 }
 
-.oldQtyField {
-  display: grid;
-  gap: 7px;
-  border: 1px solid rgba(86, 65, 42, 0.12);
-  border-radius: 18px;
-  padding: 10px;
-  background: rgba(255, 250, 241, 0.58);
-}
-
-.oldQtyField span {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
-.oldQtyField input {
-  width: 100%;
-  height: 42px;
-  border: 1px solid var(--border);
+.oldQtyStepper button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 250, 241, 0.16);
   border-radius: 999px;
-  padding: 0 10px;
+  color: #fffaf1;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(138, 90, 43, 0.96),
+      rgba(168, 120, 54, 0.9)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 250, 241, 0.22),
+    0 8px 14px rgba(31, 27, 22, 0.18);
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 1000;
+  line-height: 1;
+}
+
+.oldQtyStepper button:active {
+  transform: scale(0.96);
+}
+
+.oldQtyStepper button:disabled {
+  opacity: 0.45;
+}
+
+.oldQtyStepper input {
+  width: 100%;
+  height: 44px;
+  border: 1px solid rgba(86, 65, 42, 0.12);
+  border-radius: 999px;
+  padding: 0 8px;
   color: var(--text);
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.86),
-      rgba(255, 250, 241, 0.62)
+      rgba(255, 255, 255, 0.96),
+      rgba(255, 250, 241, 0.88)
     );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 6px 14px rgba(31, 27, 22, 0.14);
   font: inherit;
-  font-size: 16px;
-  font-weight: 950;
+  font-size: 1.2rem;
+  font-weight: 1000;
   text-align: center;
   outline: none;
-}
-
-.oldQtyField.isUnavailable {
-  opacity: 0.45;
 }
 
 .expenseList {
@@ -457,11 +539,6 @@
     grid-column: 1 / -1;
   }
 
-  .oldProductRow {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
-    align-items: center;
-  }
-
   .expenseQuickForm .secondaryBtn {
     grid-column: 1 / -1;
   }
@@ -475,8 +552,12 @@
 
 @media (max-width: 370px) {
   .oldDayHeroStats,
-  .oldProductControls {
+  .oldProductVisualControls {
     grid-template-columns: 1fr;
+  }
+
+  .oldProductVisualTitle {
+    max-width: 80%;
   }
 
   .expenseChip {
