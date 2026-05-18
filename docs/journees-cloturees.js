@@ -10,6 +10,7 @@
     - Ajoute un détail consultable par journée.
     - Ajoute un lien Modifier / compléter vers saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Ignore les transactions, lignes et frais annulés.
+    - Corrige la date affichée : si une journée existe, sa date prime sur date_heure des transactions.
   */
 
   const CACHE_KEYS = {
@@ -558,7 +559,8 @@
       const journee = journeeId ? journeeMap.get(journeeId) : null;
       const resolvedMissionId = missionId || getMissionId(journee || {});
       const mission = missionMap.get(resolvedMissionId) || null;
-      const resolvedDate = date || journee?.date || "";
+
+      const resolvedDate = journee?.date || date || "";
 
       if (!map.has(key)) {
         map.set(key, {
@@ -587,15 +589,55 @@
         });
       }
 
-      return map.get(key);
+      const summary = map.get(key);
+
+      if (journee?.date && summary.date !== journee.date) {
+        summary.date = journee.date;
+        summary.year = getYearFromDate(journee.date);
+      } else if (!summary.date && resolvedDate) {
+        summary.date = resolvedDate;
+        summary.year = getYearFromDate(resolvedDate);
+      }
+
+      if (!summary.statut && journee?.statut) {
+        summary.statut = journee.statut;
+      }
+
+      if (!summary.label || summary.label === "Journée") {
+        summary.label = [
+          mission?.nom ||
+            journee?.nom ||
+            journee?.evenement ||
+            "Journée",
+          journee?.jour_label || ""
+        ]
+          .filter(Boolean)
+          .join(" — ");
+      }
+
+      if (!summary.ville) {
+        summary.ville = mission?.ville || journee?.ville || "";
+      }
+
+      return summary;
     };
+
+    state.journees
+      .filter((journee) => String(journee.statut || "").toLowerCase() === "cloture")
+      .forEach((journee) => {
+        getOrCreate({
+          journeeId: getJourneeId(journee),
+          missionId: getMissionId(journee),
+          date: journee.date || ""
+        });
+      });
 
     state.transactions
       .filter(isValidStatus)
       .forEach((transaction) => {
         const journeeId = getJourneeId(transaction);
         const missionId = getMissionId(transaction);
-        const date = String(
+        const transactionDate = String(
           transaction.date_heure ||
           transaction.date ||
           transaction.created_at ||
@@ -605,7 +647,7 @@
         const summary = getOrCreate({
           journeeId,
           missionId,
-          date
+          date: journeeId ? "" : transactionDate
         });
 
         summary.ca += getTransactionAmount(transaction);
@@ -614,11 +656,11 @@
         addPayment(summary, transaction);
 
         if (!summary.year) {
-          summary.year = getYearFromDate(date);
+          summary.year = getYearFromDate(summary.date || transactionDate);
         }
 
         if (!summary.date) {
-          summary.date = date;
+          summary.date = transactionDate;
         }
       });
 
@@ -627,7 +669,7 @@
       .forEach((item) => {
         const journeeId = getJourneeId(item);
         const missionId = getMissionId(item);
-        const date = String(
+        const fraisDate = String(
           item.date ||
           item.date_heure ||
           item.created_at ||
@@ -637,17 +679,17 @@
         const summary = getOrCreate({
           journeeId,
           missionId,
-          date
+          date: journeeId ? "" : fraisDate
         });
 
         addFrais(summary, item);
 
         if (!summary.year) {
-          summary.year = getYearFromDate(date);
+          summary.year = getYearFromDate(summary.date || fraisDate);
         }
 
         if (!summary.date) {
-          summary.date = date;
+          summary.date = fraisDate;
         }
       });
 
@@ -660,16 +702,6 @@
 
       addProduct(summary, line);
     });
-
-    state.journees
-      .filter((journee) => String(journee.statut || "").toLowerCase() === "cloture")
-      .forEach((journee) => {
-        getOrCreate({
-          journeeId: getJourneeId(journee),
-          missionId: getMissionId(journee),
-          date: journee.date || ""
-        });
-      });
 
     return [...map.values()]
       .filter((summary) => (
@@ -852,6 +884,12 @@
     `;
   };
 
+  const getEditHref = (day) => {
+    if (!day.journee_id) return "";
+
+    return `./saisie-ancienne-journee.html?mode=edit&journee_id=${encodeURIComponent(day.journee_id)}`;
+  };
+
   const renderDayDetail = (day) => {
     if (!els.detailPanel) return;
 
@@ -868,10 +906,11 @@
     setText(els.detailTickets, String(day.tickets));
 
     if (els.detailEditLink) {
-      if (day.journee_id) {
+      const href = getEditHref(day);
+
+      if (href) {
         els.detailEditLink.hidden = false;
-        els.detailEditLink.href =
-          `./saisie-ancienne-journee.html?mode=edit&journee_id=${encodeURIComponent(day.journee_id)}`;
+        els.detailEditLink.href = href;
       } else {
         els.detailEditLink.hidden = true;
         els.detailEditLink.removeAttribute("href");
@@ -902,11 +941,13 @@
   };
 
   const renderDayCard = (day) => {
-    const editLink = day.journee_id
+    const editHref = getEditHref(day);
+
+    const editLink = editHref
       ? `
         <a
           class="secondaryBtn"
-          href="./saisie-ancienne-journee.html?mode=edit&journee_id=${encodeURIComponent(day.journee_id)}"
+          href="${escapeAttr(editHref)}"
         >
           Modifier / compléter
         </a>
