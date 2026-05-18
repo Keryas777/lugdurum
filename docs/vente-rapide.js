@@ -2,11 +2,12 @@
   "use strict";
 
   /*
-    Vente rapide V15 :
+    Vente rapide V16 :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
     - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
-    - Fallback cache localStorage.
+    - Fallback cache localStorage pour catalogue / offres uniquement.
     - Contexte journée lu depuis lugdurum_preparation_context / active ids.
+    - Aucun fallback de test : aucune vente possible sans mission_id + journee_id.
     - Enregistrement des tickets via LugdurumAPI.saveTransaction().
     - La file d’attente offline est gérée dans lugdurum-api.js.
     - SumUp V1 :
@@ -16,11 +17,11 @@
       - Ticket enregistré seulement après confirmation verte.
   */
 
-  const FALLBACK_JOURNEE_ACTIVE = {
-    journee_id: "JOUR_SALAGNON_2026_05_04",
-    mission_id: "MISSION_SALAGNON_2026",
-    label: "Salagnon — J2",
-    date_label: "lundi 04 mai 2026",
+  const EMPTY_JOURNEE_ACTIVE = {
+    journee_id: "",
+    mission_id: "",
+    label: "Aucune journée active",
+    date_label: "Retourne dans Missions ou Préparation stock pour démarrer une journée.",
     user_id: "U_JEROME",
     vendeur: "Jérôme"
   };
@@ -79,7 +80,7 @@
     journees: [],
     dataLoaded: false,
     contextLoaded: false,
-    journeeActive: { ...FALLBACK_JOURNEE_ACTIVE }
+    journeeActive: { ...EMPTY_JOURNEE_ACTIVE }
   };
 
   const els = {
@@ -290,6 +291,25 @@
     }
   };
 
+  const hasActiveSalesContext = () =>
+    Boolean(
+      String(state.journeeActive?.mission_id || "").trim() &&
+      String(state.journeeActive?.journee_id || "").trim()
+    );
+
+  const transactionHasValidContext = (transaction) =>
+    Boolean(
+      String(transaction?.mission_id || "").trim() &&
+      String(transaction?.journee_id || "").trim()
+    );
+
+  const showMissingContextStatus = () => {
+    setStatus(
+      "Aucune journée active. Retourne dans Missions ou Préparation stock avant d’encaisser.",
+      "isError"
+    );
+  };
+
   const syncAmountPaidInput = (total) => {
     if (state.amountManuallyEdited) return;
     els.amountPaidInput.value = total > 0 ? formatAmountInput(total) : "";
@@ -433,7 +453,7 @@
 
   const renderContext = () => {
     if (els.saleSummaryTitle) {
-      els.saleSummaryTitle.textContent = state.journeeActive.label || "Journée active";
+      els.saleSummaryTitle.textContent = state.journeeActive.label || "Aucune journée active";
     }
 
     if (els.missionMeta) {
@@ -689,6 +709,8 @@
       : "Enregistrer le ticket";
 
     els.saveTicketBtn.classList.toggle("isSumupButton", isCb);
+
+    els.saveTicketBtn.disabled = !hasActiveSalesContext();
   };
 
   const renderAll = ({ refreshProducts = false } = {}) => {
@@ -844,6 +866,7 @@
 
   const buildSaleLines = (transactionId, { provider = "" } = {}) => {
     const lines = [];
+    const createdAt = new Date().toISOString();
 
     state.ticketItems.forEach((item) => {
       if (item.type === "bottle") {
@@ -864,8 +887,8 @@
           marge_brute_ligne: 0,
           source: getSourceForPayment({ provider }),
           note: item.offre_id ? `Offre : ${item.offre_id}` : "",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          created_at: createdAt,
+          updated_at: createdAt
         });
         return;
       }
@@ -918,8 +941,8 @@
             marge_brute_ligne: 0,
             source: getSourceForPayment({ provider }),
             note: `${item.label} · ${item.composition.map((p) => p.parfum_code).join(" ")}`,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: createdAt,
+            updated_at: createdAt
           });
         });
       }
@@ -970,6 +993,10 @@
   };
 
   const saveTransactionToApi = async (transaction) => {
+    if (!transactionHasValidContext(transaction)) {
+      throw new Error("Transaction bloquée : mission_id ou journee_id manquant.");
+    }
+
     if (!hasApi() || typeof api().saveTransaction !== "function") {
       throw new Error("LugdurumAPI.saveTransaction() est indisponible.");
     }
@@ -1117,6 +1144,11 @@
   };
 
   const launchSumupPayment = () => {
+    if (!hasActiveSalesContext()) {
+      showMissingContextStatus();
+      return;
+    }
+
     if (state.ticketItems.length === 0) {
       setStatus("Ajoute au moins un produit avant d’encaisser.", "isError");
       return;
@@ -1180,6 +1212,14 @@
       ].filter(Boolean).join("\n")
     };
 
+    if (!transactionHasValidContext(transaction)) {
+      setStatus(
+        "Paiement non enregistré : mission ou journée manquante. Le ticket est conservé dans la popup SumUp.",
+        "isError"
+      );
+      return;
+    }
+
     try {
       await saveTransactionToApi(transaction);
 
@@ -1238,6 +1278,11 @@
   };
 
   const saveTicket = async () => {
+    if (!hasActiveSalesContext()) {
+      showMissingContextStatus();
+      return;
+    }
+
     if (state.paymentMode === "CB") {
       launchSumupPayment();
       return;
@@ -1268,7 +1313,7 @@
 
       setStatus(
         pendingCount > 0
-          ? `Ticket conservé localement · à synchroniser · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
+          ? `Ticket conservé dans la file d’attente officielle · à synchroniser · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
           : `Ticket enregistré · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
@@ -1291,20 +1336,33 @@
       context?.mission_id ||
       localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
       localStorage.getItem(STORAGE_KEYS.activeMissionId) ||
-      FALLBACK_JOURNEE_ACTIVE.mission_id;
+      "";
 
     const journeeId =
       context?.journee_id ||
       localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
-      FALLBACK_JOURNEE_ACTIVE.journee_id;
+      "";
 
     state.journeeActive = {
-      ...FALLBACK_JOURNEE_ACTIVE,
+      ...EMPTY_JOURNEE_ACTIVE,
       mission_id: stockMissionId,
       journee_id: journeeId
     };
 
-    renderContext();
+    if (!stockMissionId || !journeeId) {
+      state.contextLoaded = true;
+      renderAll();
+      showMissingContextStatus();
+      return;
+    }
+
+    state.journeeActive = {
+      ...state.journeeActive,
+      label: "Journée active",
+      date_label: "Contexte local chargé"
+    };
+
+    renderAll();
 
     try {
       if (!hasApi()) return;
@@ -1337,12 +1395,13 @@
           journee_id: journeeId
         };
 
-        renderContext();
+        renderAll();
       }
     } catch (error) {
       console.warn("Contexte journée non chargé depuis Sheets.", error);
     } finally {
       state.contextLoaded = true;
+      renderAll();
     }
   };
 
@@ -1382,7 +1441,7 @@
 
       if (state.offresVente.length === 0) {
         setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
-      } else {
+      } else if (hasActiveSalesContext()) {
         setStatus("");
       }
 
