@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Journées clôturées V3 :
+    Journées clôturées V4 :
     - API Google Sheets prioritaire.
     - Aucun rendu local avant la réponse API.
     - Cache/localStorage uniquement si l’API est indisponible.
@@ -11,6 +11,7 @@
     - Ajoute un lien Modifier / compléter vers saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Ignore les transactions, lignes et frais annulés.
     - Corrige la date affichée : si une journée existe, sa date prime sur date_heure des transactions.
+    - Remplace le vocabulaire “tickets” par “encaissements” dans l’interface.
   */
 
   const CACHE_KEYS = {
@@ -242,6 +243,9 @@
     return match ? match[1] : "";
   };
 
+  const pluralizeEncaissements = (count) =>
+    `${count} encaissement${count > 1 ? "s" : ""}`;
+
   const setText = (element, value) => {
     if (element) element.textContent = value;
   };
@@ -255,6 +259,19 @@
     if (type) {
       els.status.classList.add(type);
     }
+  };
+
+  const renameStaticTicketLabels = () => {
+    [els.tickets, els.detailTickets].forEach((valueElement) => {
+      if (!valueElement) return;
+
+      const container = valueElement.closest("article");
+      const label = container?.querySelector("span");
+
+      if (label && normalizeText(label.textContent).includes("ticket")) {
+        label.textContent = "Encaissements";
+      }
+    });
   };
 
   const isValidStatus = (item) => {
@@ -895,6 +912,8 @@
 
     els.detailPanel.hidden = false;
 
+    renameStaticTicketLabels();
+
     setText(els.detailTitle, day.label || "Journée");
 
     setText(
@@ -946,10 +965,15 @@
     const editLink = editHref
       ? `
         <a
-          class="secondaryBtn"
+          class="closedDayActionBtn isSecondary"
           href="${escapeAttr(editHref)}"
+          aria-label="Modifier ou compléter ${escapeAttr(day.label || "cette journée")}"
         >
-          Modifier / compléter
+          <span class="closedDayActionIcon" aria-hidden="true">✎</span>
+          <span class="closedDayActionText">
+            <strong>Modifier</strong>
+            <small>Compléter</small>
+          </span>
         </a>
       `
       : "";
@@ -975,18 +999,23 @@
         ${renderProducts(day.products)}
 
         <div class="statsMeta">
-          <span>${escapeHtml(String(day.tickets))} ticket${day.tickets > 1 ? "s" : ""}</span>
+          <span>${escapeHtml(pluralizeEncaissements(day.tickets))}</span>
           <span>Frais ${escapeHtml(formatCurrency(day.frais))}</span>
           <span>Net ${escapeHtml(formatCurrency(day.ca - day.frais))}</span>
         </div>
 
         <div class="closedDayActions">
           <button
-            class="secondaryBtn"
+            class="closedDayActionBtn isPrimary"
             type="button"
             data-show-day="${escapeAttr(day.key)}"
+            aria-label="Voir le détail de ${escapeAttr(day.label || "cette journée")}"
           >
-            Voir détail
+            <span class="closedDayActionIcon" aria-hidden="true">↗</span>
+            <span class="closedDayActionText">
+              <strong>Voir détail</strong>
+              <small>Compte-rendu</small>
+            </span>
           </button>
 
           ${editLink}
@@ -997,6 +1026,7 @@
 
   const render = () => {
     syncYearFilter();
+    renameStaticTicketLabels();
 
     const stats = compute();
 
@@ -1111,16 +1141,17 @@
 
   const init = async () => {
     bindEvents();
+    renameStaticTicketLabels();
 
     if (els.list) {
-      els.list.innerHTML = `<p class="statsEmpty">Chargement depuis Google Sheets…</p>`;
+      els.list.innerHTML = `<p class="statsEmpty">Chargement…</p>`;
     }
 
     if (els.detailPanel) {
       els.detailPanel.hidden = true;
     }
 
-    setStatus("Chargement depuis Google Sheets...");
+    setStatus("Chargement…");
 
     try {
       await loadRemote();
