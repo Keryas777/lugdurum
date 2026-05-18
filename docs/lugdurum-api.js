@@ -2,12 +2,13 @@
   "use strict";
 
   /*
-    Lugdurum API V5
+    Lugdurum API V6
     - Connexion Apps Script / Google Sheets.
     - File d’attente locale pour les écritures hors réseau.
     - Rejeu automatique au retour réseau, au focus de la page, et au chargement.
     - Les lectures GET restent directes vers Sheets.
     - Les écritures POST peuvent être mises en attente si Apps Script est inaccessible.
+    - Ajout mouvements_stock.
   */
 
   const API_URL =
@@ -51,13 +52,6 @@
     return Array.isArray(writes) ? writes : [];
   };
 
-  const setPendingWrites = (writes) => {
-    writeJson(STORAGE_KEYS.pendingWrites, writes);
-    writeSyncState({
-      pending_count: writes.length
-    });
-  };
-
   const getPendingWritesCount = () => getPendingWrites().length;
 
   const writeSyncState = (patch = {}) => {
@@ -65,7 +59,7 @@
 
     const next = {
       ...previous,
-      pending_count: getPendingWrites().length,
+      pending_count: getPendingWritesCount(),
       online: isOnline(),
       is_flushing: isFlushing,
       updated_at: nowIso(),
@@ -81,6 +75,14 @@
     );
 
     return next;
+  };
+
+  const setPendingWrites = (writes) => {
+    writeJson(STORAGE_KEYS.pendingWrites, writes);
+
+    writeSyncState({
+      pending_count: writes.length
+    });
   };
 
   const getSyncState = () =>
@@ -451,6 +453,11 @@
       journee
     });
 
+  const saveMouvementStock = (mouvement) =>
+    requestQueuedPost("upsertMouvementStock", {
+      mouvement
+    });
+
   const saveTransaction = (transaction) =>
     requestQueuedPost("saveTransaction", {
       transaction
@@ -524,6 +531,12 @@
     },
 
     saveJournee,
+
+    getMouvementsStock() {
+      return requestGet("getMouvementsStock");
+    },
+
+    saveMouvementStock,
 
     getTransactions() {
       return requestGet("getTransactions");
