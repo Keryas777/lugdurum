@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="./saisie-ancienne-journee.css?v=1" />
 
     <script src="./lugdurum-api.js?v=5" defer></script>
-    <script src="./saisie-ancienne-journee.js?v=1" defer></script>
+    <script src="./saisie-ancienne-journee.js?v=2" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -32,7 +32,7 @@
             <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
             <div class="brandText">
               <p class="brandName">LUGDURUM</p>
-              <h1>Saisie historique</h1>
+              <h1 id="oldDayPageTitle">Saisie historique</h1>
             </div>
           </div>
         </div>
@@ -42,8 +42,8 @@
         <section class="oldDayHero">
           <div>
             <p class="sectionKicker">Rattrapage</p>
-            <h2>Ancienne journée</h2>
-            <p class="oldDayHeroText">
+            <h2 id="oldDayHeroTitle">Ancienne journée</h2>
+            <p class="oldDayHeroText" id="oldDayHeroText">
               Ajoute une journée passée directement dans les stats, sans refaire tout le parcours terrain.
             </p>
           </div>
@@ -217,7 +217,7 @@
           <section class="oldDayPanel finalPanel">
             <div>
               <p class="sectionKicker">Validation</p>
-              <h2>Créer la journée clôturée</h2>
+              <h2 id="oldDayFinalTitle">Créer la journée clôturée</h2>
               <p class="oldDayHint">
                 Les écritures passent par l’API Lugdurum. Si la file d’attente offline est active, elle prendra le relais.
               </p>
