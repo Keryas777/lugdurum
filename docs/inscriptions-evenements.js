@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Inscriptions évènements V5 — connecté Google Sheets :
+    Inscriptions évènements V6 — connecté Google Sheets :
     - Source principale : Google Sheets via window.LugdurumAPI.
     - Cache localStorage conservé en secours si l’API est indisponible.
     - Lecture :
@@ -16,12 +16,12 @@
       - génération des journées liées dans journees_vente
     - Une inscription acceptée peut créer un évènement.
     - L’évènement créé est stocké dans missions_vente avec mission_id.
-    - L’inscription conserve ce lien dans evenement_id pour compatibilité avec l’interface.
+    - L’inscription conserve ce lien dans evenement_id.
     - Les journées utilisent mission_id = mission_id de missions_vente.
-    - Si une inscription liée est modifiée :
-      - les infos générales sont synchronisées vers missions_vente ;
-      - les dates ne régénèrent les journées que si elles sont encore sûres à modifier.
-    - Si une journée doit disparaître après changement de dates, elle passe en statut ANNULE.
+    - Les journées gardent aussi evenement_id = mission_id pour compatibilité avec les autres pages.
+    - Après création d’un évènement, redirection vers missions.html?event_id=...&auto_select=1.
+    - Si l’évènement existe déjà, un bouton Mission stock permet de poursuivre le parcours.
+    - Le bouton Calendrier ouvre un lien Google Calendar en fallback si l’API calendrier n’est pas disponible.
   */
 
   const CURRENT_USER = {
@@ -41,6 +41,8 @@
     SALON_DES_VINS: "Salon des vins",
     MARCHE_DE_NOEL: "Marché de Noël",
     FOIRE: "Foire",
+    CAVISTE: "Caviste / pro",
+    COMMANDE_DIRECTE: "Commande directe",
     AUTRE: "Autre"
   };
 
@@ -209,6 +211,9 @@
     return `${year}-${month}-${day}`;
   };
 
+  const formatCalendarDate = (isoDate) =>
+    String(isoDate || "").replaceAll("-", "");
+
   const formatDisplayDate = (isoDate) => {
     const date = parseLocalDate(isoDate);
 
@@ -256,6 +261,30 @@
     }
 
     return dates;
+  };
+
+  const getPendingWritesCount = () => {
+    if (hasApi() && typeof api().getPendingWritesCount === "function") {
+      return api().getPendingWritesCount();
+    }
+
+    return 0;
+  };
+
+  const mergeByKey = (remoteItems, localItems, keyField) => {
+    const map = new Map();
+
+    localItems.forEach((item) => {
+      const key = String(item?.[keyField] || "").trim();
+      if (key) map.set(key, item);
+    });
+
+    remoteItems.forEach((item) => {
+      const key = String(item?.[keyField] || "").trim();
+      if (key) map.set(key, item);
+    });
+
+    return [...map.values()];
   };
 
   const setStatus = (message, type = "") => {
@@ -308,6 +337,9 @@
 
   const getMissionById = (missionId) =>
     getMissions().find((mission) => String(mission.mission_id || "") === String(missionId || ""));
+
+  const getMissionStockHref = (missionId) =>
+    `./missions.html?event_id=${encodeURIComponent(missionId)}&auto_select=1`;
 
   const upsertLocal = (collectionName, idKey, item) => {
     const collection = state[collectionName];
@@ -437,6 +469,7 @@
       calendar_event_id: existing?.calendar_event_id || "",
       calendar_statut: existing?.calendar_statut || "",
       calendar_payload: existing?.calendar_payload || null,
+      source: existing?.source || "INSCRIPTION",
       created_at: existing?.created_at || now,
       updated_at: now
     };
@@ -447,6 +480,7 @@
     const now = new Date().toISOString();
 
     return {
+      ...existingMission,
       mission_id: missionId,
       inscription_id: inscription.inscription_id,
       nom: inscription.nom,
@@ -463,6 +497,7 @@
       statut: existingMission?.statut || "prevu",
       vendeurs_prevus: buildVendorCell(inscription),
       responsable_user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
+      source: existingMission?.source || "INSCRIPTION",
       note: buildNoteFromInscription(inscription),
       created_at: existingMission?.created_at || now,
       updated_at: now
@@ -512,14 +547,17 @@
       const existing = existingDays[dayIndex];
 
       return {
+        ...existing,
         journee_id: existing?.journee_id || `J_${date.replaceAll("-", "")}_${slug}_J${dayIndex + 1}_${stamp}`,
         mission_id: missionId,
+        evenement_id: missionId,
         stock_mission_id: existing?.stock_mission_id || "",
         date,
         jour_label: `J${dayIndex + 1}`,
-        statut: "prevu",
+        statut: existing?.statut && existing.statut !== "annule" ? existing.statut : "prevu",
         meteo: existing?.meteo || "",
         affluence_ressentie: existing?.affluence_ressentie || "",
+        source: existing?.source || "INSCRIPTION",
         note: existing?.note || "",
         started_at: existing?.started_at || "",
         closed_at: existing?.closed_at || "",
@@ -814,8 +852,7 @@
 
   const createEventFromInscription = async (inscriptionId) => {
     const items = getInscriptions();
-    const index = items.findIndex((item) => item.inscription_id === inscriptionId);
-    const inscription = items[index];
+    const inscription = items.find((item) => item.inscription_id === inscriptionId);
 
     if (!inscription) return;
 
@@ -825,7 +862,13 @@
     }
 
     if (getMissionIdFromInscription(inscription)) {
-      setStatus("Un évènement existe déjà pour cette inscription.", "isError");
+      const missionId = getMissionIdFromInscription(inscription);
+      setStatus("Un évènement existe déjà pour cette inscription. Redirection vers la mission de stock…", "isSuccess");
+
+      window.setTimeout(() => {
+        window.location.href = getMissionStockHref(missionId);
+      }, 650);
+
       return;
     }
 
@@ -862,7 +905,7 @@
     );
 
     setSaving(true);
-    setStatus("Création de l’évènement dans le Sheets...");
+    setStatus("Création de l’évènement...");
 
     try {
       await saveInscriptionMissionBundle({
@@ -871,14 +914,18 @@
         journees
       });
 
+      renderAll();
+
       setStatus(
         dates.length > 1
-          ? `Évènement créé avec ${dates.length} journées : ${dates.map((_, i) => `J${i + 1}`).join(", ")}.`
-          : "Évènement créé dans le planning.",
+          ? `Évènement créé avec ${dates.length} journées. Redirection vers la mission de stock…`
+          : "Évènement créé. Redirection vers la mission de stock…",
         "isSuccess"
       );
 
-      renderAll();
+      window.setTimeout(() => {
+        window.location.href = getMissionStockHref(missionId);
+      }, 850);
     } catch (error) {
       setStatus(`Erreur création évènement : ${error.message}`, "isError");
     } finally {
@@ -909,10 +956,49 @@
     };
   };
 
+  const buildGoogleCalendarUrl = (payload) => {
+    const start = parseLocalDate(payload.start_date);
+    const end = parseLocalDate(payload.end_date || payload.start_date);
+
+    if (!start || !end) return "";
+
+    const endExclusive = addDays(end, 1);
+    const dates = `${formatCalendarDate(formatIsoDate(start))}/${formatCalendarDate(formatIsoDate(endExclusive))}`;
+
+    const details = [
+      payload.horaires ? `Horaires : ${payload.horaires}` : "",
+      payload.description || ""
+    ].filter(Boolean).join("\n\n");
+
+    const url = new URL("https://calendar.google.com/calendar/render");
+    url.searchParams.set("action", "TEMPLATE");
+    url.searchParams.set("text", payload.title || "Évènement Lugdurum");
+    url.searchParams.set("dates", dates);
+
+    if (payload.location) {
+      url.searchParams.set("location", payload.location);
+    }
+
+    if (details) {
+      url.searchParams.set("details", details);
+    }
+
+    return url.toString();
+  };
+
+  const openCalendarUrl = (url) => {
+    if (!url) return;
+
+    const opened = window.open(url, "_blank");
+
+    if (!opened) {
+      window.location.href = url;
+    }
+  };
+
   const addToCalendar = async (inscriptionId) => {
     const items = getInscriptions();
-    const index = items.findIndex((item) => item.inscription_id === inscriptionId);
-    const inscription = items[index];
+    const inscription = items.find((item) => item.inscription_id === inscriptionId);
 
     if (!inscription) return;
 
@@ -922,6 +1008,7 @@
     }
 
     const payload = buildCalendarPayload(inscription);
+    const calendarUrl = buildGoogleCalendarUrl(payload);
 
     try {
       if (hasApi() && typeof api().createCalendarEvent === "function") {
@@ -945,16 +1032,25 @@
       const updated = {
         ...inscription,
         calendar_statut: "a_synchroniser",
-        calendar_payload: payload,
+        calendar_payload: {
+          ...payload,
+          calendar_url: calendarUrl
+        },
         updated_at: new Date().toISOString()
       };
 
       await saveInscriptionOnly(updated);
 
-      setStatus("Calendrier marqué à synchroniser. Le branchement Apps Script viendra ensuite.", "isSuccess");
+      setStatus("Lien calendrier ouvert. Le suivi est marqué à synchroniser.", "isSuccess");
       renderAll();
+
+      openCalendarUrl(calendarUrl);
     } catch (error) {
       setStatus(`Erreur calendrier : ${error.message}`, "isError");
+
+      if (calendarUrl) {
+        openCalendarUrl(calendarUrl);
+      }
     }
   };
 
@@ -1067,6 +1163,29 @@
         <span>🧭 ${escapeHtml(fullAddress)}</span>
         <strong>Waze</strong>
       </a>
+    `;
+  };
+
+  const renderEventAction = (item, missionId) => {
+    if (missionId) {
+      return `
+        <a
+          class="trackingSmallBtn primary"
+          href="${escapeAttr(getMissionStockHref(missionId))}"
+        >
+          Mission stock
+        </a>
+      `;
+    }
+
+    return `
+      <button
+        class="trackingSmallBtn primary"
+        type="button"
+        data-create-event="${escapeAttr(item.inscription_id)}"
+      >
+        Créer l’évènement
+      </button>
     `;
   };
 
@@ -1183,14 +1302,7 @@
                 Modifier
               </button>
 
-              <button
-                class="trackingSmallBtn primary"
-                type="button"
-                data-create-event="${escapeAttr(item.inscription_id)}"
-                ${missionId ? "disabled" : ""}
-              >
-                Créer l’évènement
-              </button>
+              ${renderEventAction(item, missionId)}
 
               <button
                 class="trackingSmallBtn"
@@ -1223,7 +1335,11 @@
   const loadData = async () => {
     state.isLoading = true;
     renderAll();
-    setStatus("Chargement depuis Google Sheets...");
+    setStatus("Chargement...");
+
+    const cachedInscriptions = readJson(STORAGE_KEYS.inscriptions, []);
+    const cachedMissions = readJson(STORAGE_KEYS.missions, []);
+    const cachedJournees = readJson(STORAGE_KEYS.journees, []);
 
     try {
       if (!hasApi()) {
@@ -1240,9 +1356,38 @@
         api().getJournees()
       ]);
 
-      state.inscriptions = Array.isArray(inscriptions) ? inscriptions : [];
-      state.missions = Array.isArray(missions) ? missions : [];
-      state.journees = Array.isArray(journees) ? journees : [];
+      const shouldKeepOptimisticCache = getPendingWritesCount() > 0;
+
+      state.inscriptions = shouldKeepOptimisticCache
+        ? mergeByKey(
+            Array.isArray(inscriptions) ? inscriptions : [],
+            cachedInscriptions,
+            "inscription_id"
+          )
+        : Array.isArray(inscriptions)
+          ? inscriptions
+          : [];
+
+      state.missions = shouldKeepOptimisticCache
+        ? mergeByKey(
+            Array.isArray(missions) ? missions : [],
+            cachedMissions,
+            "mission_id"
+          )
+        : Array.isArray(missions)
+          ? missions
+          : [];
+
+      state.journees = shouldKeepOptimisticCache
+        ? mergeByKey(
+            Array.isArray(journees) ? journees : [],
+            cachedJournees,
+            "journee_id"
+          )
+        : Array.isArray(journees)
+          ? journees
+          : [];
+
       state.usingCache = false;
 
       cacheAll();
@@ -1340,7 +1485,7 @@
     if (!inscription) return;
 
     setSaving(true);
-    setStatus(wasEditing ? "Enregistrement des modifications..." : "Enregistrement dans le Sheets...");
+    setStatus(wasEditing ? "Enregistrement des modifications..." : "Enregistrement...");
 
     try {
       const syncResult = wasEditing
@@ -1360,7 +1505,7 @@
         return;
       }
 
-      setStatus("Inscription enregistrée dans le Sheets.", "isSuccess");
+      setStatus("Inscription enregistrée.", "isSuccess");
     } catch (error) {
       setStatus(`Erreur enregistrement : ${error.message}`, "isError");
     } finally {
