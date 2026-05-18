@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Missions V6 — connecté Google Sheets :
+    Missions V7 — connecté Google Sheets :
     - La page ne crée plus d’évènements.
     - Les évènements viennent de missions_vente, créés depuis inscriptions-evenements.
     - Les journées viennent de journees_vente.
@@ -11,6 +11,11 @@
     - Le champ mission_id des journées reste l’évènement / mission de vente d’origine.
     - Écriture via LugdurumAPI, avec file d’attente offline gérée dans lugdurum-api.js.
     - Cache localStorage conservé pour affichage de secours.
+    - Corrige le parcours inscription -> évènement -> mission stock.
+    - Exclut les journées historiques SAISIE_HISTORIQUE de la préparation stock.
+    - Exclut les journées clôturées / annulées / déjà liées du sélecteur de mission stock.
+    - Supporte missions.html?event_id=...&auto_select=1 pour préremplir la mission de stock.
+    - Supporte missions.html?event_id=...&auto_prepare=1 pour créer directement la mission de stock.
   */
 
   const CURRENT_USER = {
@@ -34,6 +39,8 @@
     SALON_DES_VINS: "Salon des vins",
     MARCHE_DE_NOEL: "Marché de Noël",
     FOIRE: "Foire",
+    CAVISTE: "Caviste / pro",
+    COMMANDE_DIRECTE: "Commande directe",
     AUTRE: "Autre"
   };
 
@@ -48,6 +55,11 @@
     annule: "Annulé"
   };
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const ROUTE_EVENT_ID = String(urlParams.get("event_id") || "").trim();
+  const ROUTE_AUTO_SELECT = urlParams.get("auto_select") === "1";
+  const ROUTE_AUTO_PREPARE = urlParams.get("auto_prepare") === "1";
+
   const state = {
     selectedDayIds: new Set(),
     stockSubmitAction: "save",
@@ -56,7 +68,8 @@
     journees: [],
     isLoading: false,
     isSaving: false,
-    usingCache: false
+    usingCache: false,
+    routeHandled: false
   };
 
   const els = {
@@ -107,6 +120,13 @@
       .replace(/^_+|_+$/g, "")
       .slice(0, 28) || fallback;
 
+  const normalizeStatus = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
   const parseLocalDate = (value) => {
     if (!value) return null;
 
@@ -138,11 +158,122 @@
     }).format(date);
   };
 
+  const getPendingWritesCount = () => {
+    if (hasApi() && typeof api().getPendingWritesCount === "function") {
+      return api().getPendingWritesCount();
+    }
+
+    return 0;
+  };
+
+  const mergeByKey = (remoteItems, localItems, getKey) => {
+    const map = new Map();
+
+    localItems.forEach((item) => {
+      const key = getKey(item);
+      if (key) map.set(key, item);
+    });
+
+    remoteItems.forEach((item) => {
+      const key = getKey(item);
+      if (key) map.set(key, item);
+    });
+
+    return [...map.values()];
+  };
+
   const getEventId = (eventItem) =>
     String(eventItem?.mission_id || eventItem?.evenement_id || "").trim();
 
+  const getDayId = (journee) =>
+    String(journee?.journee_id || "").trim();
+
   const getDayEventId = (journee) =>
     String(journee?.mission_id || journee?.evenement_id || "").trim();
+
+  const getStockMissionId = (mission) =>
+    String(mission?.mission_id || "").trim();
+
+  const isCancelledStatus = (item) => {
+    const statut = normalizeStatus(item?.statut);
+
+    return [
+      "annule",
+      "annulee",
+      "refuse",
+      "refusee"
+    ].includes(statut);
+  };
+
+  const isClosedStatus = (item) => {
+    const statut = normalizeStatus(item?.statut);
+
+    return [
+      "cloture",
+      "cloturee",
+      "termine",
+      "terminee"
+    ].includes(statut);
+  };
+
+  const isHistoricalSource = (item) =>
+    String(item?.source || "")
+      .trim()
+      .toUpperCase() === "SAISIE_HISTORIQUE";
+
+  const isHistoricalEvent = (eventItem) => {
+    const eventId = getEventId(eventItem);
+
+    return (
+      isHistoricalSource(eventItem) ||
+      eventId.startsWith("EVT_HIST_")
+    );
+  };
+
+  const isHistoricalStockMission = (mission) => {
+    const missionId = getStockMissionId(mission);
+
+    return (
+      isHistoricalSource(mission) ||
+      missionId.startsWith("MST_HIST_")
+    );
+  };
+
+  const isHistoricalDay = (journee) => {
+    const journeeId = getDayId(journee);
+    const eventId = getDayEventId(journee);
+    const stockMissionId = String(journee?.stock_mission_id || "").trim();
+
+    return (
+      isHistoricalSource(journee) ||
+      journeeId.startsWith("J_HIST_") ||
+      eventId.startsWith("EVT_HIST_") ||
+      stockMissionId.startsWith("MST_HIST_")
+    );
+  };
+
+  const isEventUsableForStock = (eventItem) => {
+    if (!eventItem) return false;
+    if (isCancelledStatus(eventItem)) return false;
+    if (isHistoricalEvent(eventItem)) return false;
+
+    return true;
+  };
+
+  const isDaySelectableForStock = (journee) => {
+    if (!journee) return false;
+    if (isHistoricalDay(journee)) return false;
+    if (isCancelledStatus(journee)) return false;
+    if (isClosedStatus(journee)) return false;
+    if (String(journee.stock_mission_id || "").trim()) return false;
+
+    const eventItem = getEventById(getDayEventId(journee));
+
+    if (!eventItem) return false;
+    if (!isEventUsableForStock(eventItem)) return false;
+
+    return true;
+  };
 
   const cacheAll = () => {
     writeJson(STORAGE_KEYS.events, state.events);
@@ -191,20 +322,22 @@
   const getEventJournees = (eventId) =>
     getJournees()
       .filter((journee) => getDayEventId(journee) === String(eventId || ""))
-      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
+      .filter((journee) => !isHistoricalDay(journee))
+      .filter((journee) => !isCancelledStatus(journee))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   const getStockMissionJournees = (missionId) =>
     getJournees()
       .filter((journee) => String(journee.stock_mission_id || "") === String(missionId || ""))
-      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
+      .filter((journee) => !isHistoricalDay(journee))
+      .filter((journee) => !isCancelledStatus(journee))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   const getFirstOpenDayForStockMission = (missionId) => {
     const jours = getStockMissionJournees(missionId);
 
     return (
-      jours.find((journee) => journee.statut !== "cloture" && journee.statut !== "annule") ||
+      jours.find((journee) => !isClosedStatus(journee) && !isCancelledStatus(journee)) ||
       jours[0]
     );
   };
@@ -220,9 +353,11 @@
   };
 
   const getStatusClass = (statut) => {
-    if (statut === "pret") return "isReady";
-    if (statut === "en_cours") return "isActive";
-    if (statut === "stock_a_preparer") return "isWarning";
+    const status = normalizeStatus(statut);
+
+    if (status === "pret") return "isReady";
+    if (status === "en_cours") return "isActive";
+    if (status === "stock_a_preparer") return "isWarning";
     return "";
   };
 
@@ -242,6 +377,8 @@
   };
 
   const setStockStatus = (message, type = "") => {
+    if (!els.stockMissionStatus) return;
+
     els.stockMissionStatus.textContent = message;
     els.stockMissionStatus.className = "missionStatus";
 
@@ -290,8 +427,7 @@
 
   const getSelectableDays = () =>
     getJournees()
-      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
-      .filter((journee) => !String(journee.stock_mission_id || "").trim())
+      .filter(isDaySelectableForStock)
       .sort((a, b) => {
         const byDate = String(a.date).localeCompare(String(b.date));
         if (byDate !== 0) return byDate;
@@ -321,13 +457,14 @@
       return fromDays
         .slice()
         .filter(Boolean)
+        .filter(isDaySelectableForStock)
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     }
 
-    const allJournees = getJournees();
+    const selectableDays = getSelectableDays();
 
     return [...state.selectedDayIds]
-      .map((journeeId) => allJournees.find((journee) => journee.journee_id === journeeId))
+      .map((journeeId) => selectableDays.find((journee) => journee.journee_id === journeeId))
       .filter(Boolean)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   };
@@ -338,12 +475,10 @@
       return null;
     }
 
-    const alreadyLinked = selectedDays.find((journee) =>
-      String(journee.stock_mission_id || "").trim()
-    );
+    const unavailable = selectedDays.find((journee) => !isDaySelectableForStock(journee));
 
-    if (alreadyLinked) {
-      setStockStatus("Une des journées sélectionnées est déjà liée à une mission de stock.", "isError");
+    if (unavailable) {
+      setStockStatus("Une des journées sélectionnées n’est plus disponible pour une mission de stock.", "isError");
       return null;
     }
 
@@ -362,8 +497,11 @@
     const stamp = Date.now().toString(36).toUpperCase();
     const missionId = `MST_${selectedDays[0].date.replaceAll("-", "")}_${slug}_${stamp}`;
 
+    const eventIds = [...new Set(selectedDays.map((journee) => getDayEventId(journee)).filter(Boolean))];
+
     const mission = {
       mission_id: missionId,
+      evenement_id: eventIds.length === 1 ? eventIds[0] : "",
       nom: name,
       date_debut: selectedDays[0].date,
       date_fin: selectedDays[selectedDays.length - 1].date,
@@ -371,6 +509,11 @@
       stock_prepare: false,
       responsable_user_id: CURRENT_USER.user_id,
       journees_count: selectedDays.length,
+      total_bouteilles_preparees: "",
+      total_50cl_prepare: "",
+      total_20cl_prepare: "",
+      parfums_prepare_count: "",
+      source: "MISSIONS_STOCK",
       note: els.stockMissionNoteInput.value.trim(),
       created_at: now,
       updated_at: now
@@ -380,12 +523,21 @@
 
     const updatedJournees = getJournees()
       .filter((journee) => selectedSet.has(journee.journee_id))
-      .map((journee) => ({
-        ...journee,
-        stock_mission_id: missionId,
-        statut: journee.statut === "prevu" ? "stock_a_preparer" : journee.statut,
-        updated_at: now
-      }));
+      .map((journee) => {
+        const currentStatus = normalizeStatus(journee.statut || "prevu");
+
+        return {
+          ...journee,
+          stock_mission_id: missionId,
+          statut:
+            currentStatus === "prevu" ||
+            currentStatus === "brouillon" ||
+            currentStatus === ""
+              ? "stock_a_preparer"
+              : journee.statut,
+          updated_at: now
+        };
+      });
 
     return {
       mission,
@@ -458,14 +610,15 @@
   const prepareEventStock = async (eventId) => {
     const eventItem = getEventById(eventId);
 
-    if (!eventItem) return;
+    if (!eventItem) {
+      setStockStatus("Évènement introuvable. Recharge la page si la création vient d’être faite.", "isError");
+      return;
+    }
 
-    const availableDays = getEventJournees(eventId).filter(
-      (journee) => !String(journee.stock_mission_id || "").trim()
-    );
+    const availableDays = getEventJournees(eventId).filter(isDaySelectableForStock);
 
     if (availableDays.length === 0) {
-      setStockStatus("Toutes les journées de cet évènement sont déjà liées à une mission de stock.", "isError");
+      setStockStatus("Aucune journée disponible pour cet évènement. Elle est peut-être déjà liée à une mission de stock.", "isError");
       return;
     }
 
@@ -483,9 +636,14 @@
   };
 
   const selectEventDays = (eventId) => {
-    const availableDays = getEventJournees(eventId).filter(
-      (journee) => !String(journee.stock_mission_id || "").trim()
-    );
+    const eventItem = getEventById(eventId);
+
+    if (!eventItem) {
+      setStockStatus("Évènement introuvable dans les données chargées.", "isError");
+      return;
+    }
+
+    const availableDays = getEventJournees(eventId).filter(isDaySelectableForStock);
 
     if (availableDays.length === 0) {
       setStockStatus("Aucune journée disponible pour cet évènement.", "isError");
@@ -517,8 +675,16 @@
 
     const events = getEvents()
       .slice()
-      .filter((eventItem) => String(eventItem.statut || "").toLowerCase() !== "annule")
-      .filter((eventItem) => String(eventItem.statut || "").toLowerCase() !== "cloture" || eventItem.date_fin >= today)
+      .filter(isEventUsableForStock)
+      .filter((eventItem) => {
+        const statut = normalizeStatus(eventItem.statut || "prevu");
+
+        if (statut !== "cloture" && statut !== "cloturee" && statut !== "termine" && statut !== "terminee") {
+          return true;
+        }
+
+        return String(eventItem.date_fin || "") >= today;
+      })
       .sort((a, b) => {
         const byDate = String(a.date_debut).localeCompare(String(b.date_debut));
         if (byDate !== 0) return byDate;
@@ -547,10 +713,10 @@
       .map((eventItem) => {
         const eventId = getEventId(eventItem);
         const jours = getEventJournees(eventId);
-        const availableDays = jours.filter((journee) => !String(journee.stock_mission_id || "").trim());
+        const availableDays = jours.filter(isDaySelectableForStock);
         const place = [eventItem.lieu, eventItem.ville].filter(Boolean).join(" · ");
         const statusClass = getStatusClass(eventItem.statut);
-        const statusLabel = STATUS_LABELS[eventItem.statut] || eventItem.statut || "Prévu";
+        const statusLabel = STATUS_LABELS[normalizeStatus(eventItem.statut)] || eventItem.statut || "Prévu";
 
         return `
           <article class="missionListItem">
@@ -575,6 +741,7 @@
                   ? jours
                       .map((jour) => {
                         const linked = Boolean(String(jour.stock_mission_id || "").trim());
+                        const closed = isClosedStatus(jour);
                         const mission = linked
                           ? getStockMissionById(jour.stock_mission_id)
                           : null;
@@ -583,11 +750,12 @@
                           <span class="missionDayChip ${linked ? "isLinked" : ""}">
                             ${escapeHtml(jour.jour_label || "J?")} · ${escapeHtml(formatDisplayDate(jour.date))}
                             ${mission ? ` · ${escapeHtml(mission.nom)}` : ""}
+                            ${closed ? " · clôturée" : ""}
                           </span>
                         `;
                       })
                       .join("")
-                  : `<span class="missionDayChip">Aucune journée</span>`
+                  : `<span class="missionDayChip">Aucune journée liée</span>`
               }
             </div>
 
@@ -621,8 +789,12 @@
 
     const stockMissions = getStockMissions()
       .slice()
-      .filter((mission) => String(mission.statut || "").toLowerCase() !== "annule")
-      .filter((mission) => String(mission.statut || "").toLowerCase() !== "cloture" || mission.date_fin >= today)
+      .filter((mission) => !isCancelledStatus(mission))
+      .filter((mission) => !isHistoricalStockMission(mission))
+      .filter((mission) => {
+        if (!isClosedStatus(mission)) return true;
+        return String(mission.date_fin || "") >= today;
+      })
       .sort((a, b) => {
         const byDate = String(a.date_debut).localeCompare(String(b.date_debut));
         if (byDate !== 0) return byDate;
@@ -640,7 +812,7 @@
         const jours = getStockMissionJournees(mission.mission_id);
         const firstOpenDay = getFirstOpenDayForStockMission(mission.mission_id);
         const statusClass = getStatusClass(mission.statut);
-        const statusLabel = STATUS_LABELS[mission.statut] || mission.statut;
+        const statusLabel = STATUS_LABELS[normalizeStatus(mission.statut)] || mission.statut || "Mission";
 
         return `
           <article class="missionListItem">
@@ -683,6 +855,7 @@
                 type="button"
                 data-resume-stock-mission="${escapeAttr(mission.mission_id)}"
                 data-resume-day="${escapeAttr(firstOpenDay ? firstOpenDay.journee_id : "")}"
+                ${firstOpenDay ? "" : "disabled"}
               >
                 Reprendre
               </button>
@@ -702,40 +875,26 @@
   };
 
   const renderStockDayList = () => {
-    const allJournees = getJournees()
-      .slice()
-      .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
-      .sort((a, b) => {
-        const byDate = String(a.date).localeCompare(String(b.date));
-        if (byDate !== 0) return byDate;
+    const selectableDays = getSelectableDays();
 
-        const eventA = getEventById(getDayEventId(a));
-        const eventB = getEventById(getDayEventId(b));
-
-        return String(eventA?.nom || "").localeCompare(String(eventB?.nom || ""));
-      });
-
-    if (allJournees.length === 0) {
+    if (selectableDays.length === 0) {
       els.stockDayList.innerHTML =
-        `<p class="missionEmpty">Crée d’abord un évènement depuis les inscriptions.</p>`;
+        `<p class="missionEmpty">Aucune journée disponible pour l’instant. Crée d’abord un évènement depuis les inscriptions.</p>`;
       return;
     }
 
-    els.stockDayList.innerHTML = allJournees
+    els.stockDayList.innerHTML = selectableDays
       .map((journee) => {
         const eventItem = getEventById(getDayEventId(journee));
         const checked = state.selectedDayIds.has(journee.journee_id);
-        const linked = Boolean(String(journee.stock_mission_id || "").trim());
-        const linkedMission = linked ? getStockMissionById(journee.stock_mission_id) : null;
 
         return `
-          <label class="stockDayOption ${checked ? "isSelected" : ""} ${linked ? "isLinked" : ""}">
+          <label class="stockDayOption ${checked ? "isSelected" : ""}">
             <input
               type="checkbox"
               value="${escapeAttr(journee.journee_id)}"
               data-stock-day-choice
               ${checked ? "checked" : ""}
-              ${linked ? "disabled" : ""}
             />
 
             <span class="stockDayCheck" aria-hidden="true"></span>
@@ -745,7 +904,6 @@
               <small>
                 ${escapeHtml(formatDisplayDate(journee.date))}
                 ${eventItem?.ville ? ` · ${escapeHtml(eventItem.ville)}` : ""}
-                ${linkedMission ? ` · déjà liée à ${escapeHtml(linkedMission.nom)}` : ""}
               </small>
             </span>
           </label>
@@ -809,10 +967,40 @@
     renderStockMissionPreview();
   };
 
+  const handleRouteRequest = async () => {
+    if (state.routeHandled) return;
+    if (!ROUTE_EVENT_ID) return;
+
+    state.routeHandled = true;
+
+    const eventItem = getEventById(ROUTE_EVENT_ID);
+
+    if (!eventItem) {
+      setStockStatus(
+        "L’évènement vient peut-être d’être créé, mais il n’est pas encore visible ici. Recharge la page si besoin.",
+        "isError"
+      );
+      return;
+    }
+
+    if (ROUTE_AUTO_PREPARE) {
+      await prepareEventStock(ROUTE_EVENT_ID);
+      return;
+    }
+
+    if (ROUTE_AUTO_SELECT) {
+      selectEventDays(ROUTE_EVENT_ID);
+    }
+  };
+
   const loadData = async () => {
     state.isLoading = true;
     renderAll();
-    setStockStatus("Chargement depuis Google Sheets...");
+    setStockStatus("Chargement...");
+
+    const cachedEvents = readJson(STORAGE_KEYS.events, []);
+    const cachedStockMissions = readJson(STORAGE_KEYS.stockMissions, []);
+    const cachedJournees = readJson(STORAGE_KEYS.journees, []);
 
     try {
       if (!hasApi()) {
@@ -825,9 +1013,38 @@
         api().getJournees()
       ]);
 
-      state.events = Array.isArray(events) ? events : [];
-      state.stockMissions = Array.isArray(stockMissions) ? stockMissions : [];
-      state.journees = Array.isArray(journees) ? journees : [];
+      const shouldKeepOptimisticCache = getPendingWritesCount() > 0;
+
+      state.events = shouldKeepOptimisticCache
+        ? mergeByKey(
+            Array.isArray(events) ? events : [],
+            cachedEvents,
+            getEventId
+          )
+        : Array.isArray(events)
+          ? events
+          : [];
+
+      state.stockMissions = shouldKeepOptimisticCache
+        ? mergeByKey(
+            Array.isArray(stockMissions) ? stockMissions : [],
+            cachedStockMissions,
+            getStockMissionId
+          )
+        : Array.isArray(stockMissions)
+          ? stockMissions
+          : [];
+
+      state.journees = shouldKeepOptimisticCache
+        ? mergeByKey(
+            Array.isArray(journees) ? journees : [],
+            cachedJournees,
+            getDayId
+          )
+        : Array.isArray(journees)
+          ? journees
+          : [];
+
       state.usingCache = false;
 
       cacheAll();
@@ -842,6 +1059,7 @@
     } finally {
       state.isLoading = false;
       renderAll();
+      await handleRouteRequest();
     }
   };
 
