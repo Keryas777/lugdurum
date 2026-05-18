@@ -11,7 +11,7 @@
     - IDs stables pour éviter les doublons.
     - Les lignes / transactions / frais retirés sont marqués annule/annulee.
     - Après succès réel API, retour automatique vers la page précédente ou journees-cloturees.html.
-    - Produits vendus affichés en cartes visuelles façon préparation stock.
+    - Produits vendus affichés avec les mêmes tuiles visuelles que Préparation stock.
   */
 
   const CURRENT_USER = {
@@ -178,8 +178,13 @@
 
     if (!normalized) return fallback;
 
-    if (["true", "vrai", "oui", "yes", "1", "x", "actif"].includes(normalized)) return true;
-    if (["false", "faux", "non", "no", "0", "inactif"].includes(normalized)) return false;
+    if (["true", "vrai", "oui", "yes", "1", "x", "actif"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "faux", "non", "no", "0", "inactif"].includes(normalized)) {
+      return false;
+    }
 
     return fallback;
   };
@@ -272,7 +277,9 @@
   };
 
   const isValidStatus = (item) => {
-    const statut = String(item?.statut || item?.paiement_statut || "valide").toLowerCase();
+    const statut = String(item?.statut || item?.paiement_statut || "valide")
+      .trim()
+      .toLowerCase();
 
     return ![
       "annule",
@@ -280,7 +287,9 @@
       "annulé",
       "annulée",
       "refuse",
-      "refusé"
+      "refusé",
+      "refusee",
+      "refusée"
     ].includes(statut);
   };
 
@@ -346,6 +355,10 @@
     };
   };
 
+  const getProductImageSrc = (product) =>
+    String(product?.image_src || "").trim() ||
+    `./assets/parfums/${String(product?.parfum_code || "").toLowerCase()}.webp`;
+
   const normalizeOffer = (raw, index) => ({
     offre_id: String(raw.offre_id || "").trim(),
     libelle: String(raw.libelle || raw.offre_id || "").trim(),
@@ -369,6 +382,7 @@
       .filter((product) => product.actif)
       .filter((product) => product.visible_webapp !== false)
       .filter((product) => product.format_cl === 50 || product.format_cl === 20)
+      .filter((product) => product.vendable_seul || product.composable_coffret)
       .sort((a, b) => {
         const byOrder = a.ordre_affichage - b.ordre_affichage;
         if (byOrder !== 0) return byOrder;
@@ -423,23 +437,19 @@
   const findBottleOffer = (product) => {
     const productGamme = normalizeKey(product.gamme_tarif);
 
-    return getActiveOffers().find((offer) => {
-      return (
-        offer.type_offre === "bouteille" &&
-        offer.format_cl === product.format_cl &&
-        normalizeKey(offer.gamme_tarif) === productGamme
-      );
-    }) || null;
+    return getActiveOffers().find((offer) => (
+      offer.type_offre === "bouteille" &&
+      offer.format_cl === product.format_cl &&
+      normalizeKey(offer.gamme_tarif) === productGamme
+    )) || null;
   };
 
-  const findBoxOffer = () => {
-    return (
-      getActiveOffers().find((offer) => offer.offre_id === "COFFRET_3_20") ||
-      getActiveOffers().find((offer) => offer.offre_id === "COFFRET_6_20") ||
-      getActiveOffers().find((offer) => offer.type_offre === "coffret" && offer.format_cl === 20) ||
-      null
-    );
-  };
+  const findBoxOffer = () => (
+    getActiveOffers().find((offer) => offer.offre_id === "COFFRET_3_20") ||
+    getActiveOffers().find((offer) => offer.offre_id === "COFFRET_6_20") ||
+    getActiveOffers().find((offer) => offer.type_offre === "coffret" && offer.format_cl === 20) ||
+    null
+  );
 
   const getUnitPriceForProduct = (product) => {
     if (!product) {
@@ -537,22 +547,65 @@
   };
 
   const getProductTotal = () =>
-    getProductLinesDraft().reduce((sum, line) => {
-      return sum + line.quantity * line.unit_ttc;
-    }, 0);
+    getProductLinesDraft().reduce((sum, line) => (
+      sum + line.quantity * line.unit_ttc
+    ), 0);
 
   const getBottleTotal = () =>
     getProductLinesDraft().reduce((sum, line) => sum + line.quantity, 0);
 
-  const getProductImageSrc = (productOrGroup) => {
-    const code = String(productOrGroup?.parfum_code || "").trim().toLowerCase();
+  const renderFormatControl = (product, label) => {
+    if (!product) {
+      return `
+        <div class="stockGlassFormat isUnavailable">
+          <div class="stockGlassFormatHead">
+            <span>${escapeHtml(label)}</span>
+          </div>
 
-    const imageSrc =
-      productOrGroup?.image_src ||
-      productOrGroup?.products?.find((product) => product.image_src)?.image_src ||
-      "";
+          <div class="stockGlassUnavailable">—</div>
+        </div>
+      `;
+    }
 
-    return imageSrc || `./assets/parfums/${code}.webp`;
+    const qty = getQuantity(product.sku_id);
+
+    return `
+      <div class="stockGlassFormat">
+        <div class="stockGlassFormatHead">
+          <span>${escapeHtml(label)}</span>
+        </div>
+
+        <div class="stockGlassQtyControl">
+          <button
+            type="button"
+            data-old-day-delta="-1"
+            data-sku="${escapeAttr(product.sku_id)}"
+            aria-label="Retirer une bouteille ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
+          >
+            −
+          </button>
+
+          <input
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+            value="${qty}"
+            data-old-day-input="${escapeAttr(product.sku_id)}"
+            aria-label="Quantité ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
+          />
+
+          <button
+            type="button"
+            data-old-day-delta="1"
+            data-sku="${escapeAttr(product.sku_id)}"
+            aria-label="Ajouter une bouteille ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
+          >
+            +
+          </button>
+        </div>
+      </div>
+    `;
   };
 
   const renderProducts = () => {
@@ -572,83 +625,32 @@
       .map((group) => {
         const product50 = group.products.find((product) => product.format_cl === 50);
         const product20 = group.products.find((product) => product.format_cl === 20);
+        const imageProduct = product50 || product20;
+        const imageSrc = getProductImageSrc(imageProduct);
 
         return `
           <article
-            class="oldProductVisualCard"
-            style="--old-product-bg: url('${escapeAttr(getProductImageSrc(group))}')"
+            class="stockVisualCard"
+            style="--stock-bg: url('${escapeAttr(imageSrc)}')"
           >
-            <div class="oldProductVisualShade"></div>
+            <div class="stockVisualBg" aria-hidden="true"></div>
+            <div class="stockVisualShade" aria-hidden="true"></div>
 
-            <div class="oldProductVisualContent">
-              <div class="oldProductVisualTitle">
+            <div class="stockVisualContent">
+              <div class="stockVisualTitle">
                 <strong>${escapeHtml(group.parfum_code)}</strong>
                 <span>${escapeHtml(group.parfum_nom)}</span>
               </div>
 
-              <div class="oldProductVisualControls">
-                ${renderQuantityInput(product50, "50 cL")}
-                ${renderQuantityInput(product20, "20 cL")}
+              <div class="stockGlassPanel">
+                ${renderFormatControl(product50, "50 cL")}
+                ${renderFormatControl(product20, "20 cL")}
               </div>
             </div>
           </article>
         `;
       })
       .join("");
-  };
-
-  const renderQuantityInput = (product, label) => {
-    if (!product) {
-      return `
-        <div class="oldGlassPanel isUnavailable">
-          <span class="oldGlassFormat">${escapeHtml(label)}</span>
-
-          <div class="oldQtyStepper">
-            <button type="button" disabled>−</button>
-            <input type="number" value="" disabled />
-            <button type="button" disabled>+</button>
-          </div>
-        </div>
-      `;
-    }
-
-    const quantity = getQuantity(product.sku_id);
-
-    return `
-      <div class="oldGlassPanel">
-        <span class="oldGlassFormat">${escapeHtml(label)}</span>
-
-        <div class="oldQtyStepper">
-          <button
-            type="button"
-            data-quantity-step="-1"
-            data-product-quantity-step="${escapeAttr(product.sku_id)}"
-            aria-label="Retirer une bouteille ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
-          >
-            −
-          </button>
-
-          <input
-            type="number"
-            inputmode="numeric"
-            min="0"
-            step="1"
-            value="${escapeAttr(quantity)}"
-            data-product-quantity="${escapeAttr(product.sku_id)}"
-            aria-label="Quantité ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
-          />
-
-          <button
-            type="button"
-            data-quantity-step="1"
-            data-product-quantity-step="${escapeAttr(product.sku_id)}"
-            aria-label="Ajouter une bouteille ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
-          >
-            +
-          </button>
-        </div>
-      </div>
-    `;
   };
 
   const renderExpenses = () => {
@@ -664,16 +666,8 @@
             <strong>${escapeHtml(EXPENSE_LABELS[expense.categorie] || expense.categorie)}</strong>
             <span>${escapeHtml(expense.note || "Sans note")}</span>
           </div>
-
           <strong>${escapeHtml(formatCurrency(expense.montant))}</strong>
-
-          <button
-            type="button"
-            data-remove-expense="${escapeAttr(expense.id)}"
-            aria-label="Supprimer le frais"
-          >
-            ×
-          </button>
+          <button type="button" data-remove-expense="${escapeAttr(expense.id)}" aria-label="Supprimer le frais">×</button>
         </article>
       `)
       .join("");
@@ -874,8 +868,8 @@
     );
   };
 
-  const buildActiveSaleLines = ({ transactionId, stockMissionId, journeeId, eventMissionId }) => {
-    return getProductLinesDraft().map((line) => {
+  const buildActiveSaleLines = ({ transactionId, stockMissionId, journeeId, eventMissionId }) =>
+    getProductLinesDraft().map((line) => {
       const totalTtc = formatAmount(line.quantity * line.unit_ttc);
       const totalHt = formatAmount(line.quantity * line.unit_ht);
       const now = new Date().toISOString();
@@ -917,7 +911,6 @@
         updated_at: now
       };
     });
-  };
 
   const buildCancelledSaleLines = ({ activeLines, transactionId }) => {
     if (!state.edit.isEditMode) return [];
@@ -1001,7 +994,6 @@
     const currentTransactions = currentTransactionMeta.map((meta, index) => {
       const { row, existing, transactionId } = meta;
       const isPrimary = index === 0;
-
       const lines = isPrimary ? allLinesToWrite : [];
 
       return {
@@ -1027,7 +1019,7 @@
         motif_remise: "",
         statut: "validee",
         note: els.noteInput.value.trim(),
-        detail_ticket: JSON.stringify(activeLines),
+        detail_ticket: JSON.stringify(isPrimary ? activeLines : []),
         created_at: existing?.created_at || now,
         updated_at: now,
         lignes: lines
@@ -1047,6 +1039,7 @@
             total_tva: 0,
             total_encaisse_ttc: 0,
             remise_totale: 0,
+            detail_ticket: "[]",
             statut: "annulee",
             note: [transaction.note || "", "Annulé depuis la modification historique"].filter(Boolean).join(" · "),
             updated_at: now,
@@ -1517,11 +1510,36 @@
     renderAll();
   };
 
+  document.addEventListener("click", (event) => {
+    const deltaButton = event.target.closest("[data-old-day-delta]");
+
+    if (deltaButton) {
+      const skuId = deltaButton.dataset.sku;
+      const delta = toNumber(deltaButton.dataset.oldDayDelta, 0);
+      const current = getQuantity(skuId);
+
+      setQuantity(skuId, current + delta);
+      setStatus("");
+      renderAll();
+      return;
+    }
+
+    const removeExpenseButton = event.target.closest("[data-remove-expense]");
+
+    if (removeExpenseButton) {
+      state.expenses = state.expenses.filter(
+        (expense) => expense.id !== removeExpenseButton.dataset.removeExpense
+      );
+      renderExpenses();
+      renderTotals();
+    }
+  });
+
   document.addEventListener("input", (event) => {
-    const quantityInput = event.target.closest("[data-product-quantity]");
+    const quantityInput = event.target.closest("[data-old-day-input]");
 
     if (quantityInput) {
-      setQuantity(quantityInput.dataset.productQuantity, quantityInput.value);
+      setQuantity(quantityInput.dataset.oldDayInput, quantityInput.value);
       setStatus("");
       renderTotals();
       return;
@@ -1537,38 +1555,10 @@
     }
   });
 
-  document.addEventListener("click", (event) => {
-    const quantityStepButton = event.target.closest("[data-product-quantity-step]");
-
-    if (quantityStepButton) {
-      const skuId = quantityStepButton.dataset.productQuantityStep;
-      const delta = toNumber(quantityStepButton.dataset.quantityStep, 0);
-      const current = getQuantity(skuId);
-
-      setQuantity(skuId, current + delta);
-      setStatus("");
-      renderProducts();
-      renderTotals();
-      return;
-    }
-
-    const removeExpenseButton = event.target.closest("[data-remove-expense]");
-
-    if (removeExpenseButton) {
-      state.expenses = state.expenses.filter(
-        (expense) => expense.id !== removeExpenseButton.dataset.removeExpense
-      );
-      renderExpenses();
-      renderTotals();
-      return;
-    }
-  });
-
   els.clearProductsBtn.addEventListener("click", () => {
     state.quantities = new Map();
     setStatus("");
-    renderProducts();
-    renderTotals();
+    renderAll();
   });
 
   els.addExpenseBtn.addEventListener("click", addExpense);
@@ -1591,11 +1581,6 @@
     configureModeLabels();
 
     els.eventDateInput.value = formatIsoDate(new Date());
-
-    if (els.clearProductsBtn) {
-      els.clearProductsBtn.textContent = "Tout remettre à zéro";
-    }
-
     renderAll();
 
     try {
