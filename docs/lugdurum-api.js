@@ -2,13 +2,16 @@
   "use strict";
 
   /*
-    Lugdurum API V6
+    Lugdurum API V7
     - Connexion Apps Script / Google Sheets.
-    - File d’attente locale pour les écritures hors réseau.
-    - Rejeu automatique au retour réseau, au focus de la page, et au chargement.
-    - Les lectures GET restent directes vers Sheets.
-    - Les écritures POST peuvent être mises en attente si Apps Script est inaccessible.
-    - Ajout mouvements_stock.
+    - Lectures GET directes.
+    - Écritures POST avec file d’attente offline.
+    - Rejeu automatique au retour réseau, au focus, à la visibilité et au chargement.
+    - Rejeu de la file d’attente par paquets via batchActions pour limiter les appels Apps Script.
+    - Support mouvements_stock.
+    - Support stock_preparations / stock_preparation_lignes pour compatibilité.
+    - Support saveJourneeHistoriqueBundle pour écrire mission + mission_stock + journée + transactions/lignes + frais en un seul appel.
+    - Support getCoreData pour charger plusieurs onglets en un seul GET.
   */
 
   const API_URL =
@@ -18,6 +21,8 @@
     pendingWrites: "lugdurum_pending_writes",
     lastSyncState: "lugdurum_last_sync_state"
   };
+
+  const FLUSH_BATCH_SIZE = 20;
 
   let isFlushing = false;
   let flushTimer = null;
@@ -78,10 +83,10 @@
   };
 
   const setPendingWrites = (writes) => {
-    writeJson(STORAGE_KEYS.pendingWrites, writes);
+    writeJson(STORAGE_KEYS.pendingWrites, Array.isArray(writes) ? writes : []);
 
     writeSyncState({
-      pending_count: writes.length
+      pending_count: Array.isArray(writes) ? writes.length : 0
     });
   };
 
@@ -126,8 +131,7 @@
   };
 
   const removePendingWrite = (queueId) => {
-    const writes = getPendingWrites().filter((item) => item.id !== queueId);
-    setPendingWrites(writes);
+    setPendingWrites(getPendingWrites().filter((item) => item.id !== queueId));
   };
 
   const updatePendingWriteError = (queueId, error) => {
@@ -174,6 +178,7 @@
     if (!result.ok) {
       const error = new Error(result.error || `Erreur API sur ${action}`);
       error.queueable = false;
+      error.api_result = result;
       throw error;
     }
 
@@ -246,9 +251,9 @@
       };
     }
 
-    const initialWrites = getPendingWrites();
+    const initialCount = getPendingWritesCount();
 
-    if (initialWrites.length === 0) {
+    if (initialCount === 0) {
       writeSyncState({
         status: "idle",
         last_message: "Aucune écriture en attente.",
@@ -267,7 +272,7 @@
 
     writeSyncState({
       status: "syncing",
-      last_message: `Synchronisation de ${initialWrites.length} écriture(s)...`,
+      last_message: `Synchronisation de ${initialCount} écriture(s)…`,
       last_error: ""
     });
 
@@ -275,35 +280,92 @@
     let failedCount = 0;
 
     try {
-      for (const queuedItem of initialWrites) {
-        const stillPending = getPendingWrites().some(
-          (item) => item.id === queuedItem.id
-        );
+      while (getPendingWritesCount() > 0) {
+        const currentWrites = getPendingWrites();
+        const batch = currentWrites.slice(0, FLUSH_BATCH_SIZE);
 
-        if (!stillPending) continue;
+        if (batch.length === 0) break;
 
         try {
-          await rawPost(queuedItem.action, queuedItem.payload);
+          const batchPayload = {
+            actions: batch.map((item) => ({
+              queue_id: item.id,
+              action: item.action,
+              payload: item.payload
+            }))
+          };
 
-          removePendingWrite(queuedItem.id);
-          syncedCount += 1;
+          const batchResult = await rawPost("batchActions", batchPayload);
+          const results = Array.isArray(batchResult?.results)
+            ? batchResult.results
+            : [];
 
-          writeSyncState({
-            status: "syncing",
-            last_message: `Synchronisé : ${queuedItem.action}`,
-            last_synced_action: queuedItem.action,
-            last_error: ""
-          });
+          if (results.length === 0) {
+            throw makeQueueableError("Réponse batchActions vide ou invalide.");
+          }
+
+          let mustStop = false;
+
+          for (const queuedItem of batch) {
+            const result =
+              results.find((item) => item.queue_id === queuedItem.id) ||
+              results.find((item) => item.action === queuedItem.action);
+
+            if (!result) {
+              failedCount += 1;
+              updatePendingWriteError(
+                queuedItem.id,
+                new Error("Résultat absent dans la réponse batchActions.")
+              );
+              mustStop = true;
+              break;
+            }
+
+            if (result.ok) {
+              removePendingWrite(queuedItem.id);
+              syncedCount += 1;
+
+              writeSyncState({
+                status: "syncing",
+                last_message: `Synchronisé : ${queuedItem.action}`,
+                last_synced_action: queuedItem.action,
+                last_error: ""
+              });
+            } else {
+              failedCount += 1;
+              updatePendingWriteError(
+                queuedItem.id,
+                new Error(result.error || `Erreur API sur ${queuedItem.action}`)
+              );
+
+              writeSyncState({
+                status: "error",
+                last_message: `Synchronisation bloquée sur : ${queuedItem.action}`,
+                last_error: result.error || "Erreur inconnue",
+                last_failed_action: queuedItem.action
+              });
+
+              mustStop = true;
+              break;
+            }
+          }
+
+          if (mustStop) break;
         } catch (error) {
-          failedCount += 1;
-          updatePendingWriteError(queuedItem.id, error);
+          const firstItem = batch[0];
 
-          writeSyncState({
-            status: "error",
-            last_message: `Synchronisation bloquée sur : ${queuedItem.action}`,
-            last_error: error.message,
-            last_failed_action: queuedItem.action
-          });
+          failedCount += 1;
+
+          if (firstItem) {
+            updatePendingWriteError(firstItem.id, error);
+
+            writeSyncState({
+              status: "error",
+              last_message: `Synchronisation bloquée sur : ${firstItem.action}`,
+              last_error: error.message,
+              last_failed_action: firstItem.action
+            });
+          }
 
           break;
         }
@@ -354,7 +416,7 @@
     }, delay);
   };
 
-  const requestGet = async (action) => {
+  const requestGet = async (action, params = {}) => {
     if (!API_URL) {
       throw new Error("API_URL manquante dans lugdurum-api.js");
     }
@@ -369,6 +431,16 @@
 
     const url = new URL(API_URL);
     url.searchParams.set("action", action);
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+
+      if (Array.isArray(value)) {
+        url.searchParams.set(key, value.join(","));
+      } else {
+        url.searchParams.set(key, String(value));
+      }
+    });
 
     const response = await fetch(url.toString(), {
       method: "GET",
@@ -458,6 +530,21 @@
       mouvement
     });
 
+  const saveStockPreparation = (preparation) =>
+    requestQueuedPost("upsertStockPreparation", {
+      preparation
+    });
+
+  const saveStockPreparationLine = (line) =>
+    requestQueuedPost("upsertStockPreparationLine", {
+      line
+    });
+
+  const saveStockPreparationWithLines = (preparation) =>
+    requestQueuedPost("saveStockPreparation", {
+      preparation
+    });
+
   const saveTransaction = (transaction) =>
     requestQueuedPost("saveTransaction", {
       transaction
@@ -465,6 +552,15 @@
 
   const saveFrais = (frais) =>
     requestQueuedPost("upsertFrais", {
+      frais
+    });
+
+  const saveJourneeHistoriqueBundle = ({ mission, mission_stock, journee, transactions, frais }) =>
+    requestQueuedPost("saveJourneeHistoriqueBundle", {
+      mission,
+      mission_stock,
+      journee,
+      transactions,
       frais
     });
 
@@ -486,6 +582,12 @@
       return requestGet("getSpreadsheetInfo");
     },
 
+    getCoreData(tables = []) {
+      return requestGet("getCoreData", {
+        tables
+      });
+    },
+
     getCatalogue() {
       return requestGet("getCatalogue");
     },
@@ -503,9 +605,7 @@
     },
 
     saveInscriptionEvenement,
-
     cancelInscriptionEvenement,
-
     saveInscriptionEventBundle,
 
     getMissions() {
@@ -519,7 +619,6 @@
     },
 
     saveMissionStock,
-
     saveMissionStockBundle,
 
     getJournees() {
@@ -538,6 +637,22 @@
 
     saveMouvementStock,
 
+    getStockPreparations() {
+      return requestGet("getStockPreparations");
+    },
+
+    getStockPreparationLines() {
+      return requestGet("getStockPreparationLines");
+    },
+
+    getStockPreparationLignes() {
+      return requestGet("getStockPreparationLines");
+    },
+
+    saveStockPreparation,
+    saveStockPreparationLine,
+    saveStockPreparationWithLines,
+
     getTransactions() {
       return requestGet("getTransactions");
     },
@@ -554,18 +669,15 @@
 
     saveFrais,
 
+    saveJourneeHistoriqueBundle,
+
     batchUpsert,
 
     getPendingWrites,
-
     getPendingWritesCount,
-
     getSyncState,
-
     flushPendingWrites,
-
     clearPendingWrites,
-
     isOnline
   };
 
