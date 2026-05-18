@@ -2,11 +2,14 @@
   "use strict";
 
   /*
-    Journées clôturées V2 :
+    Journées clôturées V3 :
     - API Google Sheets prioritaire.
     - Aucun rendu local avant la réponse API.
     - Cache/localStorage uniquement si l’API est indisponible.
     - Affiche CA, paiements, frais, produits vendus 50 cL / 20 cL par journée.
+    - Ajoute un détail consultable par journée.
+    - Ajoute un lien Modifier / compléter vers saisie-ancienne-journee.html?mode=edit&journee_id=...
+    - Ignore les transactions, lignes et frais annulés.
   */
 
   const CACHE_KEYS = {
@@ -20,13 +23,34 @@
   };
 
   const LEGACY_KEYS = {
-    transactions: ["lugdurum_transactions_cache", "lugdurum_transactions_backup", "lugdurum_pending_transactions"],
-    ventesLignes: ["lugdurum_ventes_lignes_cache", "lugdurum_ventes_lignes"],
-    frais: ["lugdurum_frais_cache", "lugdurum_frais"],
-    journees: ["lugdurum_journees_cache", "lugdurum_journees"],
-    missionsStock: ["lugdurum_missions_stock_cache", "lugdurum_missions_stock"],
-    missions: ["lugdurum_missions_vente_cache", "lugdurum_evenements"],
-    catalogue: ["lugdurum_catalogue_cache"]
+    transactions: [
+      "lugdurum_transactions_cache",
+      "lugdurum_transactions_backup",
+      "lugdurum_pending_transactions"
+    ],
+    ventesLignes: [
+      "lugdurum_ventes_lignes_cache",
+      "lugdurum_ventes_lignes"
+    ],
+    frais: [
+      "lugdurum_frais_cache",
+      "lugdurum_frais"
+    ],
+    journees: [
+      "lugdurum_journees_cache",
+      "lugdurum_journees"
+    ],
+    missionsStock: [
+      "lugdurum_missions_stock_cache",
+      "lugdurum_missions_stock"
+    ],
+    missions: [
+      "lugdurum_missions_vente_cache",
+      "lugdurum_evenements"
+    ],
+    catalogue: [
+      "lugdurum_catalogue_cache"
+    ]
   };
 
   const PAYMENT_LABELS = {
@@ -34,6 +58,7 @@
     CHQ: "Chèque",
     CB: "CB",
     SUMUP: "SumUp",
+    HISTORIQUE: "Historique",
     WEBAPP_ESPECES: "Espèces",
     WEBAPP_CHEQUE: "Chèque",
     WEBAPP_CB_MANUEL: "CB manuel",
@@ -55,23 +80,75 @@
     }
   };
 
-  const $ = (...ids) => ids.map((id) => document.getElementById(id)).find(Boolean) || null;
+  const $ = (...ids) =>
+    ids.map((id) => document.getElementById(id)).find(Boolean) || null;
 
   const els = {
-    year: $("closedDaysYearInput", "journeesClotureesYearInput", "closedYearFilter", "yearFilter"),
-    search: $("closedDaysSearchInput", "journeesClotureesSearchInput", "closedSearchInput", "searchInput"),
-    revenue: $("closedDaysRevenue", "journeesClotureesRevenue", "closedRevenue"),
-    count: $("closedDaysCount", "journeesClotureesCount", "closedCount"),
-    average: $("closedDaysAverage", "journeesClotureesAverage", "closedAverage"),
-    tickets: $("closedDaysTickets", "journeesClotureesTickets", "closedTickets"),
-    list: $("closedDaysList", "journeesClotureesList", "closedList", "daysList", "statsList"),
-    status: $("closedDaysStatus", "journeesClotureesStatus", "closedStatus", "statsStatus")
+    year: $(
+      "closedYearSelect",
+      "closedDaysYearInput",
+      "journeesClotureesYearInput",
+      "closedYearFilter",
+      "yearFilter"
+    ),
+    search: $(
+      "closedSearch",
+      "closedDaysSearchInput",
+      "journeesClotureesSearchInput",
+      "closedSearchInput",
+      "searchInput"
+    ),
+    revenue: $(
+      "closedDaysRevenue",
+      "journeesClotureesRevenue",
+      "closedRevenue"
+    ),
+    count: $(
+      "closedDaysCount",
+      "journeesClotureesCount",
+      "closedCount"
+    ),
+    average: $(
+      "closedDaysAverage",
+      "journeesClotureesAverage",
+      "closedAverage"
+    ),
+    tickets: $(
+      "closedDaysTickets",
+      "journeesClotureesTickets",
+      "closedTickets"
+    ),
+    list: $(
+      "closedDaysList",
+      "journeesClotureesList",
+      "closedList",
+      "daysList",
+      "statsList"
+    ),
+    status: $(
+      "closedDaysStatus",
+      "journeesClotureesStatus",
+      "closedStatus",
+      "statsStatus"
+    ),
+
+    detailPanel: $("dayDetailPanel"),
+    detailTitle: $("dayDetailTitle"),
+    detailMeta: $("dayDetailMeta"),
+    detailRevenue: $("detailRevenue"),
+    detailTickets: $("detailTickets"),
+    detailPayment: $("detailPayment"),
+    detailSales: $("detailSales"),
+    detailFees: $("detailFees"),
+    detailStock: $("detailStock"),
+    detailEditLink: $("dayDetailEditLink")
   };
 
   const api = () => window.LugdurumAPI || null;
 
   const readJsonNullable = (key) => {
     const raw = localStorage.getItem(key);
+
     if (raw === null) return null;
 
     try {
@@ -84,13 +161,16 @@
   const readFirstArray = (keys) => {
     for (const key of keys) {
       const value = readJsonNullable(key);
+
       if (Array.isArray(value)) return value;
     }
 
     return [];
   };
 
-  const writeJson = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+  const writeJson = (key, value) => {
+    localStorage.setItem(key, JSON.stringify(value));
+  };
 
   const escapeHtml = (value) =>
     String(value ?? "")
@@ -99,6 +179,9 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+
+  const escapeAttr = (value) =>
+    escapeHtml(value).replaceAll("`", "&#096;");
 
   const normalizeText = (value) =>
     String(value ?? "")
@@ -118,6 +201,7 @@
     if (!normalized) return fallback;
 
     const number = Number(normalized);
+
     return Number.isFinite(number) ? number : fallback;
   };
 
@@ -133,6 +217,7 @@
     if (!value) return null;
 
     const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
@@ -152,6 +237,7 @@
   const getYearFromDate = (value) => {
     const text = String(value || "");
     const match = text.match(/^(\d{4})/);
+
     return match ? match[1] : "";
   };
 
@@ -171,39 +257,63 @@
   };
 
   const isValidStatus = (item) => {
-    const statut = String(item?.statut || item?.paiement_statut || "validee").toLowerCase();
-    return !["annule", "annulee", "annulé", "annulée", "refuse", "refusé"].includes(statut);
+    const statut = String(item?.statut || item?.paiement_statut || "validee")
+      .trim()
+      .toLowerCase();
+
+    return ![
+      "annule",
+      "annulee",
+      "annulé",
+      "annulée",
+      "refuse",
+      "refusé",
+      "refusee",
+      "refusée"
+    ].includes(statut);
   };
 
   const getMissionId = (item) =>
-    String(item.stock_mission_id || item.mission_id || item.evenement_id || "").trim();
+    String(item?.stock_mission_id || item?.mission_id || item?.evenement_id || "")
+      .trim();
 
-  const getJourneeId = (item) => String(item.journee_id || item.day_id || "").trim();
+  const getJourneeId = (item) =>
+    String(item?.journee_id || item?.day_id || "").trim();
 
-  const getTransactionId = (transaction) => String(transaction.transaction_id || transaction.id || "").trim();
+  const getTransactionId = (transaction) =>
+    String(transaction?.transaction_id || transaction?.id || "").trim();
 
   const getTransactionAmount = (transaction) =>
     toNumber(
-      transaction.total_encaisse_ttc ??
-      transaction.total_encaisse ??
-      transaction.total_catalogue_ttc ??
-      transaction.total_catalogue,
+      transaction?.total_encaisse_ttc ??
+      transaction?.total_encaisse ??
+      transaction?.total_catalogue_ttc ??
+      transaction?.total_catalogue,
       0
     );
 
   const getFraisAmount = (item) =>
-    toNumber(item.montant_ttc ?? item.montant ?? item.prix ?? item.amount, 0);
+    toNumber(item?.montant_ttc ?? item?.montant ?? item?.prix ?? item?.amount, 0);
 
   const getPaymentKey = (transaction) =>
-    String(transaction.mode_paiement || transaction.paiement_provider || transaction.source || "MANUEL").trim().toUpperCase();
+    String(
+      transaction?.mode_paiement ||
+      transaction?.paiement_provider ||
+      transaction?.source ||
+      "MANUEL"
+    )
+      .trim()
+      .toUpperCase();
 
   const parseDetailTicket = (transaction) => {
-    const raw = transaction.detail_ticket;
+    const raw = transaction?.detail_ticket;
+
     if (Array.isArray(raw)) return raw;
     if (typeof raw !== "string" || !raw.trim()) return [];
 
     try {
       const value = JSON.parse(raw);
+
       return Array.isArray(value) ? value : [];
     } catch {
       return [];
@@ -222,7 +332,11 @@
   const getCatalogueBySku = () =>
     state.catalogue.reduce((map, item) => {
       const skuId = String(item.sku_id || "").trim();
-      if (skuId) map.set(skuId, item);
+
+      if (skuId) {
+        map.set(skuId, item);
+      }
+
       return map;
     }, new Map());
 
@@ -231,7 +345,10 @@
 
     [...state.missions, ...state.missionsStock].forEach((mission) => {
       const id = getMissionId(mission);
-      if (id) map.set(id, mission);
+
+      if (id) {
+        map.set(id, mission);
+      }
     });
 
     return map;
@@ -240,91 +357,151 @@
   const getJourneeMap = () =>
     state.journees.reduce((map, journee) => {
       const id = getJourneeId(journee);
-      if (id) map.set(id, journee);
+
+      if (id) {
+        map.set(id, journee);
+      }
+
+      return map;
+    }, new Map());
+
+  const getTransactionMap = () =>
+    state.transactions.reduce((map, transaction) => {
+      const id = getTransactionId(transaction);
+
+      if (id) {
+        map.set(id, transaction);
+      }
+
       return map;
     }, new Map());
 
   const buildLinesFromTransactions = () => {
     const lines = [];
 
-    state.transactions.filter(isValidStatus).forEach((transaction) => {
-      const ticket = parseDetailTicket(transaction);
-      const transactionId = getTransactionId(transaction);
-      const total = getTransactionAmount(transaction);
+    state.transactions
+      .filter(isValidStatus)
+      .forEach((transaction) => {
+        const ticket = parseDetailTicket(transaction);
+        const transactionId = getTransactionId(transaction);
+        const total = getTransactionAmount(transaction);
 
-      ticket.forEach((item) => {
-        if (item.type === "bottle") {
-          lines.push({
-            transaction_id: transactionId,
-            mission_id: getMissionId(transaction),
-            journee_id: getJourneeId(transaction),
-            sku_id: item.sku_id,
-            parfum_code: item.parfum_code,
-            parfum_nom: item.parfum_nom,
-            format_cl: item.format_cl,
-            quantite: toNumber(item.quantite, 0),
-            total_catalogue_ligne_ttc: toNumber(item.quantite, 0) * toNumber(item.prix_unitaire_ttc, 0)
-          });
-          return;
-        }
-
-        if (item.type === "box" && Array.isArray(item.composition)) {
-          const unitShare = item.composition.length > 0 ? toNumber(item.prix_ttc, total) / item.composition.length : 0;
-
-          item.composition.forEach((product) => {
+        ticket.forEach((item) => {
+          if (item.type === "bottle") {
             lines.push({
               transaction_id: transactionId,
               mission_id: getMissionId(transaction),
               journee_id: getJourneeId(transaction),
-              sku_id: product.sku_id,
-              parfum_code: product.parfum_code,
-              parfum_nom: product.parfum_nom,
-              format_cl: product.format_cl || item.format_cl || 20,
-              quantite: 1,
-              total_catalogue_ligne_ttc: unitShare
+              sku_id: item.sku_id,
+              parfum_code: item.parfum_code,
+              parfum_nom: item.parfum_nom,
+              format_cl: item.format_cl,
+              quantite: toNumber(item.quantite, 0),
+              total_catalogue_ligne_ttc:
+                toNumber(item.quantite, 0) * toNumber(item.prix_unitaire_ttc, 0),
+              statut: "valide"
             });
-          });
-        }
+
+            return;
+          }
+
+          if (item.type === "box" && Array.isArray(item.composition)) {
+            const unitShare =
+              item.composition.length > 0
+                ? toNumber(item.prix_ttc, total) / item.composition.length
+                : 0;
+
+            item.composition.forEach((product) => {
+              lines.push({
+                transaction_id: transactionId,
+                mission_id: getMissionId(transaction),
+                journee_id: getJourneeId(transaction),
+                sku_id: product.sku_id,
+                parfum_code: product.parfum_code,
+                parfum_nom: product.parfum_nom,
+                format_cl: product.format_cl || item.format_cl || 20,
+                quantite: 1,
+                total_catalogue_ligne_ttc: unitShare,
+                statut: "valide"
+              });
+            });
+          }
+        });
       });
-    });
 
     return lines;
   };
 
+  const isLineLinkedToValidTransaction = (line, transactionMap) => {
+    const transactionId = String(line.transaction_id || "").trim();
+
+    if (!transactionId) return true;
+
+    const transaction = transactionMap.get(transactionId);
+
+    if (!transaction) return true;
+
+    return isValidStatus(transaction);
+  };
+
   const getNormalizedLines = () => {
     const catalogueMap = getCatalogueBySku();
-    const transactionMap = state.transactions.reduce((map, transaction) => {
-      const id = getTransactionId(transaction);
-      if (id && isValidStatus(transaction)) map.set(id, transaction);
-      return map;
-    }, new Map());
+    const transactionMap = getTransactionMap();
 
-    const baseLines = state.lignes.length > 0 ? state.lignes : buildLinesFromTransactions();
+    const baseLines =
+      state.lignes.length > 0
+        ? state.lignes
+        : buildLinesFromTransactions();
 
-    return baseLines.map((line) => {
-      const transaction = transactionMap.get(String(line.transaction_id || "")) || null;
-      const skuId = String(line.sku_id || line.sku || "").trim();
-      const catalogue = catalogueMap.get(skuId) || null;
-      const parsed = parseSku(skuId);
-      const quantity = toNumber(line.quantite ?? line.qty ?? line.quantity, 0);
-      const unitPrice = toNumber(line.prix_unitaire_ttc ?? line.prix ?? line.unit_price, 0);
+    return baseLines
+      .filter(isValidStatus)
+      .filter((line) => isLineLinkedToValidTransaction(line, transactionMap))
+      .map((line) => {
+        const transaction =
+          transactionMap.get(String(line.transaction_id || "")) || null;
 
-      return {
-        transaction_id: String(line.transaction_id || "").trim(),
-        mission_id: getMissionId(line) || getMissionId(transaction || {}),
-        journee_id: getJourneeId(line) || getJourneeId(transaction || {}),
-        sku_id: skuId,
-        parfum_code: String(line.parfum_code || catalogue?.parfum_code || parsed.parfum_code || "?").toUpperCase(),
-        parfum_nom: String(line.parfum_nom || catalogue?.parfum_nom || parsed.parfum_code || "Produit"),
-        format_cl: toNumber(line.format_cl, toNumber(catalogue?.format_cl, parsed.format_cl)),
-        quantite: quantity,
-        total_ttc: toNumber(line.total_catalogue_ligne_ttc ?? line.total_ligne_ttc ?? line.total_ttc, quantity * unitPrice)
-      };
-    }).filter((line) => line.quantite > 0);
+        const skuId = String(line.sku_id || line.sku || "").trim();
+        const catalogue = catalogueMap.get(skuId) || null;
+        const parsed = parseSku(skuId);
+        const quantity = toNumber(line.quantite ?? line.qty ?? line.quantity, 0);
+        const unitPrice = toNumber(line.prix_unitaire_ttc ?? line.prix ?? line.unit_price, 0);
+
+        return {
+          transaction_id: String(line.transaction_id || "").trim(),
+          mission_id: getMissionId(line) || getMissionId(transaction || {}),
+          journee_id: getJourneeId(line) || getJourneeId(transaction || {}),
+          sku_id: skuId,
+          parfum_code: String(
+            line.parfum_code ||
+            catalogue?.parfum_code ||
+            parsed.parfum_code ||
+            "?"
+          ).toUpperCase(),
+          parfum_nom: String(
+            line.parfum_nom ||
+            catalogue?.parfum_nom ||
+            parsed.parfum_code ||
+            "Produit"
+          ),
+          format_cl: toNumber(
+            line.format_cl,
+            toNumber(catalogue?.format_cl, parsed.format_cl)
+          ),
+          quantite: quantity,
+          total_ttc: toNumber(
+            line.total_catalogue_ligne_ttc ??
+            line.total_ligne_ttc ??
+            line.total_ttc,
+            quantity * unitPrice
+          )
+        };
+      })
+      .filter((line) => line.quantite > 0);
   };
 
   const addPayment = (summary, transaction) => {
     const key = getPaymentKey(transaction);
+
     const current = summary.paiements.get(key) || {
       key,
       label: PAYMENT_LABELS[key] || key,
@@ -334,11 +511,13 @@
 
     current.total += getTransactionAmount(transaction);
     current.count += 1;
+
     summary.paiements.set(key, current);
   };
 
   const addProduct = (summary, line) => {
     const key = line.sku_id || `${line.parfum_code}_${line.format_cl}`;
+
     const current = summary.products.get(key) || {
       key,
       sku_id: line.sku_id,
@@ -351,7 +530,22 @@
 
     current.quantite += line.quantite;
     current.ca += line.total_ttc;
+
     summary.products.set(key, current);
+  };
+
+  const addFrais = (summary, item) => {
+    const amount = getFraisAmount(item);
+
+    summary.frais += amount;
+
+    summary.fraisItems.push({
+      frais_id: String(item.frais_id || "").trim(),
+      categorie: String(item.categorie_label || item.categorie || "Frais").trim(),
+      libelle: String(item.libelle || item.note || "").trim(),
+      montant: amount,
+      date: String(item.date || item.date_heure || item.created_at || "").slice(0, 10)
+    });
   };
 
   const buildDaySummaries = () => {
@@ -373,11 +567,20 @@
           mission_id: resolvedMissionId,
           date: resolvedDate,
           year: getYearFromDate(resolvedDate),
-          label: [mission?.nom || journee?.nom || journee?.evenement || "Journée", journee?.jour_label || ""].filter(Boolean).join(" — "),
+          label: [
+            mission?.nom ||
+              journee?.nom ||
+              journee?.evenement ||
+              "Journée",
+            journee?.jour_label || ""
+          ]
+            .filter(Boolean)
+            .join(" — "),
           ville: mission?.ville || journee?.ville || "",
           statut: journee?.statut || "",
           ca: 0,
           frais: 0,
+          fraisItems: [],
           tickets: 0,
           paiements: new Map(),
           products: new Map()
@@ -387,29 +590,66 @@
       return map.get(key);
     };
 
-    state.transactions.filter(isValidStatus).forEach((transaction) => {
-      const journeeId = getJourneeId(transaction);
-      const missionId = getMissionId(transaction);
-      const date = String(transaction.date_heure || transaction.date || transaction.created_at || "").slice(0, 10);
-      const summary = getOrCreate({ journeeId, missionId, date });
+    state.transactions
+      .filter(isValidStatus)
+      .forEach((transaction) => {
+        const journeeId = getJourneeId(transaction);
+        const missionId = getMissionId(transaction);
+        const date = String(
+          transaction.date_heure ||
+          transaction.date ||
+          transaction.created_at ||
+          ""
+        ).slice(0, 10);
 
-      summary.ca += getTransactionAmount(transaction);
-      summary.tickets += 1;
-      addPayment(summary, transaction);
-      if (!summary.year) summary.year = getYearFromDate(date);
-      if (!summary.date) summary.date = date;
-    });
+        const summary = getOrCreate({
+          journeeId,
+          missionId,
+          date
+        });
 
-    state.frais.filter(isValidStatus).forEach((item) => {
-      const journeeId = getJourneeId(item);
-      const missionId = getMissionId(item);
-      const date = String(item.date || item.date_heure || item.created_at || "").slice(0, 10);
-      const summary = getOrCreate({ journeeId, missionId, date });
+        summary.ca += getTransactionAmount(transaction);
+        summary.tickets += 1;
 
-      summary.frais += getFraisAmount(item);
-      if (!summary.year) summary.year = getYearFromDate(date);
-      if (!summary.date) summary.date = date;
-    });
+        addPayment(summary, transaction);
+
+        if (!summary.year) {
+          summary.year = getYearFromDate(date);
+        }
+
+        if (!summary.date) {
+          summary.date = date;
+        }
+      });
+
+    state.frais
+      .filter(isValidStatus)
+      .forEach((item) => {
+        const journeeId = getJourneeId(item);
+        const missionId = getMissionId(item);
+        const date = String(
+          item.date ||
+          item.date_heure ||
+          item.created_at ||
+          ""
+        ).slice(0, 10);
+
+        const summary = getOrCreate({
+          journeeId,
+          missionId,
+          date
+        });
+
+        addFrais(summary, item);
+
+        if (!summary.year) {
+          summary.year = getYearFromDate(date);
+        }
+
+        if (!summary.date) {
+          summary.date = date;
+        }
+      });
 
     getNormalizedLines().forEach((line) => {
       const summary = getOrCreate({
@@ -436,7 +676,8 @@
         String(summary.statut || "").toLowerCase() === "cloture" ||
         summary.ca > 0 ||
         summary.tickets > 0 ||
-        summary.products.size > 0
+        summary.products.size > 0 ||
+        summary.frais > 0
       ))
       .map((summary) => ({
         ...summary,
@@ -444,9 +685,17 @@
         products: [...summary.products.values()].sort((a, b) => {
           const byFormat = b.format_cl - a.format_cl;
           if (byFormat !== 0) return byFormat;
+
           const byQty = b.quantite - a.quantite;
           if (byQty !== 0) return byQty;
+
           return String(a.parfum_code).localeCompare(String(b.parfum_code));
+        }),
+        fraisItems: summary.fraisItems.sort((a, b) => {
+          const byDate = String(b.date || "").localeCompare(String(a.date || ""));
+          if (byDate !== 0) return byDate;
+
+          return String(a.categorie || "").localeCompare(String(b.categorie || ""));
         })
       }))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -456,7 +705,9 @@
     const years = new Set();
 
     buildDaySummaries().forEach((day) => {
-      if (day.year) years.add(day.year);
+      if (day.year) {
+        years.add(day.year);
+      }
     });
 
     return [...years].sort((a, b) => b.localeCompare(a));
@@ -470,7 +721,7 @@
 
     els.year.innerHTML = `
       <option value="ALL">Toutes</option>
-      ${years.map((year) => `<option value="${year}">${year}</option>`).join("")}
+      ${years.map((year) => `<option value="${escapeAttr(year)}">${escapeHtml(year)}</option>`).join("")}
     `;
 
     if (current === "ALL" || years.includes(current)) {
@@ -495,6 +746,7 @@
       })
       .filter((day) => {
         if (!query) return true;
+
         return normalizeText(`${day.label} ${day.ville}`).includes(query);
       });
   };
@@ -515,7 +767,9 @@
   };
 
   const renderProducts = (products) => {
-    if (!products.length) return `<p class="statsEmpty compact">Aucun produit vendu renseigné.</p>`;
+    if (!products.length) {
+      return `<p class="statsEmpty compact">Aucun produit vendu renseigné.</p>`;
+    }
 
     return `
       <div class="closedProductsGrid">
@@ -530,11 +784,174 @@
   };
 
   const renderPayments = (payments) => {
-    if (!payments.length) return `<span>Aucun paiement</span>`;
+    if (!payments.length) {
+      return `<span>Aucun paiement</span>`;
+    }
 
     return payments.map((payment) => `
       <span>${escapeHtml(payment.label)} · ${escapeHtml(formatCurrency(payment.total))}</span>
     `).join("");
+  };
+
+  const renderDetailPayments = (payments) => {
+    if (!payments.length) {
+      return `<p class="statsEmpty compact">Aucun paiement renseigné.</p>`;
+    }
+
+    return payments.map((payment) => `
+      <p>
+        <strong>${escapeHtml(payment.label)}</strong>
+        <span>${escapeHtml(formatCurrency(payment.total))}</span>
+      </p>
+    `).join("");
+  };
+
+  const renderDetailProducts = (products) => {
+    if (!products.length) {
+      return `<p class="statsEmpty compact">Aucun produit vendu renseigné.</p>`;
+    }
+
+    return products.map((product) => `
+      <p>
+        <strong>${escapeHtml(product.parfum_code)} ${escapeHtml(product.format_cl)} cL</strong>
+        <span>
+          ${escapeHtml(String(product.quantite))}
+          ·
+          ${escapeHtml(formatCurrency(product.ca))}
+        </span>
+      </p>
+    `).join("");
+  };
+
+  const renderDetailFees = (day) => {
+    if (!day.fraisItems.length) {
+      return `
+        <p>
+          <strong>Total frais</strong>
+          <span>${escapeHtml(formatCurrency(day.frais))}</span>
+        </p>
+        <p class="statsEmpty compact">Aucun détail de frais renseigné.</p>
+      `;
+    }
+
+    return `
+      <p>
+        <strong>Total frais</strong>
+        <span>${escapeHtml(formatCurrency(day.frais))}</span>
+      </p>
+
+      ${day.fraisItems.map((item) => `
+        <p>
+          <strong>${escapeHtml(item.categorie || "Frais")}</strong>
+          <span>
+            ${escapeHtml(formatCurrency(item.montant))}
+            ${item.libelle ? `· ${escapeHtml(item.libelle)}` : ""}
+          </span>
+        </p>
+      `).join("")}
+    `;
+  };
+
+  const renderDayDetail = (day) => {
+    if (!els.detailPanel) return;
+
+    els.detailPanel.hidden = false;
+
+    setText(els.detailTitle, day.label || "Journée");
+
+    setText(
+      els.detailMeta,
+      `${formatDisplayDate(day.date)}${day.ville ? ` · ${day.ville}` : ""}`
+    );
+
+    setText(els.detailRevenue, formatCurrency(day.ca));
+    setText(els.detailTickets, String(day.tickets));
+
+    if (els.detailEditLink) {
+      if (day.journee_id) {
+        els.detailEditLink.hidden = false;
+        els.detailEditLink.href =
+          `./saisie-ancienne-journee.html?mode=edit&journee_id=${encodeURIComponent(day.journee_id)}`;
+      } else {
+        els.detailEditLink.hidden = true;
+        els.detailEditLink.removeAttribute("href");
+      }
+    }
+
+    if (els.detailPayment) {
+      els.detailPayment.innerHTML = renderDetailPayments(day.paiements);
+    }
+
+    if (els.detailSales) {
+      els.detailSales.innerHTML = renderDetailProducts(day.products);
+    }
+
+    if (els.detailFees) {
+      els.detailFees.innerHTML = renderDetailFees(day);
+    }
+
+    if (els.detailStock) {
+      els.detailStock.innerHTML =
+        `<p class="statsEmpty compact">Stock détaillé à connecter plus tard.</p>`;
+    }
+
+    els.detailPanel.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  };
+
+  const renderDayCard = (day) => {
+    const editLink = day.journee_id
+      ? `
+        <a
+          class="secondaryBtn"
+          href="./saisie-ancienne-journee.html?mode=edit&journee_id=${encodeURIComponent(day.journee_id)}"
+        >
+          Modifier / compléter
+        </a>
+      `
+      : "";
+
+    return `
+      <article class="statsCard closedDayCard">
+        <div class="statsCardHeader">
+          <div class="statsCardTitle">
+            <strong>${escapeHtml(day.label || "Journée")}</strong>
+            <span>
+              ${escapeHtml(formatDisplayDate(day.date))}
+              ${day.ville ? ` · ${escapeHtml(day.ville)}` : ""}
+            </span>
+          </div>
+
+          <strong class="statsAmount">${escapeHtml(formatCurrency(day.ca))}</strong>
+        </div>
+
+        <div class="statsMeta closedPayments">
+          ${renderPayments(day.paiements)}
+        </div>
+
+        ${renderProducts(day.products)}
+
+        <div class="statsMeta">
+          <span>${escapeHtml(String(day.tickets))} ticket${day.tickets > 1 ? "s" : ""}</span>
+          <span>Frais ${escapeHtml(formatCurrency(day.frais))}</span>
+          <span>Net ${escapeHtml(formatCurrency(day.ca - day.frais))}</span>
+        </div>
+
+        <div class="closedDayActions">
+          <button
+            class="secondaryBtn"
+            type="button"
+            data-show-day="${escapeAttr(day.key)}"
+          >
+            Voir détail
+          </button>
+
+          ${editLink}
+        </div>
+      </article>
+    `;
   };
 
   const render = () => {
@@ -551,45 +968,39 @@
 
     if (stats.days.length === 0) {
       els.list.innerHTML = `<p class="statsEmpty">Aucune journée clôturée à afficher.</p>`;
+
+      if (els.detailPanel) {
+        els.detailPanel.hidden = true;
+      }
+
       return;
     }
 
-    els.list.innerHTML = stats.days.map((day) => `
-      <article class="statsCard closedDayCard">
-        <div class="statsCardHeader">
-          <div class="statsCardTitle">
-            <strong>${escapeHtml(day.label || "Journée")}</strong>
-            <span>${escapeHtml(formatDisplayDate(day.date))}${day.ville ? ` · ${escapeHtml(day.ville)}` : ""}</span>
-          </div>
-          <strong class="statsAmount">${escapeHtml(formatCurrency(day.ca))}</strong>
-        </div>
-
-        <div class="statsMeta closedPayments">
-          ${renderPayments(day.paiements)}
-        </div>
-
-        ${renderProducts(day.products)}
-
-        <div class="statsMeta">
-          <span>${escapeHtml(String(day.tickets))} ticket${day.tickets > 1 ? "s" : ""}</span>
-          <span>Frais ${escapeHtml(formatCurrency(day.frais))}</span>
-          <span>Net ${escapeHtml(formatCurrency(day.ca - day.frais))}</span>
-        </div>
-      </article>
-    `).join("");
+    els.list.innerHTML = stats.days.map(renderDayCard).join("");
   };
 
   const callArray = async (fnName) => {
     if (!api() || typeof api()[fnName] !== "function") return [];
 
     const result = await api()[fnName]();
+
     return Array.isArray(result) ? result : [];
   };
 
   const loadRemote = async () => {
-    if (!api()) throw new Error("lugdurum-api.js n’est pas chargé.");
+    if (!api()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
 
-    const [transactions, lignes, frais, journees, missionsStock, missions, catalogue] = await Promise.all([
+    const [
+      transactions,
+      lignes,
+      frais,
+      journees,
+      missionsStock,
+      missions,
+      catalogue
+    ] = await Promise.all([
       callArray("getTransactions"),
       callArray("getVentesLignes"),
       callArray("getFrais"),
@@ -642,6 +1053,19 @@
         render();
       });
     }
+
+    document.addEventListener("click", (event) => {
+      const detailButton = event.target.closest("[data-show-day]");
+
+      if (!detailButton) return;
+
+      const dayKey = detailButton.dataset.showDay;
+      const day = buildDaySummaries().find((item) => item.key === dayKey);
+
+      if (!day) return;
+
+      renderDayDetail(day);
+    });
   };
 
   const init = async () => {
@@ -649,6 +1073,10 @@
 
     if (els.list) {
       els.list.innerHTML = `<p class="statsEmpty">Chargement depuis Google Sheets…</p>`;
+    }
+
+    if (els.detailPanel) {
+      els.detailPanel.hidden = true;
     }
 
     setStatus("Chargement depuis Google Sheets...");
