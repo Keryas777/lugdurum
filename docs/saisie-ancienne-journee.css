@@ -250,170 +250,216 @@
   font-weight: 900;
 }
 
+/* ==============================
+   Tuiles visuelles produits
+   reprises de Préparation stock
+   ============================== */
+
 .oldProductRows {
   display: grid;
   gap: 14px;
 }
 
-.oldProductVisualCard {
+.stockVisualCard {
   position: relative;
-  min-height: 238px;
   overflow: hidden;
+  min-height: 230px;
   border: 1px solid rgba(86, 65, 42, 0.18);
-  border-radius: 28px;
-  background:
-    linear-gradient(135deg, rgba(31, 27, 22, 0.34), rgba(138, 90, 43, 0.18)),
-    var(--old-product-bg) center / cover no-repeat,
-    linear-gradient(145deg, rgba(168, 143, 104, 0.52), rgba(255, 250, 241, 0.72));
-  box-shadow: 0 14px 30px rgba(75, 48, 22, 0.14);
+  border-radius: 26px;
+  background-color: #d8c7aa;
+  box-shadow: var(--shadow);
   isolation: isolate;
 }
 
-.oldProductVisualShade {
+.stockVisualBg,
+.stockVisualShade {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  pointer-events: none;
+}
+
+.stockVisualBg {
+  background-image: var(--stock-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(1.025);
+}
+
+.stockVisualShade {
   background:
     linear-gradient(
       90deg,
-      rgba(31, 27, 22, 0.72) 0%,
-      rgba(31, 27, 22, 0.42) 42%,
-      rgba(31, 27, 22, 0.12) 100%
+      rgba(26, 18, 10, 0.54) 0%,
+      rgba(26, 18, 10, 0.26) 42%,
+      rgba(26, 18, 10, 0.08) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(31, 27, 22, 0.16),
-      rgba(31, 27, 22, 0.34)
+      rgba(255, 250, 241, 0.02) 0%,
+      rgba(0, 0, 0, 0.18) 100%
     );
 }
 
-.oldProductVisualContent {
+.stockVisualCard::after {
+  content: "";
+  position: absolute;
+  right: -52px;
+  bottom: -58px;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: rgba(255, 250, 241, 0.12);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.stockVisualContent {
   position: relative;
   z-index: 1;
-  min-height: 238px;
+  min-height: 230px;
   display: grid;
   align-content: space-between;
-  gap: 18px;
+  gap: 14px;
   padding: 18px;
 }
 
-.oldProductVisualTitle {
+.stockVisualTitle {
   display: grid;
-  gap: 2px;
-  max-width: 62%;
+  gap: 3px;
+  max-width: 74%;
   color: #fffaf1;
-  text-shadow: 0 2px 12px rgba(31, 27, 22, 0.42);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.34);
 }
 
-.oldProductVisualTitle strong {
-  font-size: clamp(2rem, 10vw, 3.4rem);
-  line-height: 0.9;
-  font-weight: 1000;
-  letter-spacing: -0.07em;
-}
-
-.oldProductVisualTitle span {
-  font-size: clamp(1.02rem, 4.4vw, 1.45rem);
-  line-height: 1.02;
+.stockVisualTitle strong {
+  font-size: clamp(1.65rem, 7vw, 2.35rem);
+  line-height: 0.94;
   font-weight: 950;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.055em;
 }
 
-.oldProductVisualControls {
+.stockVisualTitle span {
+  font-size: clamp(1.02rem, 4.4vw, 1.45rem);
+  line-height: 1.04;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.stockGlassPanel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.oldGlassPanel {
+.stockGlassFormat {
   min-width: 0;
-  border: 1px solid rgba(255, 250, 241, 0.38);
-  border-radius: 24px;
-  padding: 12px;
-  background:
-    linear-gradient(
-      145deg,
-      rgba(255, 250, 241, 0.42),
-      rgba(168, 143, 104, 0.34)
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 250, 241, 0.32),
-    0 10px 22px rgba(31, 27, 22, 0.16);
-  backdrop-filter: blur(12px);
-}
-
-.oldGlassPanel.isUnavailable {
-  opacity: 0.48;
-}
-
-.oldGlassFormat {
-  display: block;
-  margin-bottom: 10px;
-  color: #fffaf1;
-  font-size: clamp(1rem, 4vw, 1.28rem);
-  font-weight: 950;
-  line-height: 1;
-  text-shadow: 0 2px 10px rgba(31, 27, 22, 0.32);
-}
-
-.oldQtyStepper {
   display: grid;
-  grid-template-columns: 44px minmax(52px, 1fr) 44px;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 22px;
+  padding: 10px;
+  background: rgba(255, 250, 241, 0.22);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  box-shadow:
+    0 10px 22px rgba(36, 22, 8, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.stockGlassFormat.isUnavailable {
+  opacity: 0.62;
+}
+
+.stockGlassFormatHead {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
-.oldQtyStepper button {
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(255, 250, 241, 0.16);
-  border-radius: 999px;
-  color: #fffaf1;
-  background:
-    linear-gradient(
-      135deg,
-      rgba(138, 90, 43, 0.96),
-      rgba(168, 120, 54, 0.9)
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 250, 241, 0.22),
-    0 8px 14px rgba(31, 27, 22, 0.18);
-  font: inherit;
-  font-size: 1.5rem;
-  font-weight: 1000;
-  line-height: 1;
+.stockGlassFormatHead span {
+  color: rgba(255, 250, 241, 0.96);
+  font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: -0.035em;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.26);
 }
 
-.oldQtyStepper button:active {
+.stockGlassQtyControl {
+  display: grid;
+  grid-template-columns: 40px 48px 40px;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+}
+
+.stockGlassQtyControl button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  color: #fffaf1;
+  background: rgba(157, 109, 51, 0.96);
+  box-shadow:
+    0 8px 18px rgba(72, 42, 12, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+.stockGlassQtyControl button:active {
   transform: scale(0.96);
 }
 
-.oldQtyStepper button:disabled {
-  opacity: 0.45;
-}
-
-.oldQtyStepper input {
-  width: 100%;
-  height: 44px;
-  border: 1px solid rgba(86, 65, 42, 0.12);
+.stockGlassQtyControl input {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.44);
   border-radius: 999px;
-  padding: 0 8px;
+  padding: 0;
   color: var(--text);
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.96),
-      rgba(255, 250, 241, 0.88)
-    );
+  background: rgba(255, 255, 255, 0.92);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 6px 14px rgba(31, 27, 22, 0.14);
+    inset 0 0 0 1px rgba(86, 65, 42, 0.04),
+    0 6px 14px rgba(36, 22, 8, 0.08);
   font: inherit;
-  font-size: 1.2rem;
-  font-weight: 1000;
+  font-size: 1.25rem;
+  font-weight: 950;
   text-align: center;
   outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
+
+.stockGlassQtyControl input::-webkit-outer-spin-button,
+.stockGlassQtyControl input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.stockGlassUnavailable {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border-radius: 999px;
+  color: rgba(255, 250, 241, 0.9);
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 1.25rem;
+  font-weight: 950;
+}
+
+/* ==============================
+   Frais
+   ============================== */
 
 .expenseList {
   display: grid;
@@ -452,6 +498,10 @@
   font: inherit;
   font-weight: 950;
 }
+
+/* ==============================
+   Actions
+   ============================== */
 
 .secondaryBtn,
 .primaryBtn {
@@ -518,6 +568,10 @@
   background: rgba(255, 250, 241, 0.42);
 }
 
+/* ==============================
+   Responsive
+   ============================== */
+
 @media (min-width: 620px) {
   .oldDayHero {
     grid-template-columns: 1fr auto;
@@ -539,6 +593,18 @@
     grid-column: 1 / -1;
   }
 
+  .oldProductRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stockVisualCard {
+    min-height: 250px;
+  }
+
+  .stockVisualContent {
+    min-height: 250px;
+  }
+
   .expenseQuickForm .secondaryBtn {
     grid-column: 1 / -1;
   }
@@ -548,16 +614,96 @@
   .oldDayPanel {
     padding: 14px;
   }
+
+  .stockVisualCard {
+    min-height: 230px;
+    border-radius: 26px;
+  }
+
+  .stockVisualContent {
+    min-height: 230px;
+    padding: 16px;
+  }
+
+  .stockVisualTitle {
+    max-width: 78%;
+  }
+
+  .stockGlassPanel {
+    gap: 8px;
+  }
+
+  .stockGlassFormat {
+    border-radius: 20px;
+    padding: 8px;
+  }
+
+  .stockGlassQtyControl {
+    grid-template-columns: 36px 44px 36px;
+    gap: 5px;
+  }
+
+  .stockGlassQtyControl button {
+    width: 36px;
+    height: 36px;
+    font-size: 1.22rem;
+  }
+
+  .stockGlassQtyControl input {
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+    height: 36px;
+    font-size: 1.14rem;
+  }
+
+  .stockGlassUnavailable {
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+    height: 36px;
+    font-size: 1.14rem;
+  }
 }
 
 @media (max-width: 370px) {
-  .oldDayHeroStats,
-  .oldProductVisualControls {
+  .oldDayHeroStats {
     grid-template-columns: 1fr;
   }
 
-  .oldProductVisualTitle {
-    max-width: 80%;
+  .stockVisualCard {
+    min-height: 300px;
+  }
+
+  .stockVisualContent {
+    min-height: 300px;
+  }
+
+  .stockGlassPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .stockGlassQtyControl {
+    grid-template-columns: 42px 52px 42px;
+  }
+
+  .stockGlassQtyControl button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .stockGlassQtyControl input {
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    height: 42px;
+  }
+
+  .stockGlassUnavailable {
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    height: 42px;
   }
 
   .expenseChip {
