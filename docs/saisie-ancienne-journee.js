@@ -10,6 +10,7 @@
     - Écrit uniquement via LugdurumAPI.
     - IDs stables pour éviter les doublons.
     - Les lignes / transactions / frais retirés sont marqués annule/annulee.
+    - Après succès réel API, retour automatique vers la page précédente ou journees-cloturees.html.
   */
 
   const CURRENT_USER = {
@@ -235,6 +236,38 @@
     ].forEach((button) => {
       if (button) button.disabled = isSaving;
     });
+  };
+
+  const getReturnUrl = () => {
+    const returnUrl = urlParams.get("return_url");
+
+    if (returnUrl && !returnUrl.startsWith("http")) {
+      return returnUrl;
+    }
+
+    try {
+      if (document.referrer) {
+        const referrerUrl = new URL(document.referrer);
+        const currentUrl = new URL(window.location.href);
+
+        if (
+          referrerUrl.origin === currentUrl.origin &&
+          referrerUrl.pathname !== currentUrl.pathname
+        ) {
+          return referrerUrl.href;
+        }
+      }
+    } catch {
+      // fallback ci-dessous
+    }
+
+    return "./journees-cloturees.html";
+  };
+
+  const redirectAfterSave = () => {
+    window.setTimeout(() => {
+      window.location.href = getReturnUrl();
+    }, 850);
   };
 
   const isValidStatus = (item) => {
@@ -1073,8 +1106,8 @@
     setSaving(true);
     setStatus(
       state.edit.isEditMode
-        ? "Enregistrement des modifications dans Google Sheets…"
-        : "Enregistrement dans Google Sheets…"
+        ? "Enregistrement des modifications…"
+        : "Enregistrement…"
     );
 
     try {
@@ -1109,6 +1142,11 @@
           : successMessage,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
+
+      if (pendingCount === 0) {
+        redirectAfterSave();
+        return;
+      }
 
       if (!state.edit.isEditMode) {
         resetAfterSave();
@@ -1486,7 +1524,7 @@
     renderAll();
 
     try {
-      setStatus("Chargement catalogue depuis Google Sheets…");
+      setStatus("Chargement catalogue…");
       await loadRemoteData();
       setStatus("");
     } catch (error) {
