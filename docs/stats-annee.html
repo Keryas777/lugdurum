@@ -2,24 +2,28 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+  />
   <meta name="theme-color" content="#a88f68" />
 
   <link rel="manifest" href="./manifest.webmanifest" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Lugdurum" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
 
   <title>Lugdurum — Stats année</title>
 
-  <link rel="stylesheet" href="./style.css?v=11" />
-  <link rel="stylesheet" href="./stats-annee.css?v=1" />
+  <link rel="stylesheet" href="./style.css?v=14" />
+  <link rel="stylesheet" href="./stats-annee.css?v=2" />
 
-  <script src="./lugdurum-api.js?v=2" defer></script>
-  <script src="./stats-annee.js?v=1" defer></script>
+  <script src="./lugdurum-api.js?v=5" defer></script>
+  <script src="./stats-annee.js?v=2" defer></script>
   <script src="./pwa.js?v=6" defer></script>
 </head>
+
 <body class="page-stats-year">
   <div class="appShell statsYearShell">
     <header class="topbar statsYearTopbar">
@@ -27,13 +31,16 @@
 
       <div class="brandBlock">
         <div class="brandHeader">
-          <img class="brandLogo" src="./assets/icons/icon-180.png" alt="" />
+          <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
           <div>
-            <p class="brandName">Lugdurum</p>
+            <p class="brandName">LUGDURUM</p>
             <h1>Résultats par année</h1>
           </div>
         </div>
-        <p class="statsYearSubtitle">Le bloc-notes iPhone, mais propre, filtrable et calculé automatiquement.</p>
+
+        <p class="statsYearSubtitle">
+          Le bloc-notes iPhone, mais propre, filtrable et calculé automatiquement.
+        </p>
       </div>
     </header>
 
@@ -48,11 +55,16 @@
         <div class="statsYearFilters">
           <label>
             <span>Année</span>
-            <select id="yearSelect"></select>
+            <select id="yearSelect">
+              <option value="">Chargement…</option>
+            </select>
           </label>
+
           <label>
             <span>Type</span>
-            <select id="typeSelect"></select>
+            <select id="typeSelect">
+              <option value="">Chargement…</option>
+            </select>
           </label>
         </div>
       </section>
@@ -62,14 +74,17 @@
           <span>CA total</span>
           <strong id="yearTotalRevenue">—</strong>
         </article>
+
         <article>
           <span>Journées</span>
           <strong id="yearDayCount">—</strong>
         </article>
+
         <article>
           <span>Moyenne / jour</span>
           <strong id="yearAverage">—</strong>
         </article>
+
         <article>
           <span>Meilleure journée</span>
           <strong id="yearBestDay">—</strong>
@@ -79,13 +94,17 @@
       <section class="statsYearPanel">
         <p class="sectionEyebrow">Répartition</p>
         <h2>Paiements</h2>
-        <div id="paymentBreakdown" class="paymentBreakdown"></div>
+        <div id="paymentBreakdown" class="paymentBreakdown">
+          <p class="statsEmpty">Chargement…</p>
+        </div>
       </section>
 
       <section class="statsYearPanel">
         <p class="sectionEyebrow">Carnet</p>
         <h2>Liste des journées</h2>
-        <div id="yearList" class="yearList"></div>
+        <div id="yearList" class="yearList">
+          <p class="statsEmpty">Chargement…</p>
+        </div>
       </section>
 
       <p id="statsYearStatus" class="statsYearStatus" role="status"></p>
