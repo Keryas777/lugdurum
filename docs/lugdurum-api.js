@@ -2,16 +2,20 @@
   "use strict";
 
   /*
-    Lugdurum API V7
+    Lugdurum API V8
     - Connexion Apps Script / Google Sheets.
     - Lectures GET directes.
     - Écritures POST avec file d’attente offline.
     - Rejeu automatique au retour réseau, au focus, à la visibilité et au chargement.
-    - Rejeu de la file d’attente par paquets via batchActions pour limiter les appels Apps Script.
+    - Rejeu de la file d’attente par paquets via batchActions.
     - Support mouvements_stock.
-    - Support stock_preparations / stock_preparation_lignes pour compatibilité.
-    - Support saveJourneeHistoriqueBundle pour écrire mission + mission_stock + journée + transactions/lignes + frais en un seul appel.
-    - Support getCoreData pour charger plusieurs onglets en un seul GET.
+    - Support stock_preparations / stock_preparation_lignes.
+    - Support saveJourneeHistoriqueBundle.
+    - Correctif important :
+      - garantit l’écriture des ventes_lignes même si les transactions sont sauvegardées séparément.
+      - ajoute un fallback si saveJourneeHistoriqueBundle n’est pas encore disponible côté Apps Script.
+      - évite le cas “transactions OK mais ventes_lignes = 0”.
+    - Support getCoreData.
   */
 
   const API_URL =
@@ -179,6 +183,7 @@
       const error = new Error(result.error || `Erreur API sur ${action}`);
       error.queueable = false;
       error.api_result = result;
+      error.action = action;
       throw error;
     }
 
@@ -485,6 +490,64 @@
       queueIfUnavailable: true
     });
 
+  const isUnknownPostActionError = (error, action) => {
+    const message = String(error?.message || "");
+
+    return (
+      message.includes("Action POST inconnue") &&
+      message.includes(action)
+    );
+  };
+
+  const toArray = (value) =>
+    Array.isArray(value) ? value : [];
+
+  const cloneWithoutKeys = (object, keys = []) => {
+    const copy = {
+      ...(object || {})
+    };
+
+    keys.forEach((key) => {
+      delete copy[key];
+    });
+
+    return copy;
+  };
+
+  const getTransactionLines = (transaction) =>
+    toArray(transaction?.lignes)
+      .filter(Boolean)
+      .filter((line) => typeof line === "object");
+
+  const collectTransactionLines = (transactions = []) =>
+    toArray(transactions)
+      .flatMap(getTransactionLines)
+      .filter((line) => String(line.ligne_id || "").trim());
+
+  const buildVenteLigneOperations = (lines = []) =>
+    toArray(lines)
+      .filter((line) => String(line.ligne_id || "").trim())
+      .map((line) => ({
+        sheetKey: "ventesLignes",
+        data: line
+      }));
+
+  const ensureVentesLignes = async (lines = []) => {
+    const operations = buildVenteLigneOperations(lines);
+
+    if (operations.length === 0) {
+      return {
+        ok: true,
+        skipped: true,
+        lignes_count: 0
+      };
+    }
+
+    return requestQueuedPost("batchUpsert", {
+      operations
+    });
+  };
+
   const saveInscriptionEvenement = (inscription) =>
     requestQueuedPost("upsertInscriptionEvenement", {
       inscription
@@ -530,10 +593,19 @@
       mouvement
     });
 
-  const saveStockPreparation = (preparation) =>
-    requestQueuedPost("upsertStockPreparation", {
+  const saveStockPreparation = (preparation) => {
+    const hasLines = Array.isArray(preparation?.lignes) && preparation.lignes.length > 0;
+
+    if (hasLines) {
+      return requestQueuedPost("saveStockPreparation", {
+        preparation
+      });
+    }
+
+    return requestQueuedPost("upsertStockPreparation", {
       preparation
     });
+  };
 
   const saveStockPreparationLine = (line) =>
     requestQueuedPost("upsertStockPreparationLine", {
@@ -545,24 +617,147 @@
       preparation
     });
 
-  const saveTransaction = (transaction) =>
-    requestQueuedPost("saveTransaction", {
+  const saveTransaction = async (transaction) => {
+    const lines = getTransactionLines(transaction);
+
+    const result = await requestQueuedPost("saveTransaction", {
       transaction
     });
+
+    if (lines.length > 0) {
+      const linesResult = await ensureVentesLignes(lines);
+
+      return {
+        transaction: result,
+        ventes_lignes: linesResult,
+        lignes_count: lines.length
+      };
+    }
+
+    return result;
+  };
+
+  const saveVenteLigne = (line) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        {
+          sheetKey: "ventesLignes",
+          data: line
+        }
+      ]
+    });
+
+  const saveVentesLignes = (lines = []) =>
+    ensureVentesLignes(lines);
 
   const saveFrais = (frais) =>
     requestQueuedPost("upsertFrais", {
       frais
     });
 
-  const saveJourneeHistoriqueBundle = ({ mission, mission_stock, journee, transactions, frais }) =>
-    requestQueuedPost("saveJourneeHistoriqueBundle", {
+  const saveJourneeHistoriqueBundleFallback = async ({
+    mission,
+    mission_stock,
+    missionStock,
+    journee,
+    transactions,
+    frais
+  }) => {
+    const safeTransactions = toArray(transactions);
+    const safeFrais = toArray(frais);
+    const allLines = collectTransactionLines(safeTransactions);
+
+    const results = {
+      fallback: true,
+      mission: null,
+      mission_stock: null,
+      journee: null,
+      transactions: [],
+      ventes_lignes: null,
+      frais: []
+    };
+
+    if (mission) {
+      results.mission = await saveMission(mission);
+    }
+
+    if (mission_stock || missionStock) {
+      results.mission_stock = await saveMissionStock(mission_stock || missionStock);
+    }
+
+    if (journee) {
+      results.journee = await saveJournee(journee);
+    }
+
+    for (const transaction of safeTransactions) {
+      results.transactions.push(await saveTransaction(transaction));
+    }
+
+    if (allLines.length > 0) {
+      results.ventes_lignes = await ensureVentesLignes(allLines);
+    }
+
+    for (const fraisRow of safeFrais) {
+      results.frais.push(await saveFrais(fraisRow));
+    }
+
+    results.transactions_count = results.transactions.length;
+    results.lignes_count = allLines.length;
+    results.frais_count = results.frais.length;
+
+    return results;
+  };
+
+  const saveJourneeHistoriqueBundle = async ({
+    mission,
+    mission_stock,
+    missionStock,
+    journee,
+    transactions,
+    frais
+  }) => {
+    const safeTransactions = toArray(transactions);
+    const allLines = collectTransactionLines(safeTransactions);
+
+    const payload = {
       mission,
-      mission_stock,
+      mission_stock: mission_stock || missionStock,
       journee,
-      transactions,
-      frais
-    });
+      transactions: safeTransactions,
+      frais: toArray(frais)
+    };
+
+    try {
+      const result = await requestQueuedPost("saveJourneeHistoriqueBundle", payload);
+
+      if (allLines.length > 0) {
+        const linesResult = await ensureVentesLignes(allLines);
+
+        return {
+          ...(
+            result && typeof result === "object"
+              ? result
+              : { result }
+          ),
+          ventes_lignes_guarantee: linesResult,
+          lignes_count: allLines.length
+        };
+      }
+
+      return result;
+    } catch (error) {
+      if (isUnknownPostActionError(error, "saveJourneeHistoriqueBundle")) {
+        console.warn(
+          "saveJourneeHistoriqueBundle indisponible côté Apps Script, fallback détaillé utilisé.",
+          error
+        );
+
+        return saveJourneeHistoriqueBundleFallback(payload);
+      }
+
+      throw error;
+    }
+  };
 
   const batchUpsert = (operations) =>
     requestQueuedPost("batchUpsert", {
@@ -662,6 +857,8 @@
     },
 
     saveTransaction,
+    saveVenteLigne,
+    saveVentesLignes,
 
     getFrais() {
       return requestGet("getFrais");
@@ -672,6 +869,7 @@
     saveJourneeHistoriqueBundle,
 
     batchUpsert,
+    ensureVentesLignes,
 
     getPendingWrites,
     getPendingWritesCount,
