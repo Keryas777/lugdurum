@@ -2,20 +2,15 @@
   "use strict";
 
   /*
-    Lugdurum API V8
+    Lugdurum API V10 FRONT QUEUE
     - Connexion Apps Script / Google Sheets.
     - Lectures GET directes.
-    - Écritures POST avec file d’attente offline.
+    - Écritures POST avec file d’attente offline officielle : lugdurum_pending_writes.
     - Rejeu automatique au retour réseau, au focus, à la visibilité et au chargement.
-    - Rejeu de la file d’attente par paquets via batchActions.
-    - Support mouvements_stock.
-    - Support stock_preparations / stock_preparation_lignes.
-    - Support saveJourneeHistoriqueBundle.
-    - Correctif important :
-      - garantit l’écriture des ventes_lignes même si les transactions sont sauvegardées séparément.
-      - ajoute un fallback si saveJourneeHistoriqueBundle n’est pas encore disponible côté Apps Script.
-      - évite le cas “transactions OK mais ventes_lignes = 0”.
-    - Support getCoreData.
+    - Rejeu par paquets via batchActions.
+    - Nettoyage robuste de la file après succès batch.
+    - Nettoyage des anciennes transactions locales legacy : lugdurum_pending_transactions.
+    - Évènement global lugdurum:sync-status pour rafraîchir l’UI.
   */
 
   const API_URL =
@@ -23,7 +18,8 @@
 
   const STORAGE_KEYS = {
     pendingWrites: "lugdurum_pending_writes",
-    lastSyncState: "lugdurum_last_sync_state"
+    lastSyncState: "lugdurum_last_sync_state",
+    legacyPendingTransactions: "lugdurum_pending_transactions"
   };
 
   const FLUSH_BATCH_SIZE = 20;
@@ -42,8 +38,16 @@
   };
 
   const writeJson = (key, value) => {
-    localStorage.setItem(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // localStorage peut être indisponible en navigation privée / contexte isolé.
+    }
   };
+
+  const toArray = (value) => (Array.isArray(value) ? value : []);
+
+  const isOnline = () => navigator.onLine !== false;
 
   const buildQueueId = () => {
     const random =
@@ -54,8 +58,6 @@
     return `Q_${Date.now()}_${random}`;
   };
 
-  const isOnline = () => navigator.onLine !== false;
-
   const getPendingWrites = () => {
     const writes = readJson(STORAGE_KEYS.pendingWrites, []);
     return Array.isArray(writes) ? writes : [];
@@ -63,17 +65,33 @@
 
   const getPendingWritesCount = () => getPendingWrites().length;
 
-  const writeSyncState = (patch = {}) => {
+  const getLegacyPendingTransactions = () => {
+    const transactions = readJson(STORAGE_KEYS.legacyPendingTransactions, []);
+    return Array.isArray(transactions) ? transactions : [];
+  };
+
+  const getTransactionId = (transaction) =>
+    String(transaction?.transaction_id || transaction?.id || "").trim();
+
+  const getLegacyPendingTransactionsCount = () =>
+    getLegacyPendingTransactions().length;
+
+  const buildSyncState = (patch = {}) => {
     const previous = readJson(STORAGE_KEYS.lastSyncState, {});
 
-    const next = {
+    return {
       ...previous,
       pending_count: getPendingWritesCount(),
+      legacy_pending_transactions_count: getLegacyPendingTransactionsCount(),
       online: isOnline(),
       is_flushing: isFlushing,
       updated_at: nowIso(),
       ...patch
     };
+  };
+
+  const writeSyncState = (patch = {}) => {
+    const next = buildSyncState(patch);
 
     writeJson(STORAGE_KEYS.lastSyncState, next);
 
@@ -86,87 +104,25 @@
     return next;
   };
 
-  const setPendingWrites = (writes) => {
-    writeJson(STORAGE_KEYS.pendingWrites, Array.isArray(writes) ? writes : []);
+  const setPendingWrites = (writes, patch = {}) => {
+    const safeWrites = Array.isArray(writes) ? writes : [];
+
+    writeJson(STORAGE_KEYS.pendingWrites, safeWrites);
 
     writeSyncState({
-      pending_count: Array.isArray(writes) ? writes.length : 0
+      pending_count: safeWrites.length,
+      ...patch
     });
   };
 
   const getSyncState = () =>
     readJson(STORAGE_KEYS.lastSyncState, {
       pending_count: getPendingWritesCount(),
+      legacy_pending_transactions_count: getLegacyPendingTransactionsCount(),
       online: isOnline(),
       is_flushing: isFlushing,
       updated_at: ""
     });
-
-  const enqueueWrite = (action, payload = {}, reason = "") => {
-    const writes = getPendingWrites();
-
-    const item = {
-      id: buildQueueId(),
-      action,
-      payload,
-      created_at: nowIso(),
-      updated_at: nowIso(),
-      retry_count: 0,
-      last_error: reason || ""
-    };
-
-    writes.push(item);
-    setPendingWrites(writes);
-
-    writeSyncState({
-      status: "queued",
-      last_message: `Écriture mise en attente : ${action}`,
-      last_error: reason || "",
-      last_queued_action: action
-    });
-
-    return {
-      queued: true,
-      queue_id: item.id,
-      action,
-      pending_count: writes.length,
-      message: "Écriture conservée localement, à synchroniser."
-    };
-  };
-
-  const removePendingWrite = (queueId) => {
-    setPendingWrites(getPendingWrites().filter((item) => item.id !== queueId));
-  };
-
-  const updatePendingWriteError = (queueId, error) => {
-    const writes = getPendingWrites().map((item) => {
-      if (item.id !== queueId) return item;
-
-      return {
-        ...item,
-        retry_count: Number(item.retry_count || 0) + 1,
-        updated_at: nowIso(),
-        last_error: error?.message || String(error || "Erreur inconnue")
-      };
-    });
-
-    setPendingWrites(writes);
-  };
-
-  const clearPendingWrites = () => {
-    setPendingWrites([]);
-
-    writeSyncState({
-      status: "cleared",
-      last_message: "File d’attente vidée.",
-      last_error: ""
-    });
-
-    return {
-      ok: true,
-      pending_count: 0
-    };
-  };
 
   const makeQueueableError = (message) => {
     const error = new Error(message);
@@ -234,6 +190,182 @@
     return normaliseResponse(result, action);
   };
 
+  const enqueueWrite = (action, payload = {}, reason = "") => {
+    const writes = getPendingWrites();
+
+    const item = {
+      id: buildQueueId(),
+      action,
+      payload,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+      retry_count: 0,
+      last_error: reason || ""
+    };
+
+    writes.push(item);
+
+    setPendingWrites(writes, {
+      status: "queued",
+      last_message: `Écriture mise en attente : ${action}`,
+      last_error: reason || "",
+      last_queued_action: action
+    });
+
+    return {
+      queued: true,
+      queue_id: item.id,
+      action,
+      pending_count: writes.length,
+      message: "Écriture conservée localement, à synchroniser."
+    };
+  };
+
+  const removePendingWritesByIds = (queueIds = [], patch = {}) => {
+    const ids = new Set(queueIds.filter(Boolean));
+
+    if (ids.size === 0) return getPendingWrites();
+
+    const remaining = getPendingWrites().filter((item) => !ids.has(item.id));
+
+    setPendingWrites(remaining, patch);
+
+    return remaining;
+  };
+
+  const updatePendingWritesErrors = (errorsById = {}, patch = {}) => {
+    const writes = getPendingWrites().map((item) => {
+      const message = errorsById[item.id];
+
+      if (!message) return item;
+
+      return {
+        ...item,
+        retry_count: Number(item.retry_count || 0) + 1,
+        updated_at: nowIso(),
+        last_error: message
+      };
+    });
+
+    setPendingWrites(writes, patch);
+
+    return writes;
+  };
+
+  const clearPendingWrites = () => {
+    setPendingWrites([], {
+      status: "cleared",
+      last_message: "File d’attente vidée.",
+      last_error: ""
+    });
+
+    return {
+      ok: true,
+      pending_count: 0
+    };
+  };
+
+  const clearLegacyPendingTransactions = () => {
+    writeJson(STORAGE_KEYS.legacyPendingTransactions, []);
+
+    writeSyncState({
+      legacy_pending_transactions_count: 0,
+      legacy_pending_transactions_cleaned: true
+    });
+
+    return {
+      ok: true,
+      pending_count: 0
+    };
+  };
+
+  const reconcileLegacyPendingTransactions = (remoteTransactions = []) => {
+    const legacy = getLegacyPendingTransactions();
+
+    if (legacy.length === 0) {
+      writeSyncState({
+        legacy_pending_transactions_count: 0
+      });
+
+      return {
+        ok: true,
+        cleaned_count: 0,
+        pending_count: 0,
+        remaining: []
+      };
+    }
+
+    const remoteIds = new Set(
+      toArray(remoteTransactions)
+        .map(getTransactionId)
+        .filter(Boolean)
+    );
+
+    if (remoteIds.size === 0) {
+      writeSyncState({
+        legacy_pending_transactions_count: legacy.length
+      });
+
+      return {
+        ok: true,
+        cleaned_count: 0,
+        pending_count: legacy.length,
+        remaining: legacy
+      };
+    }
+
+    const remaining = legacy.filter((transaction) => {
+      const id = getTransactionId(transaction);
+
+      if (!id) return true;
+
+      return !remoteIds.has(id);
+    });
+
+    const cleanedCount = legacy.length - remaining.length;
+
+    if (cleanedCount > 0) {
+      writeJson(STORAGE_KEYS.legacyPendingTransactions, remaining);
+    }
+
+    writeSyncState({
+      legacy_pending_transactions_count: remaining.length,
+      legacy_pending_transactions_cleaned_count: cleanedCount,
+      last_message:
+        remaining.length > 0
+          ? `${remaining.length} ancienne transaction locale encore non retrouvée dans Sheets.`
+          : cleanedCount > 0
+            ? "Anciennes transactions locales déjà synchronisées nettoyées."
+            : "Aucune ancienne transaction locale à nettoyer."
+    });
+
+    return {
+      ok: true,
+      cleaned_count: cleanedCount,
+      pending_count: remaining.length,
+      remaining
+    };
+  };
+
+  const extractBatchResults = (batchResult) => {
+    if (Array.isArray(batchResult)) return batchResult;
+
+    if (Array.isArray(batchResult?.results)) return batchResult.results;
+
+    if (Array.isArray(batchResult?.data?.results)) return batchResult.data.results;
+
+    return [];
+  };
+
+  const findBatchResultForItem = (results, queuedItem, index) => {
+    return (
+      results.find((item) => item.queue_id === queuedItem.id) ||
+      results[index] ||
+      results.find((item) => item.action === queuedItem.action) ||
+      null
+    );
+  };
+
   const flushPendingWrites = async () => {
     if (isFlushing) {
       return {
@@ -262,7 +394,8 @@
       writeSyncState({
         status: "idle",
         last_message: "Aucune écriture en attente.",
-        last_error: ""
+        last_error: "",
+        pending_count: 0
       });
 
       return {
@@ -277,6 +410,7 @@
 
     writeSyncState({
       status: "syncing",
+      is_flushing: true,
       last_message: `Synchronisation de ${initialCount} écriture(s)…`,
       last_error: ""
     });
@@ -301,58 +435,65 @@
           };
 
           const batchResult = await rawPost("batchActions", batchPayload);
-          const results = Array.isArray(batchResult?.results)
-            ? batchResult.results
-            : [];
+          const results = extractBatchResults(batchResult);
 
           if (results.length === 0) {
             throw makeQueueableError("Réponse batchActions vide ou invalide.");
           }
 
+          const okIds = [];
+          const errorsById = {};
           let mustStop = false;
 
-          for (const queuedItem of batch) {
-            const result =
-              results.find((item) => item.queue_id === queuedItem.id) ||
-              results.find((item) => item.action === queuedItem.action);
+          batch.forEach((queuedItem, index) => {
+            if (mustStop) return;
+
+            const result = findBatchResultForItem(results, queuedItem, index);
 
             if (!result) {
               failedCount += 1;
-              updatePendingWriteError(
-                queuedItem.id,
-                new Error("Résultat absent dans la réponse batchActions.")
-              );
+              errorsById[queuedItem.id] =
+                "Résultat absent dans la réponse batchActions.";
               mustStop = true;
-              break;
+              return;
             }
 
             if (result.ok) {
-              removePendingWrite(queuedItem.id);
+              okIds.push(queuedItem.id);
               syncedCount += 1;
-
-              writeSyncState({
-                status: "syncing",
-                last_message: `Synchronisé : ${queuedItem.action}`,
-                last_synced_action: queuedItem.action,
-                last_error: ""
-              });
-            } else {
-              failedCount += 1;
-              updatePendingWriteError(
-                queuedItem.id,
-                new Error(result.error || `Erreur API sur ${queuedItem.action}`)
-              );
-
-              writeSyncState({
-                status: "error",
-                last_message: `Synchronisation bloquée sur : ${queuedItem.action}`,
-                last_error: result.error || "Erreur inconnue",
-                last_failed_action: queuedItem.action
-              });
-
-              mustStop = true;
-              break;
+              return;
             }
+
+            failedCount += 1;
+            errorsById[queuedItem.id] =
+              result.error || `Erreur API sur ${queuedItem.action}`;
+            mustStop = true;
+          });
+
+          if (okIds.length > 0) {
+            removePendingWritesByIds(okIds, {
+              status: "syncing",
+              last_message: `${okIds.length} écriture(s) synchronisée(s).`,
+              last_error: "",
+              synced_count: syncedCount,
+              failed_count: failedCount
+            });
+          }
+
+          if (Object.keys(errorsById).length > 0) {
+            const firstFailedId = Object.keys(errorsById)[0];
+            const failedItem = batch.find((item) => item.id === firstFailedId);
+
+            updatePendingWritesErrors(errorsById, {
+              status: "error",
+              last_message: failedItem
+                ? `Synchronisation bloquée sur : ${failedItem.action}`
+                : "Synchronisation bloquée.",
+              last_error: errorsById[firstFailedId] || "Erreur inconnue",
+              last_failed_action: failedItem?.action || "",
+              synced_count: syncedCount,
+              failed_count: failedCount
+            });
           }
 
           if (mustStop) break;
@@ -362,14 +503,19 @@
           failedCount += 1;
 
           if (firstItem) {
-            updatePendingWriteError(firstItem.id, error);
-
-            writeSyncState({
-              status: "error",
-              last_message: `Synchronisation bloquée sur : ${firstItem.action}`,
-              last_error: error.message,
-              last_failed_action: firstItem.action
-            });
+            updatePendingWritesErrors(
+              {
+                [firstItem.id]: error.message || "Erreur inconnue"
+              },
+              {
+                status: "error",
+                last_message: `Synchronisation bloquée sur : ${firstItem.action}`,
+                last_error: error.message,
+                last_failed_action: firstItem.action,
+                synced_count: syncedCount,
+                failed_count: failedCount
+              }
+            );
           }
 
           break;
@@ -380,10 +526,12 @@
 
       writeSyncState({
         status: pendingCount === 0 ? "synced" : "partial",
+        is_flushing: true,
         last_message:
           pendingCount === 0
             ? "Toutes les écritures ont été synchronisées."
             : `${pendingCount} écriture(s) encore en attente.`,
+        last_error: pendingCount === 0 ? "" : getSyncState().last_error || "",
         synced_count: syncedCount,
         failed_count: failedCount,
         pending_count: pendingCount
@@ -417,6 +565,14 @@
         flushPendingWrites().catch((error) => {
           console.warn("Synchronisation Lugdurum impossible.", error);
         });
+      } else {
+        writeSyncState({
+          status: getPendingWritesCount() > 0 ? "pending" : "idle",
+          last_message:
+            getPendingWritesCount() > 0
+              ? `${getPendingWritesCount()} écriture(s) en attente.`
+              : "Aucune écriture en attente."
+        });
       }
     }, delay);
   };
@@ -430,7 +586,7 @@
       try {
         await flushPendingWrites();
       } catch (error) {
-        console.warn("Lecture avant sync complète.", error);
+        console.warn("Lecture avant synchronisation complète.", error);
       }
     }
 
@@ -461,6 +617,25 @@
     return normaliseResponse(result, action);
   };
 
+  const afterSuccessfulDirectWrite = (action) => {
+    const pendingCount = getPendingWritesCount();
+
+    writeSyncState({
+      status: pendingCount > 0 ? "pending" : "synced",
+      last_message:
+        pendingCount > 0
+          ? `${pendingCount} écriture(s) encore en attente.`
+          : `Écriture synchronisée : ${action}`,
+      last_synced_action: action,
+      last_error: "",
+      pending_count: pendingCount
+    });
+
+    if (pendingCount > 0) {
+      scheduleFlush(250);
+    }
+  };
+
   const requestPost = async (action, payload = {}, options = {}) => {
     const queueIfUnavailable = options.queueIfUnavailable === true;
 
@@ -471,9 +646,7 @@
     try {
       const result = await rawPost(action, payload);
 
-      if (getPendingWritesCount() > 0) {
-        scheduleFlush();
-      }
+      afterSuccessfulDirectWrite(action);
 
       return result;
     } catch (error) {
@@ -498,9 +671,6 @@
       message.includes(action)
     );
   };
-
-  const toArray = (value) =>
-    Array.isArray(value) ? value : [];
 
   const cloneWithoutKeys = (object, keys = []) => {
     const copy = {
@@ -594,7 +764,8 @@
     });
 
   const saveStockPreparation = (preparation) => {
-    const hasLines = Array.isArray(preparation?.lignes) && preparation.lignes.length > 0;
+    const hasLines =
+      Array.isArray(preparation?.lignes) && preparation.lignes.length > 0;
 
     if (hasLines) {
       return requestQueuedPost("saveStockPreparation", {
@@ -620,8 +791,13 @@
   const saveTransaction = async (transaction) => {
     const lines = getTransactionLines(transaction);
 
+    const transactionPayload = cloneWithoutKeys(transaction, ["lignes"]);
+
     const result = await requestQueuedPost("saveTransaction", {
-      transaction
+      transaction: {
+        ...transactionPayload,
+        lignes: lines
+      }
     });
 
     if (lines.length > 0) {
@@ -653,6 +829,11 @@
   const saveFrais = (frais) =>
     requestQueuedPost("upsertFrais", {
       frais
+    });
+
+  const saveCloture = (cloture) =>
+    requestQueuedPost("saveCloture", {
+      cloture
     });
 
   const saveJourneeHistoriqueBundleFallback = async ({
@@ -734,11 +915,7 @@
         const linesResult = await ensureVentesLignes(allLines);
 
         return {
-          ...(
-            result && typeof result === "object"
-              ? result
-              : { result }
-          ),
+          ...(result && typeof result === "object" ? result : { result }),
           ventes_lignes_guarantee: linesResult,
           lignes_count: allLines.length
         };
@@ -866,6 +1043,16 @@
 
     saveFrais,
 
+    getClotures() {
+      return requestGet("getClotures");
+    },
+
+    getCloturesJournees() {
+      return requestGet("getCloturesJournees");
+    },
+
+    saveCloture,
+
     saveJourneeHistoriqueBundle,
 
     batchUpsert,
@@ -876,6 +1063,12 @@
     getSyncState,
     flushPendingWrites,
     clearPendingWrites,
+
+    getLegacyPendingTransactions,
+    getLegacyPendingTransactionsCount,
+    reconcileLegacyPendingTransactions,
+    clearLegacyPendingTransactions,
+
     isOnline
   };
 
@@ -910,7 +1103,8 @@
     last_message:
       getPendingWritesCount() > 0
         ? `${getPendingWritesCount()} écriture(s) en attente.`
-        : "Aucune écriture en attente."
+        : "Aucune écriture en attente.",
+    last_error: getPendingWritesCount() > 0 ? getSyncState().last_error || "" : ""
   });
 
   scheduleFlush(900);
