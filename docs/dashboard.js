@@ -2,12 +2,18 @@
   "use strict";
 
   /*
-    Dashboard V2 :
-    - API Google Sheets en source prioritaire.
+    Dashboard V3 :
+    - API en source prioritaire.
     - Aucun affichage temporaire depuis le local si l’API répond.
     - Cache/localStorage utilisé uniquement si l’API est indisponible.
+    - Accès localStorage sécurisé pour Safari privé.
+    - Affiche les totaux uniquement pour l’année courante.
+    - Libellés dynamiques : CA 2026 / Frais 2026.
+    - Messages de chargement neutres : “Chargement…”.
     - Sert de porte d’entrée vers les pages statistiques détaillées.
   */
+
+  const CURRENT_YEAR = new Date().getFullYear();
 
   const CACHE_KEYS = {
     transactions: "lugdurum_transactions_cache",
@@ -19,12 +25,31 @@
   };
 
   const LEGACY_KEYS = {
-    transactions: ["lugdurum_transactions_cache", "lugdurum_transactions_backup", "lugdurum_pending_transactions"],
-    ventesLignes: ["lugdurum_ventes_lignes_cache", "lugdurum_ventes_lignes"],
-    frais: ["lugdurum_frais_cache", "lugdurum_frais"],
-    stockMissions: ["lugdurum_missions_stock_cache", "lugdurum_missions_stock"],
-    mouvementsStock: ["lugdurum_mouvements_stock_cache", "lugdurum_mouvements_stock"],
-    journees: ["lugdurum_journees_cache", "lugdurum_journees"]
+    transactions: [
+      "lugdurum_transactions_cache",
+      "lugdurum_transactions_backup",
+      "lugdurum_pending_transactions"
+    ],
+    ventesLignes: [
+      "lugdurum_ventes_lignes_cache",
+      "lugdurum_ventes_lignes"
+    ],
+    frais: [
+      "lugdurum_frais_cache",
+      "lugdurum_frais"
+    ],
+    stockMissions: [
+      "lugdurum_missions_stock_cache",
+      "lugdurum_missions_stock"
+    ],
+    mouvementsStock: [
+      "lugdurum_mouvements_stock_cache",
+      "lugdurum_mouvements_stock"
+    ],
+    journees: [
+      "lugdurum_journees_cache",
+      "lugdurum_journees"
+    ]
   };
 
   const state = {
@@ -46,8 +71,27 @@
 
   const api = () => window.LugdurumAPI || null;
 
+  const hasApi = () => Boolean(api());
+
+  const safeLocalGet = (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+
+  const safeLocalSet = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Cache non critique.
+    }
+  };
+
   const readJsonNullable = (key) => {
-    const raw = localStorage.getItem(key);
+    const raw = safeLocalGet(key);
+
     if (raw === null) return null;
 
     try {
@@ -67,7 +111,7 @@
   };
 
   const writeJson = (key, value) => {
-    localStorage.setItem(key, JSON.stringify(value));
+    safeLocalSet(key, JSON.stringify(Array.isArray(value) ? value : []));
   };
 
   const escapeHtml = (value) =>
@@ -96,9 +140,16 @@
     new Intl.NumberFormat("fr-FR", {
       style: "currency",
       currency: "EUR",
-      minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+      minimumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2,
       maximumFractionDigits: 2
-    }).format(value || 0);
+    }).format(Number(value || 0));
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
 
   const setStatus = (message, type = "") => {
     if (!els.status) return;
@@ -111,10 +162,99 @@
     }
   };
 
-  const isValidStatus = (item) => {
-    const statut = String(item?.statut || item?.paiement_statut || "validee").toLowerCase();
-    return !["annule", "annulee", "annulé", "annulée", "refuse", "refusé"].includes(statut);
+  const setMetricLabel = (valueEl, label) => {
+    if (!valueEl) return;
+
+    const card = valueEl.closest("article");
+    const labelEl = card?.querySelector("span");
+
+    if (labelEl) {
+      labelEl.textContent = label;
+    }
   };
+
+  const updateMainLabels = () => {
+    setMetricLabel(els.revenue, `CA ${CURRENT_YEAR}`);
+    setMetricLabel(els.expenses, `Frais ${CURRENT_YEAR}`);
+  };
+
+  const isCancelledStatus = (item) => {
+    const statut = normalizeText(item?.statut || item?.paiement_statut || "validee");
+
+    return [
+      "annule",
+      "annulee",
+      "annulé",
+      "annulée",
+      "refuse",
+      "refusee",
+      "refusé",
+      "refusée",
+      "rembourse",
+      "remboursee",
+      "remboursé",
+      "remboursée"
+    ].includes(statut);
+  };
+
+  const isValidStatus = (item) => !isCancelledStatus(item);
+
+  const getYearFromValue = (value) => {
+    const text = String(value ?? "").trim();
+
+    if (!text) return null;
+
+    const match = text.match(/^(\d{4})/);
+
+    if (!match) return null;
+
+    const year = Number(match[1]);
+
+    return Number.isFinite(year) ? year : null;
+  };
+
+  const rowHasYear = (item, fields, year = CURRENT_YEAR) =>
+    fields.some((field) => getYearFromValue(item?.[field]) === year);
+
+  const transactionBelongsToCurrentYear = (transaction) =>
+    rowHasYear(transaction, [
+      "date_heure",
+      "date",
+      "created_at",
+      "updated_at"
+    ]);
+
+  const fraisBelongsToCurrentYear = (item) =>
+    rowHasYear(item, [
+      "date",
+      "date_heure",
+      "created_at",
+      "updated_at"
+    ]);
+
+  const missionBelongsToCurrentYear = (mission) =>
+    rowHasYear(mission, [
+      "date_debut",
+      "date_fin",
+      "created_at",
+      "updated_at"
+    ]);
+
+  const journeeBelongsToCurrentYear = (journee) =>
+    rowHasYear(journee, [
+      "date",
+      "date_debut",
+      "created_at",
+      "updated_at"
+    ]);
+
+  const movementBelongsToCurrentYear = (movement) =>
+    rowHasYear(movement, [
+      "date_heure",
+      "date",
+      "created_at",
+      "updated_at"
+    ]);
 
   const getTransactionAmount = (transaction) =>
     toNumber(
@@ -126,44 +266,71 @@
     );
 
   const getFraisAmount = (item) =>
-    toNumber(item.montant_ttc ?? item.montant ?? item.prix ?? item.amount, 0);
+    toNumber(
+      item.montant_ttc ??
+      item.montant ??
+      item.prix ??
+      item.amount,
+      0
+    );
 
-  const getValidTransactions = () => state.transactions.filter(isValidStatus);
-  const getValidFrais = () => state.frais.filter(isValidStatus);
+  const getValidTransactions = () =>
+    state.transactions
+      .filter(isValidStatus)
+      .filter(transactionBelongsToCurrentYear);
+
+  const getValidFrais = () =>
+    state.frais
+      .filter(isValidStatus)
+      .filter(fraisBelongsToCurrentYear);
 
   const getValidPreparationMovements = () =>
-    state.mouvementsStock.filter((item) => (
-      String(item.type_mouvement || "") === "PREPARATION" &&
-      isValidStatus(item)
-    ));
+    state.mouvementsStock
+      .filter(isValidStatus)
+      .filter(movementBelongsToCurrentYear)
+      .filter((item) => String(item.type_mouvement || "").trim().toUpperCase() === "PREPARATION");
+
+  const getCurrentYearStockMissions = () =>
+    state.stockMissions
+      .filter(isValidStatus)
+      .filter(missionBelongsToCurrentYear);
+
+  const getCurrentYearClosedDays = () =>
+    state.journees
+      .filter(isValidStatus)
+      .filter(journeeBelongsToCurrentYear)
+      .filter((journee) => {
+        const statut = normalizeText(journee.statut);
+        return statut === "cloture" || statut === "cloturee";
+      });
 
   const compute = () => {
     const transactions = getValidTransactions();
     const frais = getValidFrais();
     const preparationMovements = getValidPreparationMovements();
-    const stockMissions = state.stockMissions.filter(isValidStatus);
+    const stockMissions = getCurrentYearStockMissions();
+    const closedDays = getCurrentYearClosedDays();
 
     const ca = transactions.reduce((sum, item) => sum + getTransactionAmount(item), 0);
     const fraisTotal = frais.reduce((sum, item) => sum + getFraisAmount(item), 0);
     const stockPrepare = preparationMovements.reduce((sum, item) => sum + toNumber(item.quantite, 0), 0);
 
-    const closedDays = state.journees.filter((journee) =>
-      String(journee.statut || "").toLowerCase() === "cloture"
-    ).length;
-
     return {
+      year: CURRENT_YEAR,
       ca,
       fraisTotal,
       tickets: transactions.length,
       fraisCount: frais.length,
       stockMissionsCount: stockMissions.length,
       stockPrepare,
-      closedDays
+      closedDays: closedDays.length
     };
   };
 
   const render = () => {
     const stats = compute();
+
+    updateMainLabels();
 
     if (els.revenue) els.revenue.textContent = formatCurrency(stats.ca);
     if (els.expenses) els.expenses.textContent = formatCurrency(stats.fraisTotal);
@@ -174,25 +341,25 @@
       {
         href: "./journees-cloturees.html",
         title: "Journées clôturées",
-        text: "Historique par journée : CA, paiements, bouteilles vendues.",
+        text: `Historique ${stats.year} : ventes, paiements, stocks et bilan journalier.`,
         amount: stats.closedDays
       },
       {
         href: "./stats-annee.html",
-        title: "Résultats par année",
-        text: "CA annuel, moyenne par jour, liste des journées.",
+        title: `Stats ${stats.year}`,
+        text: "CA annuel, moyenne par journée, nombre d’évènements et comparaison globale.",
         amount: formatCurrency(stats.ca)
       },
       {
         href: "./stats-produits.html",
         title: "Stats produits",
-        text: "Parfums, formats 50 cL / 20 cL, coffrets et quantités.",
+        text: `Parfums vendus en ${stats.year}, formats 50 cL / 20 cL, coffrets et chiffre d’affaires.`,
         amount: stats.tickets
       },
       {
         href: "./stats-evenements.html",
         title: "Stats évènements",
-        text: "Marchés, salons, missions, frais et rentabilité terrain.",
+        text: `Marchés, salons, missions, frais et rentabilité terrain ${stats.year}.`,
         amount: stats.stockMissionsCount
       }
     ];
@@ -212,19 +379,54 @@
       .join("");
   };
 
+  const waitForApi = (timeoutMs = 2500) =>
+    new Promise((resolve) => {
+      if (hasApi()) {
+        resolve(true);
+        return;
+      }
+
+      const startedAt = Date.now();
+
+      const tick = () => {
+        if (hasApi()) {
+          resolve(true);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+
+        window.setTimeout(tick, 50);
+      };
+
+      tick();
+    });
+
   const callArray = async (fnName) => {
-    if (!api() || typeof api()[fnName] !== "function") return [];
+    if (!hasApi() || typeof api()[fnName] !== "function") return [];
 
     const result = await api()[fnName]();
     return Array.isArray(result) ? result : [];
   };
 
   const loadRemote = async () => {
-    if (!api()) {
+    const ready = await waitForApi();
+
+    if (!ready) {
       throw new Error("lugdurum-api.js n’est pas chargé.");
     }
 
-    const [transactions, ventesLignes, frais, stockMissions, mouvementsStock, journees] = await Promise.all([
+    const [
+      transactions,
+      ventesLignes,
+      frais,
+      stockMissions,
+      mouvementsStock,
+      journees
+    ] = await Promise.all([
       callArray("getTransactions"),
       callArray("getVentesLignes"),
       callArray("getFrais"),
@@ -260,11 +462,13 @@
   };
 
   const init = async () => {
+    updateMainLabels();
+
     if (els.list) {
-      els.list.innerHTML = `<p class="dashboardEmpty">Chargement depuis Google Sheets…</p>`;
+      els.list.innerHTML = `<p class="dashboardEmpty">Chargement…</p>`;
     }
 
-    setStatus("Chargement depuis Google Sheets...");
+    setStatus("Chargement…");
 
     try {
       await loadRemote();
@@ -273,7 +477,7 @@
     } catch (error) {
       loadLocalFallback();
       render();
-      setStatus(`API indisponible. Données locales affichées : ${error.message}`, "isError");
+      setStatus(`Données locales affichées : ${error.message}`, "isError");
     }
   };
 
