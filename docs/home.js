@@ -2,10 +2,11 @@
   "use strict";
 
   /*
-    Accueil V12 :
+    Accueil V13 :
     - Source prioritaire : Google Sheets via window.LugdurumAPI.
-    - Chargement API prioritaire via getCoreData(), puis fallback par getters séparés.
-    - Cache localStorage uniquement en secours si l’API est indisponible.
+    - Chargement rapide prioritaire via LugdurumAPI.getHomeData().
+    - Fallback automatique via getCoreData(), puis getters séparés.
+    - Cache localStorage uniquement en secours si l’API complète est indisponible.
     - Diagnostic visible dans "À surveiller".
     - Ne dépend plus de stock_preparations / stock_preparation_lignes.
     - Utilise mouvements_stock pour détecter une préparation initiale.
@@ -14,7 +15,7 @@
     - Corrige l’affichage de la file d’attente :
       - compteur officiel : lugdurum_pending_writes via LugdurumAPI.
       - compteur legacy : lugdurum_pending_transactions seulement si non retrouvé dans Sheets.
-      - nettoie automatiquement les anciennes transactions locales déjà synchronisées.
+      - nettoie automatiquement les anciennes transactions locales déjà synchronisées quand l’index distant est fiable.
       - se met à jour sur l’évènement lugdurum:sync-status.
   */
 
@@ -81,6 +82,8 @@
     pendingWritesCount: 0,
     legacyPendingTransactionsCount: 0,
     apiMode: "",
+    remoteTransactionIds: null,
+    remoteTransactionIndexComplete: false,
     rawCounts: {
       inscriptions: 0,
       events: 0,
@@ -403,6 +406,24 @@
       tick();
     });
 
+  const getActiveIds = () => {
+    const context = getObject(STORAGE_KEYS.preparationContext);
+
+    return {
+      stockMissionId:
+        safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
+        context.stock_mission_id ||
+        context.mission_stock_id ||
+        context.mission_id ||
+        safeLocalGet(STORAGE_KEYS.activeMissionId) ||
+        "",
+      journeeId:
+        safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
+        context.journee_id ||
+        ""
+    };
+  };
+
   const callArray = async (names, { required = true } = {}) => {
     const nameList = Array.isArray(names) ? names : [names];
     let lastError = null;
@@ -456,14 +477,28 @@
         .filter(Boolean)
     );
 
+  const getKnownRemoteTransactionIds = (transactions = []) => {
+    if (state.remoteTransactionIds instanceof Set && state.remoteTransactionIds.size > 0) {
+      return state.remoteTransactionIds;
+    }
+
+    return getRemoteTransactionIds(transactions);
+  };
+
   const getUnmatchedLegacyPendingTransactions = (remoteTransactions = []) => {
     const localPending = getArray(STORAGE_KEYS.pendingTransactions);
 
     if (localPending.length === 0) return [];
 
-    const remoteIds = getRemoteTransactionIds(remoteTransactions);
+    const remoteIds = getKnownRemoteTransactionIds(remoteTransactions);
 
-    if (remoteIds.size === 0) return localPending;
+    if (remoteIds.size === 0) {
+      if (state.apiMode === "getHomeData" && !state.remoteTransactionIndexComplete) {
+        return [];
+      }
+
+      return localPending;
+    }
 
     return localPending.filter((transaction) => {
       const id = getTransactionId(transaction);
@@ -499,7 +534,33 @@
     };
   };
 
-  const reconcileLegacyPendingTransactions = (remoteTransactions = []) => {
+  const buildTransactionsForReconcile = (data) => {
+    if (state.remoteTransactionIds instanceof Set && state.remoteTransactionIds.size > 0) {
+      return [...state.remoteTransactionIds].map((transactionId) => ({
+        transaction_id: transactionId
+      }));
+    }
+
+    return data.transactions;
+  };
+
+  const canReconcileLegacyPendingTransactions = () => {
+    if (state.apiMode !== "getHomeData") return true;
+    return state.remoteTransactionIndexComplete;
+  };
+
+  const reconcileLegacyPendingTransactions = async (data) => {
+    if (!canReconcileLegacyPendingTransactions()) {
+      return {
+        cleaned_count: 0,
+        pending_count: getUnmatchedLegacyPendingTransactions(data.transactions).length,
+        remaining: getUnmatchedLegacyPendingTransactions(data.transactions),
+        skipped: true
+      };
+    }
+
+    const remoteTransactions = buildTransactionsForReconcile(data);
+
     if (
       hasApi() &&
       typeof api().reconcileLegacyPendingTransactions === "function"
@@ -526,6 +587,36 @@
     return [];
   };
 
+  const pickArray = (source, keys = []) => {
+    if (!source || typeof source !== "object") return [];
+
+    for (const key of keys) {
+      const value = source[key];
+      if (Array.isArray(value)) return value;
+    }
+
+    return [];
+  };
+
+  const uniqueBy = (items, getId) => {
+    const map = new Map();
+
+    items.forEach((item, index) => {
+      if (!item || typeof item !== "object") return;
+
+      const id = String(getId(item) || "").trim() || `__INDEX_${index}`;
+      map.set(id, item);
+    });
+
+    return [...map.values()];
+  };
+
+  const pushIfObject = (items, value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      items.push(value);
+    }
+  };
+
   const normalizeRemoteData = (data) => ({
     inscriptions: Array.isArray(data.inscriptions) ? data.inscriptions : [],
     events: Array.isArray(data.events) ? data.events : [],
@@ -534,6 +625,20 @@
     transactions: Array.isArray(data.transactions) ? data.transactions : [],
     mouvementsStock: Array.isArray(data.mouvementsStock) ? data.mouvementsStock : []
   });
+
+  const getCountFrom = (counts, keys, fallback) => {
+    if (!counts || typeof counts !== "object") return fallback;
+
+    for (const key of keys) {
+      const value = counts[key];
+
+      if (value !== undefined && value !== null && value !== "") {
+        return toNumber(value, fallback);
+      }
+    }
+
+    return fallback;
+  };
 
   const cacheRemoteData = (data) => {
     writeJson(STORAGE_KEYS.inscriptions, data.inscriptions);
@@ -544,14 +649,14 @@
     writeJson(STORAGE_KEYS.mouvementsStock, data.mouvementsStock);
   };
 
-  const updateRawCounts = (data) => {
+  const updateRawCounts = (data, counts = {}) => {
     state.rawCounts = {
-      inscriptions: data.inscriptions.length,
-      events: data.events.length,
-      stockMissions: data.stockMissions.length,
-      journees: data.journees.length,
-      transactions: data.transactions.length,
-      mouvementsStock: data.mouvementsStock.length
+      inscriptions: getCountFrom(counts, ["inscriptions", "inscriptions_count"], data.inscriptions.length),
+      events: getCountFrom(counts, ["events", "missions", "missions_count", "missions_vente"], data.events.length),
+      stockMissions: getCountFrom(counts, ["stockMissions", "missionsStock", "missions_stock", "missions_stock_count"], data.stockMissions.length),
+      journees: getCountFrom(counts, ["journees", "journees_count", "journees_vente"], data.journees.length),
+      transactions: getCountFrom(counts, ["transactions", "transactions_count"], data.transactions.length),
+      mouvementsStock: getCountFrom(counts, ["mouvementsStock", "mouvements_stock", "mouvements_stock_count"], data.mouvementsStock.length)
     };
   };
 
@@ -559,6 +664,150 @@
     state.pendingWritesCount = getPendingWritesCount();
     state.legacyPendingTransactionsCount =
       getUnmatchedLegacyPendingTransactions(state.data.transactions).length;
+  };
+
+  const loadRemoteDataWithHomeData = async () => {
+    if (!hasApi() || typeof api().getHomeData !== "function") {
+      throw new Error("LugdurumAPI.getHomeData() est indisponible.");
+    }
+
+    const activeIds = getActiveIds();
+
+    const payload = await api().getHomeData({
+      today: todayIso(),
+      activeStockMissionId: activeIds.stockMissionId,
+      activeJourneeId: activeIds.journeeId
+    });
+
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new Error("Réponse getHomeData invalide.");
+    }
+
+    const root =
+      payload.homeData ||
+      payload.home_data ||
+      payload.home ||
+      payload.data ||
+      payload;
+
+    const tables =
+      root.tables ||
+      root.coreData ||
+      root.core_data ||
+      root;
+
+    const inscriptions = pickArray(tables, [
+      "inscriptions",
+      "inscriptions_evenements"
+    ]);
+
+    const events = pickArray(tables, [
+      "events",
+      "missions",
+      "missions_vente"
+    ]);
+
+    const stockMissions = pickArray(tables, [
+      "stockMissions",
+      "missionsStock",
+      "missions_stock"
+    ]);
+
+    const journees = pickArray(tables, [
+      "journees",
+      "journees_vente"
+    ]);
+
+    const transactions = pickArray(tables, [
+      "transactions",
+      "currentTransactions",
+      "dayTransactions",
+      "transactions_jour"
+    ]);
+
+    const mouvementsStock = pickArray(tables, [
+      "mouvementsStock",
+      "mouvements_stock",
+      "stock_mouvements"
+    ]);
+
+    const extraEvents = [];
+    pushIfObject(extraEvents, root.event);
+    pushIfObject(extraEvents, root.activeEvent);
+    pushIfObject(extraEvents, root.active_event);
+    pushIfObject(extraEvents, root.missionVente);
+    pushIfObject(extraEvents, root.mission_vente);
+
+    const extraStockMissions = [];
+    pushIfObject(extraStockMissions, root.mission);
+    pushIfObject(extraStockMissions, root.stockMission);
+    pushIfObject(extraStockMissions, root.stock_mission);
+    pushIfObject(extraStockMissions, root.activeMission);
+    pushIfObject(extraStockMissions, root.active_mission);
+
+    const extraJournees = [];
+    pushIfObject(extraJournees, root.journee);
+    pushIfObject(extraJournees, root.activeJournee);
+    pushIfObject(extraJournees, root.active_journee);
+
+    const extraTransactions = pickArray(root, [
+      "currentTransactions",
+      "dayTransactions",
+      "transactions_jour"
+    ]);
+
+    const extraMouvements = pickArray(root, [
+      "currentMouvementsStock",
+      "mouvementsStockMission",
+      "mouvements_stock_mission"
+    ]);
+
+    const data = normalizeRemoteData({
+      inscriptions,
+      events: uniqueBy([...events, ...extraEvents], getEventId),
+      stockMissions: uniqueBy([...stockMissions, ...extraStockMissions], getStockMissionId),
+      journees: uniqueBy([...journees, ...extraJournees], getDayId),
+      transactions: uniqueBy([...transactions, ...extraTransactions], getTransactionId),
+      mouvementsStock: [...mouvementsStock, ...extraMouvements]
+    });
+
+    const transactionIds =
+      pickArray(root, ["transactionIds", "transaction_ids", "allTransactionIds", "all_transaction_ids"])
+        .map((item) => {
+          if (typeof item === "string" || typeof item === "number") {
+            return String(item).trim();
+          }
+
+          return getTransactionId(item);
+        })
+        .filter(Boolean);
+
+    if (transactionIds.length > 0) {
+      state.remoteTransactionIds = new Set(transactionIds);
+    } else {
+      state.remoteTransactionIds = null;
+    }
+
+    state.remoteTransactionIndexComplete =
+      root.transaction_ids_complete === true ||
+      root.transactionIdsComplete === true ||
+      root.all_transaction_ids_complete === true ||
+      root.allTransactionIdsComplete === true ||
+      root.remote_transaction_index_complete === true ||
+      root.remoteTransactionIndexComplete === true;
+
+    data.__rawCounts =
+      root.rawCounts ||
+      root.raw_counts ||
+      root.counts ||
+      {};
+
+    data.__cacheable =
+      root.cacheable === true ||
+      root.full_data === true ||
+      root.fullData === true;
+
+    return data;
   };
 
   const loadRemoteDataWithCoreData = async () => {
@@ -571,6 +820,9 @@
     if (!coreData || typeof coreData !== "object" || Array.isArray(coreData)) {
       throw new Error("Réponse getCoreData invalide.");
     }
+
+    state.remoteTransactionIds = null;
+    state.remoteTransactionIndexComplete = true;
 
     return normalizeRemoteData({
       inscriptions: normalizeCoreArray(coreData, "inscriptions", ["inscriptions_evenements"]),
@@ -599,6 +851,9 @@
       callArray("getMouvementsStock", { required: false })
     ]);
 
+    state.remoteTransactionIds = null;
+    state.remoteTransactionIndexComplete = true;
+
     return normalizeRemoteData({
       inscriptions,
       events,
@@ -617,35 +872,52 @@
     }
 
     let data;
+    let shouldCache = true;
 
     try {
-      data = await loadRemoteDataWithCoreData();
-      state.apiMode = "getCoreData";
-    } catch (coreError) {
+      data = await loadRemoteDataWithHomeData();
+      state.apiMode = "getHomeData";
+      shouldCache = data.__cacheable === true;
+    } catch (homeError) {
       try {
-        data = await loadRemoteDataWithSeparateCalls();
-        state.apiMode = `getters séparés après échec getCoreData : ${coreError.message}`;
-      } catch (separateError) {
-        throw new Error(
-          `getCoreData : ${coreError.message} · getters séparés : ${separateError.message}`
-        );
+        data = await loadRemoteDataWithCoreData();
+        state.apiMode = `getCoreData après échec getHomeData : ${homeError.message}`;
+      } catch (coreError) {
+        try {
+          data = await loadRemoteDataWithSeparateCalls();
+          state.apiMode = `getters séparés après échec getHomeData/getCoreData : ${homeError.message} · ${coreError.message}`;
+        } catch (separateError) {
+          throw new Error(
+            `getHomeData : ${homeError.message} · getCoreData : ${coreError.message} · getters séparés : ${separateError.message}`
+          );
+        }
       }
     }
 
-    const legacyCleanup = reconcileLegacyPendingTransactions(data.transactions);
+    const rawCounts = data.__rawCounts || {};
+
+    if (shouldCache) {
+      cacheRemoteData(data);
+    }
+
+    updateRawCounts(data, rawCounts);
+
+    const legacyCleanup = await Promise.resolve(
+      reconcileLegacyPendingTransactions(data)
+    );
 
     state.legacyPendingTransactionsCount = toNumber(
       legacyCleanup?.pending_count,
       getUnmatchedLegacyPendingTransactions(data.transactions).length
     );
 
-    cacheRemoteData(data);
-    updateRawCounts(data);
-
     return data;
   };
 
   const loadCacheData = () => {
+    state.remoteTransactionIds = null;
+    state.remoteTransactionIndexComplete = true;
+
     const data = normalizeRemoteData({
       inscriptions: getArray(STORAGE_KEYS.inscriptions),
       events: getArray(STORAGE_KEYS.events),
@@ -661,24 +933,6 @@
       getUnmatchedLegacyPendingTransactions(data.transactions).length;
 
     return data;
-  };
-
-  const getActiveIds = () => {
-    const context = getObject(STORAGE_KEYS.preparationContext);
-
-    return {
-      stockMissionId:
-        safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
-        context.stock_mission_id ||
-        context.mission_stock_id ||
-        context.mission_id ||
-        safeLocalGet(STORAGE_KEYS.activeMissionId) ||
-        "",
-      journeeId:
-        safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
-        context.journee_id ||
-        ""
-    };
   };
 
   const getMissionJournees = (missionId, journees) =>
@@ -1146,6 +1400,10 @@
     items.push(
       `Après filtres accueil : ${homeState.activeInscriptions.length} inscription(s), ${homeState.acceptedInscriptions.length} acceptée(s), ${homeState.filteredCounts.stockMissions} mission(s) stock utile(s), ${homeState.filteredCounts.journees} journée(s).`
     );
+
+    if (homeState.dataSource === "remote" && homeState.apiMode === "getHomeData" && !state.remoteTransactionIndexComplete) {
+      items.push("Mode accueil rapide : seules les données utiles à l’accueil sont chargées.");
+    }
 
     if (!homeState.mission || !homeState.journee) {
       if (homeState.stockMissions.length > 0) {
