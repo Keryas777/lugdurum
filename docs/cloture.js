@@ -1929,7 +1929,7 @@
     renderAll();
 
     try {
-      setStatus("Chargement depuis Google Sheets...");
+      setStatus("Chargement...");
       await loadRemoteData();
 
       loadContext();
