@@ -2,11 +2,14 @@
   "use strict";
 
   /*
-    Stats produits V2 :
+    Stats produits V3 :
     - API Google Sheets prioritaire.
     - Pas de rendu local avant la réponse API.
     - Cache/localStorage uniquement si l’API est indisponible.
-    - Analyse ventes_lignes, avec fallback de calcul depuis detail_ticket si les lignes sont absentes.
+    - Corrige les IDs HTML réellement utilisés par stats-produits.html.
+    - Analyse ventes_lignes.
+    - Fallback depuis detail_ticket si ventes_lignes est vide.
+    - Supporte les detail_ticket historiques contenant directement des lignes de vente.
   */
 
   const CACHE_KEYS = {
@@ -16,13 +19,24 @@
   };
 
   const LEGACY_KEYS = {
-    transactions: ["lugdurum_transactions_cache", "lugdurum_transactions_backup", "lugdurum_pending_transactions"],
-    ventesLignes: ["lugdurum_ventes_lignes_cache", "lugdurum_ventes_lignes"],
-    catalogue: ["lugdurum_catalogue_cache"]
+    transactions: [
+      "lugdurum_transactions_cache",
+      "lugdurum_transactions",
+      "lugdurum_transactions_backup",
+      "lugdurum_pending_transactions"
+    ],
+    ventesLignes: [
+      "lugdurum_ventes_lignes_cache",
+      "lugdurum_ventes_lignes"
+    ],
+    catalogue: [
+      "lugdurum_catalogue_cache"
+    ]
   };
 
   const state = {
     source: "loading",
+    loadError: "",
     transactions: [],
     lignes: [],
     catalogue: [],
@@ -33,28 +47,55 @@
     }
   };
 
-  const $ = (...ids) => ids.map((id) => document.getElementById(id)).find(Boolean) || null;
-
   const els = {
-    year: $("statsProductsYearInput", "statsProductYearInput", "productYearFilter", "yearFilter"),
-    format: $("statsProductsFormatInput", "statsProductFormatInput", "productFormatFilter", "formatFilter"),
-    search: $("statsProductsSearchInput", "statsProductSearchInput", "productSearchInput", "searchInput"),
-    bottles: $("statsProductsBottleCount", "productBottleCount", "productsBottleCount", "statsBottleCount"),
-    revenue: $("statsProductsRevenue", "productRevenue", "productsRevenue", "statsProductsCA"),
-    topProduct: $("statsProductsTop", "topProduct", "productTop", "statsTopProduct"),
-    references: $("statsProductsReferences", "productReferences", "productsReferences", "statsProductReferences"),
-    formatList: $("statsProductsFormatList", "productFormatList", "formatsList"),
-    list: $("statsProductsList", "productStatsList", "productsList", "statsList"),
-    status: $("statsProductsStatus", "productStatsStatus", "productsStatus", "statsStatus")
+    year: document.getElementById("productYearSelect"),
+    format: document.getElementById("productFormatSelect"),
+    search: document.getElementById("productSearchInput"),
+
+    bottles: document.getElementById("productTotalQty"),
+    revenue: document.getElementById("productTotalRevenue"),
+    topProduct: document.getElementById("productTopProduct"),
+    references: document.getElementById("productCount"),
+
+    formatList: document.getElementById("productFormatBreakdown"),
+    list: document.getElementById("productCards"),
+    status: document.getElementById("statsProductsStatus")
   };
 
   const api = () => window.LugdurumAPI || null;
 
-  const readJsonNullable = (key) => {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return null;
+  const hasApi = () => Boolean(api());
 
+  const waitForApi = (timeoutMs = 1500) =>
+    new Promise((resolve) => {
+      if (hasApi()) {
+        resolve(true);
+        return;
+      }
+
+      const startedAt = Date.now();
+
+      const tick = () => {
+        if (hasApi()) {
+          resolve(true);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+
+        window.setTimeout(tick, 50);
+      };
+
+      tick();
+    });
+
+  const readJsonNullable = (key) => {
     try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return null;
       return JSON.parse(raw);
     } catch {
       return null;
@@ -71,7 +112,11 @@
   };
 
   const writeJson = (key, value) => {
-    localStorage.setItem(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Cache non critique.
+    }
   };
 
   const escapeHtml = (value) =>
@@ -100,16 +145,23 @@
     if (!normalized) return fallback;
 
     const number = Number(normalized);
+
     return Number.isFinite(number) ? number : fallback;
   };
 
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat("fr-FR", {
+  const formatAmount = (value) =>
+    Math.round((toNumber(value, 0) + Number.EPSILON) * 100) / 100;
+
+  const formatCurrency = (value) => {
+    const amount = formatAmount(value);
+
+    return new Intl.NumberFormat("fr-FR", {
       style: "currency",
       currency: "EUR",
-      minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+      minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
       maximumFractionDigits: 2
-    }).format(value || 0);
+    }).format(amount);
+  };
 
   const getYearFromDate = (value) => {
     const text = String(value || "");
@@ -132,24 +184,40 @@
     }
   };
 
-  const isValidStatus = (item) => {
-    const statut = String(item?.statut || item?.paiement_statut || "validee").toLowerCase();
-    return !["annule", "annulee", "annulé", "annulée", "refuse", "refusé"].includes(statut);
+  const isInvalidStatus = (value) => {
+    const status = normalizeText(value);
+
+    return [
+      "annule",
+      "annulee",
+      "annulé",
+      "annulée",
+      "refuse",
+      "refusé",
+      "refusee",
+      "refusée"
+    ].includes(status);
   };
 
-  const getTransactionId = (transaction) => String(transaction.transaction_id || transaction.id || "").trim();
+  const isValidStatus = (item) => {
+    const status = item?.statut ?? item?.paiement_statut ?? "validee";
+    return !isInvalidStatus(status);
+  };
+
+  const getTransactionId = (transaction) =>
+    String(transaction?.transaction_id || transaction?.id || "").trim();
 
   const getTransactionAmount = (transaction) =>
     toNumber(
-      transaction.total_encaisse_ttc ??
-      transaction.total_encaisse ??
-      transaction.total_catalogue_ttc ??
-      transaction.total_catalogue,
+      transaction?.total_encaisse_ttc ??
+      transaction?.total_encaisse ??
+      transaction?.total_catalogue_ttc ??
+      transaction?.total_catalogue,
       0
     );
 
   const parseDetailTicket = (transaction) => {
-    const raw = transaction.detail_ticket;
+    const raw = transaction?.detail_ticket;
 
     if (Array.isArray(raw)) return raw;
 
@@ -163,119 +231,227 @@
     }
   };
 
-  const getCatalogueBySku = () => {
-    return state.catalogue.reduce((map, item) => {
-      const skuId = String(item.sku_id || "").trim();
+  const getCatalogueBySku = () =>
+    state.catalogue.reduce((map, item) => {
+      const skuId = String(item?.sku_id || "").trim();
       if (skuId) map.set(skuId, item);
       return map;
     }, new Map());
-  };
 
   const parseSku = (skuId) => {
-    const parts = String(skuId || "").split("_");
+    const text = String(skuId || "").trim();
+    const parts = text.split("_");
+
+    const maybeFormat = parts
+      .map((part) => toNumber(part, 0))
+      .find((number) => number === 50 || number === 20);
 
     return {
       parfum_code: String(parts[0] || "").toUpperCase(),
-      format_cl: toNumber(parts[1], 0)
+      format_cl: maybeFormat || 0
     };
   };
 
   const normalizeLine = (rawLine, transactionMap, catalogueMap) => {
-    const transactionId = String(rawLine.transaction_id || rawLine.transactionId || "").trim();
+    const transactionId = String(rawLine?.transaction_id || rawLine?.transactionId || "").trim();
     const transaction = transactionMap.get(transactionId) || null;
-    const skuId = String(rawLine.sku_id || rawLine.sku || "").trim();
+
+    const skuId = String(rawLine?.sku_id || rawLine?.sku || "").trim();
     const catalogueItem = catalogueMap.get(skuId) || null;
     const parsedSku = parseSku(skuId);
-    const quantity = toNumber(rawLine.quantite ?? rawLine.qty ?? rawLine.quantity, 0);
-    const unitPrice = toNumber(rawLine.prix_unitaire_ttc ?? rawLine.unit_price ?? rawLine.prix, 0);
+
+    const quantity = toNumber(
+      rawLine?.quantite ??
+      rawLine?.qty ??
+      rawLine?.quantity,
+      0
+    );
+
+    const unitPrice = toNumber(
+      rawLine?.prix_unitaire_ttc ??
+      rawLine?.unit_price ??
+      rawLine?.prix,
+      0
+    );
+
     const lineTotal = toNumber(
-      rawLine.total_catalogue_ligne_ttc ?? rawLine.total_ligne_ttc ?? rawLine.total_ttc,
+      rawLine?.total_catalogue_ligne_ttc ??
+      rawLine?.total_ligne_ttc ??
+      rawLine?.total_ttc ??
+      rawLine?.ca,
       quantity * unitPrice
     );
 
     return {
       transaction_id: transactionId,
-      mission_id: rawLine.mission_id || transaction?.mission_id || "",
-      journee_id: rawLine.journee_id || transaction?.journee_id || "",
-      date_heure: rawLine.date_heure || transaction?.date_heure || transaction?.created_at || "",
+      mission_id: rawLine?.mission_id || transaction?.mission_id || "",
+      journee_id: rawLine?.journee_id || transaction?.journee_id || "",
+      date_heure:
+        rawLine?.date_heure ||
+        rawLine?.date ||
+        rawLine?.created_at ||
+        transaction?.date_heure ||
+        transaction?.date ||
+        transaction?.created_at ||
+        "",
       sku_id: skuId,
-      parfum_code: String(rawLine.parfum_code || catalogueItem?.parfum_code || parsedSku.parfum_code || "?").toUpperCase(),
-      parfum_nom: String(rawLine.parfum_nom || catalogueItem?.parfum_nom || rawLine.nom || parsedSku.parfum_code || "Produit").trim(),
-      format_cl: toNumber(rawLine.format_cl, toNumber(catalogueItem?.format_cl, parsedSku.format_cl)),
+      parfum_code: String(
+        rawLine?.parfum_code ||
+        catalogueItem?.parfum_code ||
+        parsedSku.parfum_code ||
+        "?"
+      ).toUpperCase(),
+      parfum_nom: String(
+        rawLine?.parfum_nom ||
+        catalogueItem?.parfum_nom ||
+        rawLine?.nom ||
+        parsedSku.parfum_code ||
+        "Produit"
+      ).trim(),
+      format_cl: toNumber(
+        rawLine?.format_cl,
+        toNumber(catalogueItem?.format_cl, parsedSku.format_cl)
+      ),
       quantite: quantity,
       total_ttc: lineTotal,
-      source: rawLine.source || transaction?.source || ""
+      source: rawLine?.source || transaction?.source || "",
+      statut: rawLine?.statut || transaction?.statut || "valide"
     };
+  };
+
+  const pushGenericTicketLine = (lines, transaction, item) => {
+    const transactionId = getTransactionId(transaction);
+    const quantity = toNumber(item?.quantite ?? item?.qty ?? item?.quantity, 0);
+
+    if (!item?.sku_id || quantity <= 0) return;
+
+    const unitPrice = toNumber(
+      item?.prix_unitaire_ttc ??
+      item?.unit_price ??
+      item?.prix,
+      0
+    );
+
+    lines.push({
+      transaction_id: transactionId,
+      mission_id: item.mission_id || transaction.mission_id || "",
+      journee_id: item.journee_id || transaction.journee_id || "",
+      date_heure: transaction.date_heure || transaction.created_at || "",
+      sku_id: item.sku_id,
+      parfum_code: item.parfum_code || "",
+      parfum_nom: item.parfum_nom || "",
+      format_cl: item.format_cl || "",
+      quantite: quantity,
+      total_catalogue_ligne_ttc: toNumber(
+        item.total_catalogue_ligne_ttc ??
+        item.total_ligne_ttc ??
+        item.total_ttc,
+        quantity * unitPrice
+      ),
+      source: item.source || transaction.source || "DETAIL_TICKET",
+      statut: item.statut || "valide"
+    });
   };
 
   const buildLinesFromTransactions = () => {
     const lines = [];
 
-    state.transactions.filter(isValidStatus).forEach((transaction) => {
-      const transactionId = getTransactionId(transaction);
-      const ticket = parseDetailTicket(transaction);
-      const total = getTransactionAmount(transaction);
+    state.transactions
+      .filter(isValidStatus)
+      .forEach((transaction) => {
+        const transactionId = getTransactionId(transaction);
+        const ticket = parseDetailTicket(transaction);
+        const transactionTotal = getTransactionAmount(transaction);
 
-      ticket.forEach((item) => {
-        if (item.type === "bottle") {
-          lines.push({
-            transaction_id: transactionId,
-            mission_id: transaction.mission_id || "",
-            journee_id: transaction.journee_id || "",
-            date_heure: transaction.date_heure || transaction.created_at || "",
-            sku_id: item.sku_id,
-            parfum_code: item.parfum_code,
-            parfum_nom: item.parfum_nom,
-            format_cl: item.format_cl,
-            quantite: toNumber(item.quantite, 0),
-            total_catalogue_ligne_ttc: toNumber(item.quantite, 0) * toNumber(item.prix_unitaire_ttc, 0),
-            source: transaction.source || ""
-          });
-          return;
-        }
-
-        if (item.type === "box" && Array.isArray(item.composition)) {
-          const boxTotal = toNumber(item.prix_ttc, total);
-          const unitShare = item.composition.length > 0 ? boxTotal / item.composition.length : 0;
-
-          item.composition.forEach((product) => {
+        ticket.forEach((item) => {
+          if (item?.type === "bottle") {
             lines.push({
               transaction_id: transactionId,
               mission_id: transaction.mission_id || "",
               journee_id: transaction.journee_id || "",
               date_heure: transaction.date_heure || transaction.created_at || "",
-              sku_id: product.sku_id,
-              parfum_code: product.parfum_code,
-              parfum_nom: product.parfum_nom,
-              format_cl: product.format_cl || item.format_cl || 20,
-              quantite: 1,
-              total_catalogue_ligne_ttc: unitShare,
-              source: transaction.source || "COFFRET"
+              sku_id: item.sku_id,
+              parfum_code: item.parfum_code,
+              parfum_nom: item.parfum_nom,
+              format_cl: item.format_cl,
+              quantite: toNumber(item.quantite, 0),
+              total_catalogue_ligne_ttc:
+                toNumber(item.quantite, 0) *
+                toNumber(item.prix_unitaire_ttc, 0),
+              source: transaction.source || "DETAIL_TICKET",
+              statut: "valide"
             });
-          });
-        }
+
+            return;
+          }
+
+          if (item?.type === "box" && Array.isArray(item.composition)) {
+            const boxTotal = toNumber(item.prix_ttc, transactionTotal);
+            const unitShare =
+              item.composition.length > 0
+                ? boxTotal / item.composition.length
+                : 0;
+
+            item.composition.forEach((product) => {
+              lines.push({
+                transaction_id: transactionId,
+                mission_id: transaction.mission_id || "",
+                journee_id: transaction.journee_id || "",
+                date_heure: transaction.date_heure || transaction.created_at || "",
+                sku_id: product.sku_id,
+                parfum_code: product.parfum_code,
+                parfum_nom: product.parfum_nom,
+                format_cl: product.format_cl || item.format_cl || 20,
+                quantite: 1,
+                total_catalogue_ligne_ttc: unitShare,
+                source: transaction.source || "COFFRET",
+                statut: "valide"
+              });
+            });
+
+            return;
+          }
+
+          pushGenericTicketLine(lines, transaction, item);
+        });
       });
-    });
 
     return lines;
+  };
+
+  const getBaseLines = () => {
+    const validSheetLines = state.lignes.filter(isValidStatus);
+
+    if (validSheetLines.length > 0) {
+      return validSheetLines;
+    }
+
+    return buildLinesFromTransactions();
   };
 
   const getNormalizedLines = () => {
     const transactionMap = state.transactions.reduce((map, transaction) => {
       const id = getTransactionId(transaction);
-      if (id && isValidStatus(transaction)) map.set(id, transaction);
+
+      if (id && isValidStatus(transaction)) {
+        map.set(id, transaction);
+      }
+
       return map;
     }, new Map());
 
     const catalogueMap = getCatalogueBySku();
-    const baseLines = state.lignes.length > 0 ? state.lignes : buildLinesFromTransactions();
 
-    return baseLines
+    return getBaseLines()
+      .filter(isValidStatus)
       .map((line) => normalizeLine(line, transactionMap, catalogueMap))
       .filter((line) => line.quantite > 0)
+      .filter((line) => line.sku_id || line.parfum_code)
       .filter((line) => {
         if (!line.transaction_id) return true;
+
         const transaction = transactionMap.get(line.transaction_id);
+
         return !transaction || isValidStatus(transaction);
       });
   };
@@ -302,16 +478,14 @@
       ${years.map((year) => `<option value="${year}">${year}</option>`).join("")}
     `;
 
-    if (years.includes(current) || current === "ALL") {
+    if (current === "ALL" || years.includes(current)) {
       els.year.value = current;
       state.filters.year = current;
-    } else if (years.length > 0) {
-      els.year.value = years[0];
-      state.filters.year = years[0];
-    } else {
-      els.year.value = "ALL";
-      state.filters.year = "ALL";
+      return;
     }
+
+    els.year.value = "ALL";
+    state.filters.year = "ALL";
   };
 
   const getFilteredLines = () => {
@@ -328,7 +502,10 @@
       })
       .filter((line) => {
         if (!query) return true;
-        return normalizeText(`${line.parfum_code} ${line.parfum_nom} ${line.sku_id}`).includes(query);
+
+        return normalizeText(
+          `${line.parfum_code} ${line.parfum_nom} ${line.sku_id}`
+        ).includes(query);
       });
   };
 
@@ -355,8 +532,10 @@
     return [...map.values()].sort((a, b) => {
       const byQty = b.quantite - a.quantite;
       if (byQty !== 0) return byQty;
+
       const byCa = b.ca - a.ca;
       if (byCa !== 0) return byCa;
+
       return String(a.parfum_code).localeCompare(String(b.parfum_code));
     });
   };
@@ -366,20 +545,53 @@
 
     getFilteredLines().forEach((line) => {
       const key = line.format_cl || "?";
-      const current = map.get(key) || { format_cl: key, quantite: 0, ca: 0 };
+      const current = map.get(key) || {
+        format_cl: key,
+        quantite: 0,
+        ca: 0
+      };
+
       current.quantite += toNumber(line.quantite, 0);
       current.ca += toNumber(line.total_ttc, 0);
+
       map.set(key, current);
     });
 
-    return [...map.values()].sort((a, b) => toNumber(b.format_cl, 0) - toNumber(a.format_cl, 0));
+    return [...map.values()].sort(
+      (a, b) => toNumber(b.format_cl, 0) - toNumber(a.format_cl, 0)
+    );
+  };
+
+  const renderLoading = () => {
+    if (els.year) {
+      els.year.innerHTML = `<option value="ALL">Chargement…</option>`;
+    }
+
+    setText(els.bottles, "—");
+    setText(els.revenue, "—");
+    setText(els.topProduct, "—");
+    setText(els.references, "—");
+
+    if (els.formatList) {
+      els.formatList.innerHTML =
+        `<p class="statsEmpty">Chargement des formats…</p>`;
+    }
+
+    if (els.list) {
+      els.list.innerHTML =
+        `<p class="statsEmpty">Chargement depuis Google Sheets…</p>`;
+    }
+
+    setStatus("Chargement depuis Google Sheets…");
   };
 
   const render = () => {
     syncYearFilter();
 
+    const normalizedLines = getNormalizedLines();
     const products = computeByProduct();
     const formats = computeByFormat();
+
     const totalQty = products.reduce((sum, product) => sum + product.quantite, 0);
     const totalCa = products.reduce((sum, product) => sum + product.ca, 0);
     const top = products[0] || null;
@@ -394,46 +606,76 @@
         ? formats.map((item) => `
             <article class="statFormatCard productFormatCard">
               <strong>${escapeHtml(String(item.format_cl))} cL</strong>
-              <span>${escapeHtml(String(item.quantite))} vendu${item.quantite > 1 ? "s" : ""}</span>
+              <span>
+                ${escapeHtml(String(item.quantite))}
+                vendu${item.quantite > 1 ? "s" : ""}
+              </span>
               <small>${escapeHtml(formatCurrency(item.ca))}</small>
             </article>
           `).join("")
         : `<p class="statsEmpty">Aucune vente produit sur cette période.</p>`;
     }
 
-    if (!els.list) return;
+    if (els.list) {
+      els.list.innerHTML = products.length
+        ? products.map((product) => `
+            <article class="statsCard productStatCard">
+              <div class="statsCardHeader">
+                <div class="statsCardTitle">
+                  <strong>
+                    ${escapeHtml(product.parfum_code)}
+                    ${escapeHtml(String(product.format_cl))} cL
+                  </strong>
+                  <span>${escapeHtml(product.parfum_nom || product.parfum_code)}</span>
+                </div>
 
-    if (products.length === 0) {
-      els.list.innerHTML = `<p class="statsEmpty">Aucune vente produit à afficher.</p>`;
+                <strong class="statsAmount">
+                  ${escapeHtml(String(product.quantite))}
+                </strong>
+              </div>
+
+              <div class="statsMeta">
+                <span>${escapeHtml(formatCurrency(product.ca))}</span>
+                <span>${escapeHtml(product.sku_id)}</span>
+              </div>
+            </article>
+          `).join("")
+        : `<p class="statsEmpty">Aucune vente produit à afficher.</p>`;
+    }
+
+    if (state.source === "api" && normalizedLines.length === 0) {
+      setStatus(
+        `Données chargées, mais aucune ligne produit exploitable. Transactions : ${state.transactions.length} · ventes_lignes : ${state.lignes.length}`,
+        "isError"
+      );
       return;
     }
 
-    els.list.innerHTML = products.map((product) => `
-      <article class="statsCard productStatCard">
-        <div class="statsCardHeader">
-          <div class="statsCardTitle">
-            <strong>${escapeHtml(product.parfum_code)} ${escapeHtml(product.format_cl)} cL</strong>
-            <span>${escapeHtml(product.parfum_nom || product.parfum_code)}</span>
-          </div>
-          <strong class="statsAmount">${escapeHtml(String(product.quantite))}</strong>
-        </div>
-        <div class="statsMeta">
-          <span>${escapeHtml(formatCurrency(product.ca))}</span>
-          <span>${escapeHtml(product.sku_id)}</span>
-        </div>
-      </article>
-    `).join("");
+    if (state.source === "local") {
+      setStatus(
+        `API indisponible. Données locales affichées : ${state.loadError}`,
+        "isError"
+      );
+      return;
+    }
+
+    setStatus("");
   };
 
   const callArray = async (fnName) => {
-    if (!api() || typeof api()[fnName] !== "function") return [];
+    if (!hasApi() || typeof api()[fnName] !== "function") {
+      throw new Error(`Fonction API indisponible : ${fnName}`);
+    }
 
     const result = await api()[fnName]();
+
     return Array.isArray(result) ? result : [];
   };
 
   const loadRemote = async () => {
-    if (!api()) {
+    const ready = await waitForApi();
+
+    if (!ready) {
       throw new Error("lugdurum-api.js n’est pas chargé.");
     }
 
@@ -447,17 +689,19 @@
     state.lignes = lignes;
     state.catalogue = catalogue;
     state.source = "api";
+    state.loadError = "";
 
     writeJson(CACHE_KEYS.transactions, transactions);
     writeJson(CACHE_KEYS.ventesLignes, lignes);
     writeJson(CACHE_KEYS.catalogue, catalogue);
   };
 
-  const loadLocalFallback = () => {
+  const loadLocalFallback = (error) => {
     state.transactions = readFirstArray(LEGACY_KEYS.transactions);
     state.lignes = readFirstArray(LEGACY_KEYS.ventesLignes);
     state.catalogue = readFirstArray(LEGACY_KEYS.catalogue);
     state.source = "local";
+    state.loadError = error?.message || "Lecture Google Sheets impossible.";
   };
 
   const bindEvents = () => {
@@ -485,23 +729,20 @@
 
   const init = async () => {
     bindEvents();
-
-    if (els.list) {
-      els.list.innerHTML = `<p class="statsEmpty">Chargement depuis Google Sheets…</p>`;
-    }
-
-    setStatus("Chargement depuis Google Sheets...");
+    renderLoading();
 
     try {
       await loadRemote();
-      render();
-      setStatus("");
     } catch (error) {
-      loadLocalFallback();
-      render();
-      setStatus(`API indisponible. Données locales affichées : ${error.message}`, "isError");
+      loadLocalFallback(error);
     }
+
+    render();
   };
 
-  init();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
