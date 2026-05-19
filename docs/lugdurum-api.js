@@ -2,15 +2,18 @@
   "use strict";
 
   /*
-    Lugdurum API V10 FRONT QUEUE
+    Lugdurum API V11 FRONT QUEUE + HOME DATA
     - Connexion Apps Script / Google Sheets.
     - Lectures GET directes.
+    - Ajout méthode rapide getHomeData() pour l’accueil.
+    - getHomeData() ne bloque pas le rendu sur la synchronisation de la file.
     - Écritures POST avec file d’attente offline officielle : lugdurum_pending_writes.
     - Rejeu automatique au retour réseau, au focus, à la visibilité et au chargement.
     - Rejeu par paquets via batchActions.
     - Nettoyage robuste de la file après succès batch.
     - Nettoyage des anciennes transactions locales legacy : lugdurum_pending_transactions.
     - Évènement global lugdurum:sync-status pour rafraîchir l’UI.
+    - Évite les doublons d’écriture ventes_lignes quand Apps Script sauvegarde déjà les lignes dans les bundles.
   */
 
   const API_URL =
@@ -19,7 +22,12 @@
   const STORAGE_KEYS = {
     pendingWrites: "lugdurum_pending_writes",
     lastSyncState: "lugdurum_last_sync_state",
-    legacyPendingTransactions: "lugdurum_pending_transactions"
+    legacyPendingTransactions: "lugdurum_pending_transactions",
+
+    activeMissionId: "lugdurum_active_mission_id",
+    activeStockMissionId: "lugdurum_active_stock_mission_id",
+    activeJourneeId: "lugdurum_active_journee_id",
+    preparationContext: "lugdurum_preparation_context"
   };
 
   const FLUSH_BATCH_SIZE = 20;
@@ -29,25 +37,47 @@
 
   const nowIso = () => new Date().toISOString();
 
+  const safeLocalGet = (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+
+  const safeLocalSet = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // localStorage peut être indisponible en navigation privée / contexte isolé.
+    }
+  };
+
   const readJson = (key, fallback) => {
     try {
-      return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+      const raw = safeLocalGet(key);
+      return raw ? JSON.parse(raw) : fallback;
     } catch {
       return fallback;
     }
   };
 
   const writeJson = (key, value) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // localStorage peut être indisponible en navigation privée / contexte isolé.
-    }
+    safeLocalSet(key, JSON.stringify(value));
   };
 
   const toArray = (value) => (Array.isArray(value) ? value : []);
 
   const isOnline = () => navigator.onLine !== false;
+
+  const getTodayIso = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
 
   const buildQueueId = () => {
     const random =
@@ -577,17 +607,23 @@
     }, delay);
   };
 
-  const requestGet = async (action, params = {}) => {
+  const requestGet = async (action, params = {}, options = {}) => {
     if (!API_URL) {
       throw new Error("API_URL manquante dans lugdurum-api.js");
     }
 
-    if (getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
+    const flushBeforeRead = options.flushBeforeRead !== false;
+
+    if (flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
       try {
         await flushPendingWrites();
       } catch (error) {
         console.warn("Lecture avant synchronisation complète.", error);
       }
+    }
+
+    if (!flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
+      scheduleFlush(250);
     }
 
     const url = new URL(API_URL);
@@ -702,6 +738,21 @@
         data: line
       }));
 
+  const getSavedLinesCount = (result) => {
+    if (!result || typeof result !== "object") return 0;
+
+    return Number(
+      result.lignes_count ??
+      result.lines_count ??
+      result.ventes_lignes_count ??
+      (
+        Array.isArray(result.lignes)
+          ? result.lignes.length
+          : 0
+      )
+    ) || 0;
+  };
+
   const ensureVentesLignes = async (lines = []) => {
     const operations = buildVenteLigneOperations(lines);
 
@@ -717,6 +768,40 @@
       operations
     });
   };
+
+  const buildHomeDataParams = (params = {}) => {
+    const context = readJson(STORAGE_KEYS.preparationContext, {});
+
+    const activeStockMissionId =
+      params.activeStockMissionId ||
+      params.stockMissionId ||
+      params.stock_mission_id ||
+      safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
+      context.stock_mission_id ||
+      context.mission_stock_id ||
+      context.mission_id ||
+      safeLocalGet(STORAGE_KEYS.activeMissionId) ||
+      "";
+
+    const activeJourneeId =
+      params.activeJourneeId ||
+      params.journeeId ||
+      params.journee_id ||
+      safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
+      context.journee_id ||
+      "";
+
+    return {
+      today: params.today || getTodayIso(),
+      activeStockMissionId,
+      activeJourneeId
+    };
+  };
+
+  const getHomeData = (params = {}) =>
+    requestGet("getHomeData", buildHomeDataParams(params), {
+      flushBeforeRead: false
+    });
 
   const saveInscriptionEvenement = (inscription) =>
     requestQueuedPost("upsertInscriptionEvenement", {
@@ -790,7 +875,6 @@
 
   const saveTransaction = async (transaction) => {
     const lines = getTransactionLines(transaction);
-
     const transactionPayload = cloneWithoutKeys(transaction, ["lignes"]);
 
     const result = await requestQueuedPost("saveTransaction", {
@@ -800,17 +884,34 @@
       }
     });
 
-    if (lines.length > 0) {
-      const linesResult = await ensureVentesLignes(lines);
+    if (lines.length === 0) {
+      return result;
+    }
 
+    if (result?.queued) {
       return {
         transaction: result,
-        ventes_lignes: linesResult,
+        queued: true,
         lignes_count: lines.length
       };
     }
 
-    return result;
+    const savedLinesCount = getSavedLinesCount(result);
+
+    if (savedLinesCount > 0) {
+      return {
+        ...(result && typeof result === "object" ? result : { result }),
+        lignes_count: savedLinesCount
+      };
+    }
+
+    const linesResult = await ensureVentesLignes(lines);
+
+    return {
+      transaction: result,
+      ventes_lignes_guarantee: linesResult,
+      lignes_count: lines.length
+    };
   };
 
   const saveVenteLigne = (line) =>
@@ -911,7 +1012,16 @@
     try {
       const result = await requestQueuedPost("saveJourneeHistoriqueBundle", payload);
 
-      if (allLines.length > 0) {
+      if (result?.queued) {
+        return {
+          ...(result && typeof result === "object" ? result : { result }),
+          lignes_count: allLines.length
+        };
+      }
+
+      const savedLinesCount = getSavedLinesCount(result);
+
+      if (allLines.length > 0 && savedLinesCount <= 0) {
         const linesResult = await ensureVentesLignes(allLines);
 
         return {
@@ -921,7 +1031,10 @@
         };
       }
 
-      return result;
+      return {
+        ...(result && typeof result === "object" ? result : { result }),
+        lignes_count: savedLinesCount || allLines.length
+      };
     } catch (error) {
       if (isUnknownPostActionError(error, "saveJourneeHistoriqueBundle")) {
         console.warn(
@@ -943,7 +1056,7 @@
 
   window.LugdurumAPI = {
     ping() {
-      return requestGet("ping");
+      return requestGet("ping", {}, { flushBeforeRead: false });
     },
 
     postPing() {
@@ -951,8 +1064,10 @@
     },
 
     getSpreadsheetInfo() {
-      return requestGet("getSpreadsheetInfo");
+      return requestGet("getSpreadsheetInfo", {}, { flushBeforeRead: false });
     },
+
+    getHomeData,
 
     getCoreData(tables = []) {
       return requestGet("getCoreData", {
