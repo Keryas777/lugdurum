@@ -2,10 +2,12 @@
   "use strict";
 
   /*
-    Accueil V9 :
+    Accueil V10 :
     - Source prioritaire : Google Sheets via window.LugdurumAPI.
-    - Le cache localStorage n’est utilisé qu’en secours si l’API est indisponible.
-    - Au chargement : état neutre, puis remplacement par les données API.
+    - Chargement API prioritaire via getCoreData(), puis fallback par getters séparés.
+    - Cache localStorage uniquement en secours si l’API est indisponible.
+    - Accès localStorage sécurisé pour Safari privé.
+    - Diagnostic visible dans "À surveiller" : source + compteurs bruts + compteurs filtrés.
     - Évite les compteurs incohérents entre Safari privé / Safari normal / icône écran d’accueil.
     - Exclut les données historiques SAISIE_HISTORIQUE des compteurs d’accueil.
     - Exclut les missions stock clôturées anciennes du compteur d’accueil.
@@ -38,13 +40,22 @@
     pendingTransactions: "lugdurum_pending_transactions"
   };
 
-  const STEP_ORDER = ["inscriptions", "missions", "stock", "vente", "cloture"];
+  const CORE_TABLES = [
+    "inscriptions",
+    "missions",
+    "missionsStock",
+    "journees",
+    "transactions",
+    "stockPreparations"
+  ];
 
+  const STEP_ORDER = ["inscriptions", "missions", "stock", "vente", "cloture"];
   const HISTORICAL_SOURCE = "SAISIE_HISTORIQUE";
 
   const formatEuro = new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "EUR",
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0
   });
 
@@ -59,6 +70,15 @@
     dataSource: "loading",
     loadError: "",
     pendingWritesCount: 0,
+    apiMode: "",
+    rawCounts: {
+      inscriptions: 0,
+      events: 0,
+      stockMissions: 0,
+      journees: 0,
+      transactions: 0,
+      stockPreparations: 0
+    },
     data: {
       inscriptions: [],
       events: [],
@@ -72,12 +92,27 @@
   const qs = (selector) => document.querySelector(selector);
 
   const api = () => window.LugdurumAPI || null;
-
   const hasApi = () => Boolean(api());
+
+  const safeLocalGet = (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+
+  const safeLocalSet = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Cache non critique.
+    }
+  };
 
   const readJson = (key, fallback) => {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = safeLocalGet(key);
       return raw ? JSON.parse(raw) : fallback;
     } catch {
       return fallback;
@@ -85,11 +120,7 @@
   };
 
   const writeJson = (key, value) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Cache non critique.
-    }
+    safeLocalSet(key, JSON.stringify(value));
   };
 
   const getArray = (key) => {
@@ -113,7 +144,6 @@
     if (!normalized) return fallback;
 
     const number = Number(normalized);
-
     return Number.isFinite(number) ? number : fallback;
   };
 
@@ -150,7 +180,11 @@
 
   const parseDate = (isoDate) => {
     if (!isoDate) return null;
-    return new Date(`${String(isoDate).slice(0, 10)}T12:00:00`);
+
+    const value = String(isoDate).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+
+    return new Date(`${value}T12:00:00`);
   };
 
   const formatIsoDate = (date) => {
@@ -180,17 +214,13 @@
   };
 
   const isCancelledStatus = (item) => {
-    const statut = normalizeStatus(item?.statut);
+    const statut = normalizeStatus(item?.statut || item?.paiement_statut);
 
     return [
       "annule",
       "annulee",
-      "annulé",
-      "annulée",
       "refuse",
-      "refusee",
-      "refusé",
-      "refusée"
+      "refusee"
     ].includes(statut);
   };
 
@@ -200,12 +230,8 @@
     return [
       "cloture",
       "cloturee",
-      "clôturé",
-      "clôturée",
       "termine",
-      "terminee",
-      "terminé",
-      "terminée"
+      "terminee"
     ].includes(statut);
   };
 
@@ -263,7 +289,6 @@
     if (!item?.date_fin && !item?.date_debut) return true;
 
     const end = String(item.date_fin || item.date_debut || "").slice(0, 10);
-
     if (!end) return true;
 
     return end >= todayIso();
@@ -295,13 +320,16 @@
     inscriptions.filter((item) => {
       if (isCancelledStatus(item)) return false;
 
+      const statut = normalizeStatus(item.statut);
+
       return (
-        String(item.statut || "").trim().toUpperCase() === "ACCEPTE" ||
+        statut === "accepte" ||
+        statut === "acceptee" ||
         toBoolean(item.acceptation, false)
       );
     });
 
-  const waitForApi = (timeoutMs = 1200) =>
+  const waitForApi = (timeoutMs = 2500) =>
     new Promise((resolve) => {
       if (hasApi()) {
         resolve(true);
@@ -352,6 +380,27 @@
     return 0;
   };
 
+  const normalizeCoreArray = (coreData, key) => {
+    const value = coreData?.[key];
+
+    if (Array.isArray(value)) return value;
+
+    if (value && typeof value === "object" && value.ok === false) {
+      throw new Error(value.error || `Table coreData invalide : ${key}`);
+    }
+
+    return [];
+  };
+
+  const normalizeRemoteData = (data) => ({
+    inscriptions: Array.isArray(data.inscriptions) ? data.inscriptions : [],
+    events: Array.isArray(data.events) ? data.events : [],
+    stockMissions: Array.isArray(data.stockMissions) ? data.stockMissions : [],
+    journees: Array.isArray(data.journees) ? data.journees : [],
+    transactions: Array.isArray(data.transactions) ? data.transactions : [],
+    stockPreparations: Array.isArray(data.stockPreparations) ? data.stockPreparations : []
+  });
+
   const cacheRemoteData = (data) => {
     writeJson(STORAGE_KEYS.inscriptions, data.inscriptions);
     writeJson(STORAGE_KEYS.events, data.events);
@@ -361,13 +410,39 @@
     writeJson(STORAGE_KEYS.stockPreparations, data.stockPreparations);
   };
 
-  const loadRemoteData = async () => {
-    const ready = await waitForApi();
+  const updateRawCounts = (data) => {
+    state.rawCounts = {
+      inscriptions: data.inscriptions.length,
+      events: data.events.length,
+      stockMissions: data.stockMissions.length,
+      journees: data.journees.length,
+      transactions: data.transactions.length,
+      stockPreparations: data.stockPreparations.length
+    };
+  };
 
-    if (!ready) {
-      throw new Error("lugdurum-api.js n’est pas chargé.");
+  const loadRemoteDataWithCoreData = async () => {
+    if (!hasApi() || typeof api().getCoreData !== "function") {
+      throw new Error("LugdurumAPI.getCoreData() est indisponible.");
     }
 
+    const coreData = await api().getCoreData(CORE_TABLES);
+
+    if (!coreData || typeof coreData !== "object" || Array.isArray(coreData)) {
+      throw new Error("Réponse getCoreData invalide.");
+    }
+
+    return normalizeRemoteData({
+      inscriptions: normalizeCoreArray(coreData, "inscriptions"),
+      events: normalizeCoreArray(coreData, "missions"),
+      stockMissions: normalizeCoreArray(coreData, "missionsStock"),
+      journees: normalizeCoreArray(coreData, "journees"),
+      transactions: normalizeCoreArray(coreData, "transactions"),
+      stockPreparations: normalizeCoreArray(coreData, "stockPreparations")
+    });
+  };
+
+  const loadRemoteDataWithSeparateCalls = async () => {
     const [
       inscriptions,
       events,
@@ -384,41 +459,72 @@
       callArray("getStockPreparations", { required: false })
     ]);
 
-    const data = {
+    return normalizeRemoteData({
       inscriptions,
       events,
       stockMissions,
       journees,
       transactions,
       stockPreparations
-    };
+    });
+  };
+
+  const loadRemoteData = async () => {
+    const ready = await waitForApi();
+
+    if (!ready) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    let data;
+
+    try {
+      data = await loadRemoteDataWithCoreData();
+      state.apiMode = "getCoreData";
+    } catch (coreError) {
+      try {
+        data = await loadRemoteDataWithSeparateCalls();
+        state.apiMode = `getters séparés après échec getCoreData : ${coreError.message}`;
+      } catch (separateError) {
+        throw new Error(
+          `getCoreData : ${coreError.message} · getters séparés : ${separateError.message}`
+        );
+      }
+    }
 
     cacheRemoteData(data);
+    updateRawCounts(data);
 
     return data;
   };
 
-  const loadCacheData = () => ({
-    inscriptions: getArray(STORAGE_KEYS.inscriptions),
-    events: getArray(STORAGE_KEYS.events),
-    stockMissions: getArray(STORAGE_KEYS.stockMissions),
-    journees: getArray(STORAGE_KEYS.journees),
-    transactions: getArray(STORAGE_KEYS.transactions),
-    stockPreparations: getArray(STORAGE_KEYS.stockPreparations)
-  });
+  const loadCacheData = () => {
+    const data = normalizeRemoteData({
+      inscriptions: getArray(STORAGE_KEYS.inscriptions),
+      events: getArray(STORAGE_KEYS.events),
+      stockMissions: getArray(STORAGE_KEYS.stockMissions),
+      journees: getArray(STORAGE_KEYS.journees),
+      transactions: getArray(STORAGE_KEYS.transactions),
+      stockPreparations: getArray(STORAGE_KEYS.stockPreparations)
+    });
+
+    updateRawCounts(data);
+
+    return data;
+  };
 
   const getActiveIds = () => {
     const context = getObject(STORAGE_KEYS.preparationContext);
 
     return {
       stockMissionId:
-        localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
+        safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
         context.stock_mission_id ||
         context.mission_id ||
-        localStorage.getItem(STORAGE_KEYS.activeMissionId) ||
+        safeLocalGet(STORAGE_KEYS.activeMissionId) ||
         "",
       journeeId:
-        localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
+        safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
         context.journee_id ||
         ""
     };
@@ -473,7 +579,7 @@
 
     if (toBoolean(mission.stock_prepare, false)) return true;
 
-    if (["pret", "prêt", "en_cours", "termine", "terminé", "cloture", "clôturé"].includes(normalizeStatus(mission.statut))) {
+    if (["pret", "en_cours", "termine", "cloture"].includes(normalizeStatus(mission.statut))) {
       return true;
     }
 
@@ -481,9 +587,12 @@
 
     return Boolean(
       preparation &&
-      ["valide", "validé", "pret", "prêt"].includes(normalizeStatus(preparation.statut))
+      ["valide", "pret"].includes(normalizeStatus(preparation.statut))
     );
   };
+
+  const getTransactionId = (transaction) =>
+    String(transaction?.transaction_id || transaction?.id || "").trim();
 
   const getDayTransactions = (journeeId, transactions) => {
     if (!journeeId) return [];
@@ -497,11 +606,8 @@
 
     const byId = new Map();
 
-    [...remoteTransactions, ...localPendingTransactions].forEach((transaction) => {
-      const id =
-        String(transaction.transaction_id || "").trim() ||
-        `LOCAL_${Math.random().toString(36).slice(2)}`;
-
+    [...remoteTransactions, ...localPendingTransactions].forEach((transaction, index) => {
+      const id = getTransactionId(transaction) || `LOCAL_${index}`;
       byId.set(id, transaction);
     });
 
@@ -591,7 +697,9 @@
     return {
       user: CURRENT_USER,
       dataSource: state.dataSource,
+      apiMode: state.apiMode,
       loadError: state.loadError,
+      rawCounts: state.rawCounts,
 
       inscriptions,
       activeInscriptions: getCleanInscriptions(inscriptions),
@@ -605,6 +713,12 @@
       journee,
       stockPrepared,
       dayTransactions,
+
+      filteredCounts: {
+        events: events.length,
+        stockMissions: stockMissions.length,
+        journees: journees.length
+      },
 
       resume: {
         ca_jour_ttc: revenue,
@@ -831,26 +945,30 @@
     const items = [];
 
     if (homeState.dataSource === "remote") {
-      items.push("Données Google Sheets chargées.");
+      items.push(`Données Google Sheets chargées (${homeState.apiMode || "API"}).`);
     }
 
     if (homeState.dataSource === "cache") {
       items.push(`Données locales affichées : ${homeState.loadError || "API indisponible."}`);
     }
 
+    items.push(
+      `Brut Sheets : ${homeState.rawCounts.inscriptions} inscription(s), ${homeState.rawCounts.events} évènement(s), ${homeState.rawCounts.stockMissions} mission(s) stock, ${homeState.rawCounts.journees} journée(s).`
+    );
+
+    items.push(
+      `Après filtres accueil : ${homeState.activeInscriptions.length} inscription(s), ${homeState.acceptedInscriptions.length} acceptée(s), ${homeState.filteredCounts.stockMissions} mission(s) stock utile(s), ${homeState.filteredCounts.journees} journée(s).`
+    );
+
     if (!homeState.mission || !homeState.journee) {
-      if (homeState.activeInscriptions.length > 0) {
-        items.push(
-          `${homeState.activeInscriptions.length} inscription(s) suivie(s), dont ${homeState.acceptedInscriptions.length} acceptée(s).`
-        );
+      if (homeState.stockMissions.length > 0) {
+        items.push(`${homeState.stockMissions.length} mission(s) de stock utile(s) trouvée(s), mais aucune journée active associée.`);
       } else {
-        items.push("Aucune inscription active chargée pour le moment.");
+        items.push("Aucune mission de stock active détectée pour l’accueil.");
       }
 
-      if (homeState.stockMissions.length > 0) {
-        items.push(`${homeState.stockMissions.length} mission(s) de stock utile(s) trouvée(s).`);
-      } else {
-        items.push("Commence par créer ou accepter une inscription, puis crée l’évènement.");
+      if (homeState.rawCounts.stockMissions > 0 && homeState.stockMissions.length === 0) {
+        items.push("Des missions existent dans Sheets, mais elles sont probablement historiques, annulées ou clôturées anciennes.");
       }
 
       return items;
@@ -918,6 +1036,7 @@
       state.data = loadCacheData();
       state.dataSource = "cache";
       state.loadError = error.message || "Lecture API impossible.";
+      state.apiMode = "cache";
       state.pendingWritesCount = 0;
     }
 
