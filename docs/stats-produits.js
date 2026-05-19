@@ -579,10 +579,10 @@
 
     if (els.list) {
       els.list.innerHTML =
-        `<p class="statsEmpty">Chargement depuis Google Sheets…</p>`;
+        `<p class="statsEmpty">Chargement…</p>`;
     }
 
-    setStatus("Chargement depuis Google Sheets…");
+    setStatus("Chargement…");
   };
 
   const render = () => {
@@ -701,7 +701,7 @@
     state.lignes = readFirstArray(LEGACY_KEYS.ventesLignes);
     state.catalogue = readFirstArray(LEGACY_KEYS.catalogue);
     state.source = "local";
-    state.loadError = error?.message || "Lecture Google Sheets impossible.";
+    state.loadError = error?.message || "Lecture données impossible.";
   };
 
   const bindEvents = () => {
