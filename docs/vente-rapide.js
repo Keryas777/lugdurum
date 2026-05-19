@@ -2,13 +2,14 @@
   "use strict";
 
   /*
-    Vente rapide V16 :
+    Vente rapide V17 :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
     - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
     - Fallback cache localStorage pour catalogue / offres uniquement.
     - Contexte journée lu depuis lugdurum_preparation_context / active ids.
     - Aucun fallback de test : aucune vente possible sans mission_id + journee_id.
     - Enregistrement des tickets via LugdurumAPI.saveTransaction().
+    - Écriture complémentaire des sorties de stock dans mouvements_stock.
     - La file d’attente offline est gérée dans lugdurum-api.js.
     - SumUp V1 :
       - CB → bouton “Encaisser avec SumUp”.
@@ -24,6 +25,18 @@
     date_label: "Retourne dans Missions ou Préparation stock pour démarrer une journée.",
     user_id: "U_JEROME",
     vendeur: "Jérôme"
+  };
+
+  const SHEETS = {
+    mouvementsStock: "mouvements_stock"
+  };
+
+  const MOVEMENT_TYPE = {
+    VENTE: "vente"
+  };
+
+  const MOVEMENT_SENS = {
+    SORTIE: "SORTIE"
   };
 
   const SUMUP_CONFIG = {
@@ -64,6 +77,7 @@
     localTransactionsBackup: "lugdurum_transactions_backup",
     catalogueCache: "lugdurum_catalogue_cache",
     offresVenteCache: "lugdurum_offres_vente_cache",
+    mouvementsStock: "lugdurum_mouvements_stock",
     sumupPending: "lugdurum_pending_sumup_ticket",
     sumupAffiliateKey: "lugdurum_sumup_affiliate_key"
   };
@@ -78,6 +92,7 @@
     offresVente: [],
     missionsStock: [],
     journees: [],
+    mouvementsStock: [],
     dataLoaded: false,
     contextLoaded: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE }
@@ -113,7 +128,6 @@
   };
 
   const api = () => window.LugdurumAPI || null;
-
   const hasApi = () => Boolean(api());
 
   const readJson = (key, fallback) => {
@@ -135,6 +149,9 @@
       minimumFractionDigits: value % 1 === 0 ? 0 : 2,
       maximumFractionDigits: 2
     }).format(value || 0);
+
+  const formatAmount = (value) =>
+    Math.round((toNumber(value, 0) + Number.EPSILON) * 100) / 100;
 
   const formatAmountInput = (value) =>
     (Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2);
@@ -168,7 +185,6 @@
     if (!normalized) return fallback;
 
     const number = Number(normalized);
-
     return Number.isFinite(number) ? number : fallback;
   };
 
@@ -856,6 +872,27 @@
     writeJson(STORAGE_KEYS.lastTicket, transaction);
   };
 
+  const upsertLocalMouvementsStock = (movements) => {
+    if (!Array.isArray(movements) || movements.length === 0) return;
+
+    const current = readCachedArray(STORAGE_KEYS.mouvementsStock);
+    const byId = new Map();
+
+    current.forEach((movement) => {
+      const id = String(movement.mouvement_stock_id || "").trim();
+      if (id) byId.set(id, movement);
+    });
+
+    movements.forEach((movement) => {
+      const id = String(movement.mouvement_stock_id || "").trim();
+      if (id) byId.set(id, movement);
+    });
+
+    const next = [...byId.values()];
+    state.mouvementsStock = next;
+    writeCachedArray(STORAGE_KEYS.mouvementsStock, next);
+  };
+
   const getSourceForPayment = ({ provider = "" } = {}) => {
     if (state.paymentMode === "ESP") return "WEBAPP_ESPECES";
     if (state.paymentMode === "CHQ") return "WEBAPP_CHEQUE";
@@ -874,15 +911,19 @@
           ligne_id: `${transactionId}_L${String(lines.length + 1).padStart(2, "0")}`,
           transaction_id: transactionId,
           mission_id: state.journeeActive.mission_id,
+          stock_mission_id: state.journeeActive.mission_id,
           journee_id: state.journeeActive.journee_id,
           sku_id: item.sku_id,
+          parfum_code: item.parfum_code,
+          parfum_nom: item.parfum_nom,
+          format_cl: item.format_cl,
           quantite: item.quantite,
           prix_unitaire_ttc: item.prix_unitaire_ttc,
           prix_unitaire_ht: item.prix_unitaire_ht,
           taux_tva: item.taux_tva || 0,
           montant_tva_ligne: 0,
-          total_catalogue_ligne_ttc: item.quantite * item.prix_unitaire_ttc,
-          total_catalogue_ligne_ht: item.quantite * item.prix_unitaire_ht,
+          total_catalogue_ligne_ttc: formatAmount(item.quantite * item.prix_unitaire_ttc),
+          total_catalogue_ligne_ht: formatAmount(item.quantite * item.prix_unitaire_ht),
           cout_unitaire: 0,
           marge_brute_ligne: 0,
           source: getSourceForPayment({ provider }),
@@ -928,15 +969,19 @@
             ligne_id: `${transactionId}_L${String(lines.length + 1).padStart(2, "0")}`,
             transaction_id: transactionId,
             mission_id: state.journeeActive.mission_id,
+            stock_mission_id: state.journeeActive.mission_id,
             journee_id: state.journeeActive.journee_id,
             sku_id: product.sku_id,
+            parfum_code: product.parfum_code,
+            parfum_nom: product.parfum_nom,
+            format_cl: product.format_cl,
             quantite: qty,
-            prix_unitaire_ttc: unitPriceTtc,
-            prix_unitaire_ht: unitPriceHt,
+            prix_unitaire_ttc: formatAmount(unitPriceTtc),
+            prix_unitaire_ht: formatAmount(unitPriceHt),
             taux_tva: item.taux_tva || 0,
             montant_tva_ligne: 0,
-            total_catalogue_ligne_ttc: totalLineTtc,
-            total_catalogue_ligne_ht: totalLineHt,
+            total_catalogue_ligne_ttc: formatAmount(totalLineTtc),
+            total_catalogue_ligne_ht: formatAmount(totalLineHt),
             cout_unitaire: 0,
             marge_brute_ligne: 0,
             source: getSourceForPayment({ provider }),
@@ -949,6 +994,91 @@
     });
 
     return lines;
+  };
+
+  const buildStockMovementId = (line) =>
+    `MVT_${line.ligne_id}_VENTE`;
+
+  const buildStockMovementsFromTransaction = (transaction) => {
+    const lines = Array.isArray(transaction?.lignes) ? transaction.lignes : [];
+    const now = new Date().toISOString();
+
+    return lines
+      .filter((line) => toNumber(line.quantite, 0) > 0)
+      .map((line) => ({
+        mouvement_stock_id: buildStockMovementId(line),
+        date_heure: transaction.date_heure || now,
+        mission_id: transaction.mission_id,
+        stock_mission_id: transaction.stock_mission_id || transaction.mission_id,
+        journee_id: transaction.journee_id,
+        type_mouvement: MOVEMENT_TYPE.VENTE,
+        sens: MOVEMENT_SENS.SORTIE,
+        sku_id: line.sku_id,
+        parfum_code: line.parfum_code || "",
+        parfum_nom: line.parfum_nom || "",
+        format_cl: line.format_cl || "",
+        quantite: toNumber(line.quantite, 0),
+        source: transaction.source || getSourceForPayment(),
+        source_id: transaction.transaction_id,
+        transaction_id: transaction.transaction_id,
+        ligne_id: line.ligne_id,
+        statut: transaction.statut === "validee" ? "valide" : transaction.statut,
+        note: line.note || "",
+        user_id: transaction.user_id,
+        created_at: line.created_at || now,
+        updated_at: now
+      }));
+  };
+
+  const buildBatchOperation = ({ sheet, sheetKey, keyField, row }) => ({
+    action: "upsert",
+    type: "upsert",
+
+    sheetKey,
+    sheet_key: sheetKey,
+
+    sheet,
+    sheet_name: sheet,
+    sheetName: sheet,
+
+    key: keyField,
+    key_field: keyField,
+    keyField,
+
+    row,
+    data: row
+  });
+
+  const saveStockMovementsToApi = async (movements) => {
+    if (!Array.isArray(movements) || movements.length === 0) {
+      return {
+        skipped: true,
+        mouvements_count: 0
+      };
+    }
+
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    if (typeof api().batchUpsert !== "function") {
+      throw new Error("LugdurumAPI.batchUpsert() est indisponible pour écrire les mouvements de stock.");
+    }
+
+    const operations = movements.map((movement) =>
+      buildBatchOperation({
+        sheet: SHEETS.mouvementsStock,
+        sheetKey: "mouvementsStock",
+        keyField: "mouvement_stock_id",
+        row: movement
+      })
+    );
+
+    const result = await api().batchUpsert(operations);
+
+    upsertLocalMouvementsStock(movements);
+
+    return result;
   };
 
   const buildTransaction = ({
@@ -965,10 +1095,11 @@
 
     const createdAt = new Date().toISOString();
 
-    return {
+    const transaction = {
       transaction_id: transactionId,
       date_heure: createdAt,
       mission_id: state.journeeActive.mission_id,
+      stock_mission_id: state.journeeActive.mission_id,
       journee_id: state.journeeActive.journee_id,
       user_id: state.journeeActive.user_id,
       mode_paiement: state.paymentMode,
@@ -977,19 +1108,23 @@
       sumup_foreign_tx_id: provider === "SUMUP" ? foreignTxId : "",
       source: getSourceForPayment({ provider }),
       source_id: provider === "SUMUP" ? foreignTxId : "",
-      total_catalogue_ttc: totalCatalogue,
-      total_catalogue_ht: totalCatalogue,
+      total_catalogue_ttc: formatAmount(totalCatalogue),
+      total_catalogue_ht: formatAmount(totalCatalogue),
       total_tva: 0,
-      total_encaisse_ttc: totalEncaisse,
-      remise_totale: totalCatalogue - totalEncaisse,
+      total_encaisse_ttc: formatAmount(totalEncaisse),
+      remise_totale: formatAmount(totalCatalogue - totalEncaisse),
       motif_remise: totalCatalogue !== totalEncaisse ? "Montant encaissé modifié" : "",
       statut: status,
       note: "",
       detail_ticket: JSON.stringify(state.ticketItems),
       created_at: createdAt,
       updated_at: createdAt,
-      lignes: buildSaleLines(transactionId, { provider })
+      lignes: []
     };
+
+    transaction.lignes = buildSaleLines(transactionId, { provider });
+
+    return transaction;
   };
 
   const saveTransactionToApi = async (transaction) => {
@@ -1002,9 +1137,18 @@
     }
 
     const result = await api().saveTransaction(transaction);
+    const movements = buildStockMovementsFromTransaction(transaction);
+
+    if (transaction.statut === "validee") {
+      await saveStockMovementsToApi(movements);
+    }
+
     saveLocalTransactionBackup(transaction);
 
-    return result;
+    return {
+      transaction: result,
+      mouvements_stock_count: movements.length
+    };
   };
 
   const getSumupAffiliateKey = () => {
@@ -1232,7 +1376,7 @@
 
       setStatus(
         pendingCount > 0
-          ? `Paiement SumUp validé · ticket en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
+          ? `Paiement SumUp validé · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
           : `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
@@ -1313,8 +1457,8 @@
 
       setStatus(
         pendingCount > 0
-          ? `Ticket conservé dans la file d’attente officielle · à synchroniser · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
-          : `Ticket enregistré · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
+          ? `Ticket + sortie stock conservés dans la file d’attente · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
+          : `Ticket enregistré + stock décrémenté · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
 
@@ -1421,9 +1565,16 @@
         throw new Error("getOffresVente() est introuvable dans lugdurum-api.js.");
       }
 
-      const [catalogueRows, offresRows] = await Promise.all([
+      const [
+        catalogueRows,
+        offresRows,
+        mouvementsRows
+      ] = await Promise.all([
         api().getCatalogue(),
-        api().getOffresVente()
+        api().getOffresVente(),
+        typeof api().getMouvementsStock === "function"
+          ? api().getMouvementsStock()
+          : Promise.resolve([])
       ]);
 
       state.catalogue = catalogueRows
@@ -1434,10 +1585,13 @@
         .map((row, index) => normalizeOffer(row, index))
         .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
 
+      state.mouvementsStock = Array.isArray(mouvementsRows) ? mouvementsRows : [];
+
       state.dataLoaded = true;
 
       writeCachedArray(STORAGE_KEYS.catalogueCache, state.catalogue);
       writeCachedArray(STORAGE_KEYS.offresVenteCache, state.offresVente);
+      writeCachedArray(STORAGE_KEYS.mouvementsStock, state.mouvementsStock);
 
       if (state.offresVente.length === 0) {
         setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
@@ -1449,10 +1603,12 @@
     } catch (error) {
       const cachedCatalogue = readCachedArray(STORAGE_KEYS.catalogueCache);
       const cachedOffres = readCachedArray(STORAGE_KEYS.offresVenteCache);
+      const cachedMouvements = readCachedArray(STORAGE_KEYS.mouvementsStock);
 
       if (cachedCatalogue.length > 0 || cachedOffres.length > 0) {
         state.catalogue = cachedCatalogue.map((row, index) => normalizeProduct(row, index));
         state.offresVente = cachedOffres.map((row, index) => normalizeOffer(row, index));
+        state.mouvementsStock = cachedMouvements;
         state.dataLoaded = true;
 
         setStatus("Données chargées depuis le cache local.", "isError");
@@ -1463,6 +1619,7 @@
       state.dataLoaded = true;
       state.catalogue = [];
       state.offresVente = [];
+      state.mouvementsStock = [];
 
       setStatus(`Impossible de charger les données : ${error.message}`, "isError");
       renderAll({ refreshProducts: true });
