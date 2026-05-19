@@ -2,20 +2,17 @@
   "use strict";
 
   /*
-    Accueil V10 :
+    Accueil V11 :
     - Source prioritaire : Google Sheets via window.LugdurumAPI.
     - Chargement API prioritaire via getCoreData(), puis fallback par getters séparés.
     - Cache localStorage uniquement en secours si l’API est indisponible.
     - Accès localStorage sécurisé pour Safari privé.
     - Diagnostic visible dans "À surveiller" : source + compteurs bruts + compteurs filtrés.
+    - Ne dépend plus de stock_preparations / stock_preparation_lignes.
+    - Utilise mouvements_stock pour détecter une préparation initiale.
     - Évite les compteurs incohérents entre Safari privé / Safari normal / icône écran d’accueil.
     - Exclut les données historiques SAISIE_HISTORIQUE des compteurs d’accueil.
     - Exclut les missions stock clôturées anciennes du compteur d’accueil.
-    - Stats dynamiques :
-      - sans journée active : inscriptions / acceptées / missions stock utiles
-      - stock à préparer : journées / stock / à synchroniser
-      - vente ou clôture : CA jour / tickets / à synchroniser
-    - Parcours principal visuel en étapes.
   */
 
   const CURRENT_USER = {
@@ -30,7 +27,7 @@
     stockMissions: "lugdurum_missions_stock",
     journees: "lugdurum_journees",
     transactions: "lugdurum_transactions",
-    stockPreparations: "lugdurum_stock_preparations",
+    mouvementsStock: "lugdurum_mouvements_stock",
 
     activeMissionId: "lugdurum_active_mission_id",
     activeStockMissionId: "lugdurum_active_stock_mission_id",
@@ -46,11 +43,20 @@
     "missionsStock",
     "journees",
     "transactions",
-    "stockPreparations"
+    "mouvementsStock"
   ];
 
   const STEP_ORDER = ["inscriptions", "missions", "stock", "vente", "cloture"];
   const HISTORICAL_SOURCE = "SAISIE_HISTORIQUE";
+
+  const INITIAL_STOCK_MOVEMENT_TYPES = [
+    "preparation_initiale",
+    "stock_initial",
+    "preparation_stock",
+    "initial_stock",
+    "entree_initiale",
+    "preparation"
+  ];
 
   const formatEuro = new Intl.NumberFormat("fr-FR", {
     style: "currency",
@@ -77,7 +83,7 @@
       stockMissions: 0,
       journees: 0,
       transactions: 0,
-      stockPreparations: 0
+      mouvementsStock: 0
     },
     data: {
       inscriptions: [],
@@ -85,7 +91,7 @@
       stockMissions: [],
       journees: [],
       transactions: [],
-      stockPreparations: []
+      mouvementsStock: []
     }
   };
 
@@ -243,11 +249,39 @@
   const getStockMissionId = (mission) =>
     String(mission?.mission_id || "").trim();
 
+  const getStockMissionEventId = (mission) =>
+    String(mission?.evenement_id || mission?.event_id || "").trim();
+
   const getDayId = (journee) =>
     String(journee?.journee_id || "").trim();
 
   const getDayEventId = (journee) =>
     String(journee?.evenement_id || journee?.mission_id || "").trim();
+
+  const getMovementMissionId = (mouvement) =>
+    String(
+      mouvement?.stock_mission_id ||
+      mouvement?.mission_stock_id ||
+      mouvement?.mission_id ||
+      ""
+    ).trim();
+
+  const getMovementType = (mouvement) =>
+    normalizeStatus(
+      mouvement?.type_mouvement ||
+      mouvement?.mouvement_type ||
+      mouvement?.type ||
+      mouvement?.categorie ||
+      ""
+    );
+
+  const getMovementQuantity = (mouvement) =>
+    toNumber(
+      mouvement?.quantite ??
+      mouvement?.quantity ??
+      mouvement?.qty,
+      0
+    );
 
   const isHistoricalSource = (item) =>
     String(item?.source || "")
@@ -357,19 +391,37 @@
 
   const callArray = async (names, { required = true } = {}) => {
     const nameList = Array.isArray(names) ? names : [names];
+    let lastError = null;
+    let foundCallable = false;
 
     for (const name of nameList) {
-      if (hasApi() && typeof api()[name] === "function") {
+      if (!hasApi() || typeof api()[name] !== "function") {
+        continue;
+      }
+
+      foundCallable = true;
+
+      try {
         const result = await api()[name]();
         return Array.isArray(result) ? result : [];
+      } catch (error) {
+        lastError = error;
       }
     }
 
-    if (required) {
+    if (!required) {
+      return [];
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    if (!foundCallable) {
       throw new Error(`Fonction API indisponible : ${nameList.join(" / ")}`);
     }
 
-    return [];
+    throw new Error(`Lecture API impossible : ${nameList.join(" / ")}`);
   };
 
   const getPendingWritesCount = () => {
@@ -380,13 +432,17 @@
     return 0;
   };
 
-  const normalizeCoreArray = (coreData, key) => {
-    const value = coreData?.[key];
+  const normalizeCoreArray = (coreData, key, aliases = []) => {
+    const keys = [key, ...aliases];
 
-    if (Array.isArray(value)) return value;
+    for (const candidateKey of keys) {
+      const value = coreData?.[candidateKey];
 
-    if (value && typeof value === "object" && value.ok === false) {
-      throw new Error(value.error || `Table coreData invalide : ${key}`);
+      if (Array.isArray(value)) return value;
+
+      if (value && typeof value === "object" && value.ok === false) {
+        throw new Error(value.error || `Table coreData invalide : ${candidateKey}`);
+      }
     }
 
     return [];
@@ -398,7 +454,7 @@
     stockMissions: Array.isArray(data.stockMissions) ? data.stockMissions : [],
     journees: Array.isArray(data.journees) ? data.journees : [],
     transactions: Array.isArray(data.transactions) ? data.transactions : [],
-    stockPreparations: Array.isArray(data.stockPreparations) ? data.stockPreparations : []
+    mouvementsStock: Array.isArray(data.mouvementsStock) ? data.mouvementsStock : []
   });
 
   const cacheRemoteData = (data) => {
@@ -407,7 +463,7 @@
     writeJson(STORAGE_KEYS.stockMissions, data.stockMissions);
     writeJson(STORAGE_KEYS.journees, data.journees);
     writeJson(STORAGE_KEYS.transactions, data.transactions);
-    writeJson(STORAGE_KEYS.stockPreparations, data.stockPreparations);
+    writeJson(STORAGE_KEYS.mouvementsStock, data.mouvementsStock);
   };
 
   const updateRawCounts = (data) => {
@@ -417,7 +473,7 @@
       stockMissions: data.stockMissions.length,
       journees: data.journees.length,
       transactions: data.transactions.length,
-      stockPreparations: data.stockPreparations.length
+      mouvementsStock: data.mouvementsStock.length
     };
   };
 
@@ -433,12 +489,12 @@
     }
 
     return normalizeRemoteData({
-      inscriptions: normalizeCoreArray(coreData, "inscriptions"),
-      events: normalizeCoreArray(coreData, "missions"),
-      stockMissions: normalizeCoreArray(coreData, "missionsStock"),
-      journees: normalizeCoreArray(coreData, "journees"),
+      inscriptions: normalizeCoreArray(coreData, "inscriptions", ["inscriptions_evenements"]),
+      events: normalizeCoreArray(coreData, "missions", ["missions_vente"]),
+      stockMissions: normalizeCoreArray(coreData, "missionsStock", ["missions_stock"]),
+      journees: normalizeCoreArray(coreData, "journees", ["journees_vente"]),
       transactions: normalizeCoreArray(coreData, "transactions"),
-      stockPreparations: normalizeCoreArray(coreData, "stockPreparations")
+      mouvementsStock: normalizeCoreArray(coreData, "mouvementsStock", ["mouvements_stock", "stock_mouvements"])
     });
   };
 
@@ -449,14 +505,14 @@
       stockMissions,
       journees,
       transactions,
-      stockPreparations
+      mouvementsStock
     ] = await Promise.all([
       callArray(["getInscriptionsEvenements", "getInscriptions"]),
       callArray("getMissions"),
       callArray("getMissionsStock"),
       callArray(["getJournees", "getJourneesVente"]),
       callArray("getTransactions", { required: false }),
-      callArray("getStockPreparations", { required: false })
+      callArray("getMouvementsStock", { required: false })
     ]);
 
     return normalizeRemoteData({
@@ -465,7 +521,7 @@
       stockMissions,
       journees,
       transactions,
-      stockPreparations
+      mouvementsStock
     });
   };
 
@@ -505,7 +561,7 @@
       stockMissions: getArray(STORAGE_KEYS.stockMissions),
       journees: getArray(STORAGE_KEYS.journees),
       transactions: getArray(STORAGE_KEYS.transactions),
-      stockPreparations: getArray(STORAGE_KEYS.stockPreparations)
+      mouvementsStock: getArray(STORAGE_KEYS.mouvementsStock)
     });
 
     updateRawCounts(data);
@@ -520,6 +576,7 @@
       stockMissionId:
         safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
         context.stock_mission_id ||
+        context.mission_stock_id ||
         context.mission_id ||
         safeLocalGet(STORAGE_KEYS.activeMissionId) ||
         "",
@@ -566,15 +623,44 @@
     return candidates[0] || null;
   };
 
-  const getStockPreparationForMission = (missionId, stockPreparations) =>
-    stockPreparations.find((item) => {
-      return (
-        String(item.mission_id || "") === String(missionId || "") ||
-        String(item.stock_mission_id || "") === String(missionId || "")
-      );
-    }) || null;
+  const isInitialStockMovement = (mouvement) => {
+    if (!mouvement || isCancelledStatus(mouvement)) return false;
 
-  const isStockPrepared = (mission, stockPreparations) => {
+    const type = getMovementType(mouvement);
+
+    if (INITIAL_STOCK_MOVEMENT_TYPES.includes(type)) {
+      return true;
+    }
+
+    return type.includes("preparation") && type.includes("initial");
+  };
+
+  const hasInitialStockMovement = (mission, mouvementsStock) => {
+    if (!mission) return false;
+
+    const missionIds = new Set(
+      [
+        getStockMissionId(mission),
+        String(mission.stock_mission_id || "").trim(),
+        String(mission.mission_stock_id || "").trim(),
+        getStockMissionEventId(mission)
+      ].filter(Boolean)
+    );
+
+    return mouvementsStock.some((mouvement) => {
+      if (!isInitialStockMovement(mouvement)) return false;
+
+      const movementMissionId = getMovementMissionId(mouvement);
+
+      if (!missionIds.has(movementMissionId)) return false;
+
+      const quantity = getMovementQuantity(mouvement);
+
+      return quantity !== 0 || !Object.prototype.hasOwnProperty.call(mouvement, "quantite");
+    });
+  };
+
+  const isStockPrepared = (mission, mouvementsStock) => {
     if (!mission) return false;
 
     if (toBoolean(mission.stock_prepare, false)) return true;
@@ -583,12 +669,7 @@
       return true;
     }
 
-    const preparation = getStockPreparationForMission(mission.mission_id, stockPreparations);
-
-    return Boolean(
-      preparation &&
-      ["valide", "pret"].includes(normalizeStatus(preparation.statut))
-    );
+    return hasInitialStockMovement(mission, mouvementsStock);
   };
 
   const getTransactionId = (transaction) =>
@@ -659,12 +740,17 @@
     const stockMissions = data.stockMissions.filter(isStockMissionUsefulForHome);
     const journees = data.journees.filter((journee) => !isHistoricalDay(journee));
     const transactions = data.transactions;
-    const stockPreparations = data.stockPreparations;
+    const mouvementsStock = data.mouvementsStock;
 
     const activeIds = getActiveIds();
 
     let mission = activeIds.stockMissionId
-      ? stockMissions.find((item) => getStockMissionId(item) === activeIds.stockMissionId) || null
+      ? stockMissions.find((item) => {
+          return (
+            getStockMissionId(item) === activeIds.stockMissionId ||
+            getStockMissionEventId(item) === activeIds.stockMissionId
+          );
+        }) || null
       : null;
 
     if (!mission) {
@@ -686,7 +772,7 @@
     const linkedDays = mission ? getMissionJournees(mission.mission_id, journees) : [];
     const dayTransactions = getDayTransactions(journee?.journee_id || "", transactions);
     const revenue = getRevenueForTransactions(dayTransactions);
-    const stockPrepared = isStockPrepared(mission, stockPreparations);
+    const stockPrepared = isStockPrepared(mission, mouvementsStock);
 
     const localPendingTransactionsCount = getArray(STORAGE_KEYS.pendingTransactions).length;
     const totalPendingSync = Math.max(
@@ -708,6 +794,7 @@
       events,
       stockMissions,
       journees,
+      mouvementsStock,
       linkedDays,
       mission,
       journee,
@@ -717,7 +804,8 @@
       filteredCounts: {
         events: events.length,
         stockMissions: stockMissions.length,
-        journees: journees.length
+        journees: journees.length,
+        mouvementsStock: mouvementsStock.length
       },
 
       resume: {
@@ -953,7 +1041,7 @@
     }
 
     items.push(
-      `Brut Sheets : ${homeState.rawCounts.inscriptions} inscription(s), ${homeState.rawCounts.events} évènement(s), ${homeState.rawCounts.stockMissions} mission(s) stock, ${homeState.rawCounts.journees} journée(s).`
+      `Brut Sheets : ${homeState.rawCounts.inscriptions} inscription(s), ${homeState.rawCounts.events} évènement(s), ${homeState.rawCounts.stockMissions} mission(s) stock, ${homeState.rawCounts.journees} journée(s), ${homeState.rawCounts.mouvementsStock} mouvement(s) stock.`
     );
 
     items.push(
@@ -980,6 +1068,10 @@
 
     if (uiState.code === "stock_to_prepare") {
       items.push("Le stock initial n’est pas encore validé pour cette mission.");
+    }
+
+    if (homeState.stockPrepared) {
+      items.push("Stock initial considéré comme préparé.");
     }
 
     if (uiState.code === "selling") {
