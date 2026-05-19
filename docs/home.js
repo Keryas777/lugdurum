@@ -2,10 +2,15 @@
   "use strict";
 
   /*
-    Accueil V8 :
-    - L'accueil lit le parcours localStorage.
+    Accueil V9 :
+    - Source prioritaire : Google Sheets via window.LugdurumAPI.
+    - Le cache localStorage n’est utilisé qu’en secours si l’API est indisponible.
+    - Au chargement : état neutre, puis remplacement par les données API.
+    - Évite les compteurs incohérents entre Safari privé / Safari normal / icône écran d’accueil.
+    - Exclut les données historiques SAISIE_HISTORIQUE des compteurs d’accueil.
+    - Exclut les missions stock clôturées anciennes du compteur d’accueil.
     - Stats dynamiques :
-      - sans journée active : inscriptions / acceptées / missions stock
+      - sans journée active : inscriptions / acceptées / missions stock utiles
       - stock à préparer : journées / stock / à synchroniser
       - vente ou clôture : CA jour / tickets / à synchroniser
     - Parcours principal visuel en étapes.
@@ -22,15 +27,20 @@
     events: "lugdurum_evenements",
     stockMissions: "lugdurum_missions_stock",
     journees: "lugdurum_journees",
+    transactions: "lugdurum_transactions",
+    stockPreparations: "lugdurum_stock_preparations",
+
     activeMissionId: "lugdurum_active_mission_id",
     activeStockMissionId: "lugdurum_active_stock_mission_id",
     activeJourneeId: "lugdurum_active_journee_id",
     preparationContext: "lugdurum_preparation_context",
-    pendingTransactions: "lugdurum_pending_transactions",
-    stockPreparations: "lugdurum_stock_preparations"
+
+    pendingTransactions: "lugdurum_pending_transactions"
   };
 
   const STEP_ORDER = ["inscriptions", "missions", "stock", "vente", "cloture"];
+
+  const HISTORICAL_SOURCE = "SAISIE_HISTORIQUE";
 
   const formatEuro = new Intl.NumberFormat("fr-FR", {
     style: "currency",
@@ -45,13 +55,40 @@
     year: "numeric"
   });
 
+  const state = {
+    dataSource: "loading",
+    loadError: "",
+    pendingWritesCount: 0,
+    data: {
+      inscriptions: [],
+      events: [],
+      stockMissions: [],
+      journees: [],
+      transactions: [],
+      stockPreparations: []
+    }
+  };
+
   const qs = (selector) => document.querySelector(selector);
+
+  const api = () => window.LugdurumAPI || null;
+
+  const hasApi = () => Boolean(api());
 
   const readJson = (key, fallback) => {
     try {
-      return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
     } catch {
       return fallback;
+    }
+  };
+
+  const writeJson = (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Cache non critique.
     }
   };
 
@@ -65,10 +102,66 @@
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   };
 
+  const toNumber = (value, fallback = 0) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(",", ".");
+
+    if (!normalized) return fallback;
+
+    const number = Number(normalized);
+
+    return Number.isFinite(number) ? number : fallback;
+  };
+
+  const toBoolean = (value, fallback = false) => {
+    if (value === true) return true;
+    if (value === false) return false;
+    if (typeof value === "number") return value !== 0;
+
+    const normalized = String(value ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!normalized) return fallback;
+
+    if (["true", "vrai", "oui", "yes", "1", "x", "actif"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "faux", "non", "no", "0", "inactif"].includes(normalized)) {
+      return false;
+    }
+
+    return fallback;
+  };
+
+  const normalizeText = (value) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const normalizeStatus = (value) => normalizeText(value);
+
   const parseDate = (isoDate) => {
     if (!isoDate) return null;
-    return new Date(`${isoDate}T12:00:00`);
+    return new Date(`${String(isoDate).slice(0, 10)}T12:00:00`);
   };
+
+  const formatIsoDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayIso = () => formatIsoDate(new Date());
 
   const formatDisplayDate = (isoDate) => {
     const date = parseDate(isoDate);
@@ -85,6 +178,234 @@
 
     return `${formatDisplayDate(item.date_debut)} → ${formatDisplayDate(item.date_fin)}`;
   };
+
+  const isCancelledStatus = (item) => {
+    const statut = normalizeStatus(item?.statut);
+
+    return [
+      "annule",
+      "annulee",
+      "annulé",
+      "annulée",
+      "refuse",
+      "refusee",
+      "refusé",
+      "refusée"
+    ].includes(statut);
+  };
+
+  const isClosedStatus = (item) => {
+    const statut = normalizeStatus(item?.statut);
+
+    return [
+      "cloture",
+      "cloturee",
+      "clôturé",
+      "clôturée",
+      "termine",
+      "terminee",
+      "terminé",
+      "terminée"
+    ].includes(statut);
+  };
+
+  const isValidStatus = (item) => !isCancelledStatus(item);
+
+  const getEventId = (eventItem) =>
+    String(eventItem?.mission_id || eventItem?.evenement_id || "").trim();
+
+  const getStockMissionId = (mission) =>
+    String(mission?.mission_id || "").trim();
+
+  const getDayId = (journee) =>
+    String(journee?.journee_id || "").trim();
+
+  const getDayEventId = (journee) =>
+    String(journee?.evenement_id || journee?.mission_id || "").trim();
+
+  const isHistoricalSource = (item) =>
+    String(item?.source || "")
+      .trim()
+      .toUpperCase() === HISTORICAL_SOURCE;
+
+  const isHistoricalEvent = (eventItem) => {
+    const eventId = getEventId(eventItem);
+
+    return (
+      isHistoricalSource(eventItem) ||
+      eventId.startsWith("EVT_HIST_")
+    );
+  };
+
+  const isHistoricalStockMission = (mission) => {
+    const missionId = getStockMissionId(mission);
+
+    return (
+      isHistoricalSource(mission) ||
+      missionId.startsWith("MST_HIST_")
+    );
+  };
+
+  const isHistoricalDay = (journee) => {
+    const journeeId = getDayId(journee);
+    const eventId = getDayEventId(journee);
+    const stockMissionId = String(journee?.stock_mission_id || "").trim();
+
+    return (
+      isHistoricalSource(journee) ||
+      journeeId.startsWith("J_HIST_") ||
+      eventId.startsWith("EVT_HIST_") ||
+      stockMissionId.startsWith("MST_HIST_")
+    );
+  };
+
+  const isUpcomingOrCurrent = (item) => {
+    if (!item?.date_fin && !item?.date_debut) return true;
+
+    const end = String(item.date_fin || item.date_debut || "").slice(0, 10);
+
+    if (!end) return true;
+
+    return end >= todayIso();
+  };
+
+  const isStockMissionUsefulForHome = (mission) => {
+    if (!mission) return false;
+    if (isCancelledStatus(mission)) return false;
+    if (isHistoricalStockMission(mission)) return false;
+
+    if (isClosedStatus(mission) && !isUpcomingOrCurrent(mission)) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const isStockMissionActiveCandidate = (mission) => {
+    if (!isStockMissionUsefulForHome(mission)) return false;
+    if (isClosedStatus(mission)) return false;
+
+    return true;
+  };
+
+  const getCleanInscriptions = (inscriptions) =>
+    inscriptions.filter((item) => !isCancelledStatus(item));
+
+  const getAcceptedInscriptions = (inscriptions) =>
+    inscriptions.filter((item) => {
+      if (isCancelledStatus(item)) return false;
+
+      return (
+        String(item.statut || "").trim().toUpperCase() === "ACCEPTE" ||
+        toBoolean(item.acceptation, false)
+      );
+    });
+
+  const waitForApi = (timeoutMs = 1200) =>
+    new Promise((resolve) => {
+      if (hasApi()) {
+        resolve(true);
+        return;
+      }
+
+      const startedAt = Date.now();
+
+      const tick = () => {
+        if (hasApi()) {
+          resolve(true);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+
+        window.setTimeout(tick, 50);
+      };
+
+      tick();
+    });
+
+  const callArray = async (names, { required = true } = {}) => {
+    const nameList = Array.isArray(names) ? names : [names];
+
+    for (const name of nameList) {
+      if (hasApi() && typeof api()[name] === "function") {
+        const result = await api()[name]();
+        return Array.isArray(result) ? result : [];
+      }
+    }
+
+    if (required) {
+      throw new Error(`Fonction API indisponible : ${nameList.join(" / ")}`);
+    }
+
+    return [];
+  };
+
+  const getPendingWritesCount = () => {
+    if (hasApi() && typeof api().getPendingWritesCount === "function") {
+      return toNumber(api().getPendingWritesCount(), 0);
+    }
+
+    return 0;
+  };
+
+  const cacheRemoteData = (data) => {
+    writeJson(STORAGE_KEYS.inscriptions, data.inscriptions);
+    writeJson(STORAGE_KEYS.events, data.events);
+    writeJson(STORAGE_KEYS.stockMissions, data.stockMissions);
+    writeJson(STORAGE_KEYS.journees, data.journees);
+    writeJson(STORAGE_KEYS.transactions, data.transactions);
+    writeJson(STORAGE_KEYS.stockPreparations, data.stockPreparations);
+  };
+
+  const loadRemoteData = async () => {
+    const ready = await waitForApi();
+
+    if (!ready) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    const [
+      inscriptions,
+      events,
+      stockMissions,
+      journees,
+      transactions,
+      stockPreparations
+    ] = await Promise.all([
+      callArray(["getInscriptionsEvenements", "getInscriptions"]),
+      callArray("getMissions"),
+      callArray("getMissionsStock"),
+      callArray(["getJournees", "getJourneesVente"]),
+      callArray("getTransactions", { required: false }),
+      callArray("getStockPreparations", { required: false })
+    ]);
+
+    const data = {
+      inscriptions,
+      events,
+      stockMissions,
+      journees,
+      transactions,
+      stockPreparations
+    };
+
+    cacheRemoteData(data);
+
+    return data;
+  };
+
+  const loadCacheData = () => ({
+    inscriptions: getArray(STORAGE_KEYS.inscriptions),
+    events: getArray(STORAGE_KEYS.events),
+    stockMissions: getArray(STORAGE_KEYS.stockMissions),
+    journees: getArray(STORAGE_KEYS.journees),
+    transactions: getArray(STORAGE_KEYS.transactions),
+    stockPreparations: getArray(STORAGE_KEYS.stockPreparations)
+  });
 
   const getActiveIds = () => {
     const context = getObject(STORAGE_KEYS.preparationContext);
@@ -103,24 +424,24 @@
     };
   };
 
-  const getMissionJournees = (missionId, journees) => {
-    return journees
+  const getMissionJournees = (missionId, journees) =>
+    journees
+      .filter((journee) => !isHistoricalDay(journee))
+      .filter((journee) => !isCancelledStatus(journee))
       .filter((journee) => {
         return (
-          journee.mission_id === missionId ||
-          journee.stock_mission_id === missionId
+          String(journee.mission_id || "") === String(missionId || "") ||
+          String(journee.stock_mission_id || "") === String(missionId || "") ||
+          String(journee.evenement_id || "") === String(missionId || "")
         );
       })
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  };
+      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
 
   const getFirstOpenDay = (missionId, journees) => {
     const linkedDays = getMissionJournees(missionId, journees);
 
     return (
-      linkedDays.find((journee) => {
-        return journee.statut !== "cloture" && journee.statut !== "annule";
-      }) ||
+      linkedDays.find((journee) => !isClosedStatus(journee) && !isCancelledStatus(journee)) ||
       linkedDays[0] ||
       null
     );
@@ -128,67 +449,90 @@
 
   const findFallbackActiveMission = (stockMissions) => {
     const candidates = stockMissions
-      .filter((mission) => mission.statut !== "annule")
-      .filter((mission) => mission.statut !== "cloture")
+      .filter(isStockMissionActiveCandidate)
       .sort((a, b) => {
-        const byDate = String(a.date_debut).localeCompare(String(b.date_debut));
+        const byDate = String(a.date_debut || "").localeCompare(String(b.date_debut || ""));
         if (byDate !== 0) return byDate;
+
         return String(a.created_at || "").localeCompare(String(b.created_at || ""));
       });
 
     return candidates[0] || null;
   };
 
-  const getStockPreparationForMission = (missionId) => {
-    return getArray(STORAGE_KEYS.stockPreparations).find((item) => {
+  const getStockPreparationForMission = (missionId, stockPreparations) =>
+    stockPreparations.find((item) => {
       return (
-        item.mission_id === missionId ||
-        item.stock_mission_id === missionId
+        String(item.mission_id || "") === String(missionId || "") ||
+        String(item.stock_mission_id || "") === String(missionId || "")
       );
-    });
-  };
+    }) || null;
 
-  const isStockPrepared = (mission) => {
+  const isStockPrepared = (mission, stockPreparations) => {
     if (!mission) return false;
 
-    if (mission.stock_prepare === true) return true;
+    if (toBoolean(mission.stock_prepare, false)) return true;
 
-    if (["pret", "en_cours", "termine", "cloture"].includes(mission.statut)) {
+    if (["pret", "prêt", "en_cours", "termine", "terminé", "cloture", "clôturé"].includes(normalizeStatus(mission.statut))) {
       return true;
     }
 
-    const preparation = getStockPreparationForMission(mission.mission_id);
+    const preparation = getStockPreparationForMission(mission.mission_id, stockPreparations);
 
     return Boolean(
       preparation &&
-      ["valide", "validé", "pret", "prêt"].includes(
-        String(preparation.statut || "").toLowerCase()
-      )
+      ["valide", "validé", "pret", "prêt"].includes(normalizeStatus(preparation.statut))
     );
   };
 
-  const getDayTransactions = (journeeId) => {
+  const getDayTransactions = (journeeId, transactions) => {
     if (!journeeId) return [];
 
-    return getArray(STORAGE_KEYS.pendingTransactions).filter((transaction) => {
-      return transaction.journee_id === journeeId;
+    const remoteTransactions = transactions
+      .filter(isValidStatus)
+      .filter((transaction) => String(transaction.journee_id || "") === String(journeeId));
+
+    const localPendingTransactions = getArray(STORAGE_KEYS.pendingTransactions)
+      .filter((transaction) => String(transaction.journee_id || "") === String(journeeId));
+
+    const byId = new Map();
+
+    [...remoteTransactions, ...localPendingTransactions].forEach((transaction) => {
+      const id =
+        String(transaction.transaction_id || "").trim() ||
+        `LOCAL_${Math.random().toString(36).slice(2)}`;
+
+      byId.set(id, transaction);
     });
+
+    return [...byId.values()];
   };
 
-  const getRevenueForTransactions = (transactions) => {
-    return transactions.reduce((sum, transaction) => {
-      return sum + Number(transaction.total_encaisse_ttc || transaction.total_catalogue_ttc || 0);
-    }, 0);
-  };
+  const getTransactionAmount = (transaction) =>
+    toNumber(
+      transaction.total_encaisse_ttc ??
+      transaction.total_encaisse ??
+      transaction.total_catalogue_ttc ??
+      transaction.total_catalogue,
+      0
+    );
+
+  const getRevenueForTransactions = (transactions) =>
+    transactions.reduce((sum, transaction) => sum + getTransactionAmount(transaction), 0);
 
   const getEventById = (eventId, events) => {
-    return events.find((eventItem) => eventItem.evenement_id === eventId) || null;
+    const id = String(eventId || "").trim();
+
+    return (
+      events.find((eventItem) => getEventId(eventItem) === id) ||
+      null
+    );
   };
 
   const getDayReadableTitle = (journee, events) => {
     if (!journee) return "Aucune journée";
 
-    const eventItem = getEventById(journee.evenement_id, events);
+    const eventItem = getEventById(getDayEventId(journee), events);
 
     if (!eventItem) {
       return journee.jour_label || "Journée";
@@ -201,27 +545,20 @@
     return `${eventItem.nom} — ${journee.jour_label || "Journée"}`;
   };
 
-  const getActiveInscriptions = (inscriptions) => {
-    return inscriptions.filter((item) => item.statut !== "ANNULE");
-  };
-
-  const getAcceptedInscriptions = (inscriptions) => {
-    return inscriptions.filter((item) => {
-      return item.statut === "ACCEPTE" || item.acceptation === true;
-    });
-  };
-
   const buildHomeState = () => {
-    const inscriptions = getArray(STORAGE_KEYS.inscriptions);
-    const events = getArray(STORAGE_KEYS.events);
-    const stockMissions = getArray(STORAGE_KEYS.stockMissions);
-    const journees = getArray(STORAGE_KEYS.journees);
-    const pendingTransactions = getArray(STORAGE_KEYS.pendingTransactions);
+    const data = state.data;
+
+    const inscriptions = data.inscriptions;
+    const events = data.events.filter((eventItem) => !isHistoricalEvent(eventItem));
+    const stockMissions = data.stockMissions.filter(isStockMissionUsefulForHome);
+    const journees = data.journees.filter((journee) => !isHistoricalDay(journee));
+    const transactions = data.transactions;
+    const stockPreparations = data.stockPreparations;
 
     const activeIds = getActiveIds();
 
     let mission = activeIds.stockMissionId
-      ? stockMissions.find((item) => item.mission_id === activeIds.stockMissionId) || null
+      ? stockMissions.find((item) => getStockMissionId(item) === activeIds.stockMissionId) || null
       : null;
 
     if (!mission) {
@@ -232,7 +569,7 @@
 
     if (mission) {
       journee = activeIds.journeeId
-        ? journees.find((item) => item.journee_id === activeIds.journeeId) || null
+        ? journees.find((item) => getDayId(item) === activeIds.journeeId) || null
         : null;
 
       if (!journee) {
@@ -241,15 +578,25 @@
     }
 
     const linkedDays = mission ? getMissionJournees(mission.mission_id, journees) : [];
-    const dayTransactions = getDayTransactions(journee?.journee_id || "");
+    const dayTransactions = getDayTransactions(journee?.journee_id || "", transactions);
     const revenue = getRevenueForTransactions(dayTransactions);
-    const stockPrepared = isStockPrepared(mission);
+    const stockPrepared = isStockPrepared(mission, stockPreparations);
+
+    const localPendingTransactionsCount = getArray(STORAGE_KEYS.pendingTransactions).length;
+    const totalPendingSync = Math.max(
+      state.pendingWritesCount,
+      localPendingTransactionsCount
+    );
 
     return {
       user: CURRENT_USER,
+      dataSource: state.dataSource,
+      loadError: state.loadError,
+
       inscriptions,
-      activeInscriptions: getActiveInscriptions(inscriptions),
+      activeInscriptions: getCleanInscriptions(inscriptions),
       acceptedInscriptions: getAcceptedInscriptions(inscriptions),
+
       events,
       stockMissions,
       journees,
@@ -258,11 +605,12 @@
       journee,
       stockPrepared,
       dayTransactions,
+
       resume: {
         ca_jour_ttc: revenue,
         nb_transactions: dayTransactions.length,
-        ventes_en_attente_sync: pendingTransactions.length,
-        total_pending_transactions: pendingTransactions.length
+        ventes_en_attente_sync: localPendingTransactionsCount,
+        total_pending_sync: totalPendingSync
       }
     };
   };
@@ -284,7 +632,7 @@
       };
     }
 
-    if (!stockPrepared || mission.statut === "stock_a_preparer") {
+    if (!stockPrepared || normalizeStatus(mission.statut) === "stock_a_preparer") {
       return {
         code: "stock_to_prepare",
         step: "stock",
@@ -298,7 +646,7 @@
       };
     }
 
-    if (journee.statut === "cloture") {
+    if (isClosedStatus(journee)) {
       return {
         code: "closed",
         step: "cloture",
@@ -315,7 +663,7 @@
     return {
       code: "selling",
       step: "vente",
-      label: journee.statut === "en_cours" ? "Journée en cours" : "Stock prêt",
+      label: normalizeStatus(journee.statut) === "en_cours" ? "Journée en cours" : "Stock prêt",
       title: getDayReadableTitle(journee, homeState.events),
       meta: `${mission.nom || "Mission"} · ${formatDisplayDate(journee.date)}`,
       primaryText: "+ Nouvelle vente",
@@ -336,6 +684,31 @@
 
     el.textContent = text;
     el.href = href;
+  };
+
+  const renderLoading = () => {
+    setText("#currentUserName", CURRENT_USER.nom);
+    setText("#activeStatusLabel", "Chargement");
+    setText("#missionTitle", "Chargement…");
+    setText("#missionMeta", "Lecture des données Google Sheets.");
+
+    setText("#statOneLabel", "Inscriptions");
+    setText("#todayRevenue", "…");
+
+    setText("#statTwoLabel", "Acceptées");
+    setText("#todayTickets", "…");
+
+    setText("#statThreeLabel", "Missions stock");
+    setText("#pendingSync", "…");
+
+    setLink("#primaryAction", "Gérer les inscriptions", "./inscriptions-evenements.html");
+    setLink("#secondaryAction", "Missions stock", "./missions.html");
+
+    renderWorkflow({
+      step: "inscriptions"
+    });
+
+    renderWatchList(["Chargement des données Google Sheets…"]);
   };
 
   const renderStats = (homeState, uiState) => {
@@ -364,11 +737,11 @@
       setText("#todayTickets", homeState.stockPrepared ? "OK" : "À faire");
 
       setText("#statThreeLabel", "À synchroniser");
-      setText("#pendingSync", String(homeState.resume.total_pending_transactions || 0));
+      setText("#pendingSync", String(homeState.resume.total_pending_sync || 0));
 
       syncCard?.classList.toggle(
         "hasWarning",
-        Number(homeState.resume.total_pending_transactions || 0) > 0
+        Number(homeState.resume.total_pending_sync || 0) > 0
       );
 
       return;
@@ -381,11 +754,11 @@
     setText("#todayTickets", String(homeState.resume.nb_transactions || 0));
 
     setText("#statThreeLabel", "À synchroniser");
-    setText("#pendingSync", String(homeState.resume.total_pending_transactions || 0));
+    setText("#pendingSync", String(homeState.resume.total_pending_sync || 0));
 
     syncCard?.classList.toggle(
       "hasWarning",
-      Number(homeState.resume.total_pending_transactions || 0) > 0
+      Number(homeState.resume.total_pending_sync || 0) > 0
     );
   };
 
@@ -393,14 +766,14 @@
     const statusHero = qs("#statusHero");
     const liveDot = qs("#liveDot");
 
-    statusHero.classList.remove(
+    statusHero?.classList.remove(
       "isNoMission",
       "isStockToPrepare",
       "isSelling",
       "isClosed"
     );
 
-    liveDot.classList.remove(
+    liveDot?.classList.remove(
       "isNoMission",
       "isStockToPrepare",
       "isSelling",
@@ -415,8 +788,8 @@
     }[uiState.code];
 
     if (stateClass) {
-      statusHero.classList.add(stateClass);
-      liveDot.classList.add(stateClass);
+      statusHero?.classList.add(stateClass);
+      liveDot?.classList.add(stateClass);
     }
 
     setText("#currentUserName", homeState.user.nom || "Utilisateur");
@@ -457,16 +830,29 @@
   const buildWatchItems = (homeState, uiState) => {
     const items = [];
 
-    if (!homeState.mission || !homeState.journee) {
-      items.push("Aucune mission de stock active pour le moment.");
+    if (homeState.dataSource === "remote") {
+      items.push("Données Google Sheets chargées.");
+    }
 
+    if (homeState.dataSource === "cache") {
+      items.push(`Données locales affichées : ${homeState.loadError || "API indisponible."}`);
+    }
+
+    if (!homeState.mission || !homeState.journee) {
       if (homeState.activeInscriptions.length > 0) {
-        items.push(`${homeState.activeInscriptions.length} inscription(s) suivie(s), dont ${homeState.acceptedInscriptions.length} acceptée(s).`);
+        items.push(
+          `${homeState.activeInscriptions.length} inscription(s) suivie(s), dont ${homeState.acceptedInscriptions.length} acceptée(s).`
+        );
+      } else {
+        items.push("Aucune inscription active chargée pour le moment.");
+      }
+
+      if (homeState.stockMissions.length > 0) {
+        items.push(`${homeState.stockMissions.length} mission(s) de stock utile(s) trouvée(s).`);
       } else {
         items.push("Commence par créer ou accepter une inscription, puis crée l’évènement.");
       }
 
-      items.push("Les données sont encore locales : Chrome, Safari et WebApp ne partagent pas encore les mêmes informations.");
       return items;
     }
 
@@ -482,10 +868,10 @@
       items.push("La vente rapide est disponible pour la journée active.");
     }
 
-    if (Number(homeState.resume.total_pending_transactions || 0) > 0) {
-      items.push(`${homeState.resume.total_pending_transactions} ticket(s) en attente de synchronisation.`);
+    if (Number(homeState.resume.total_pending_sync || 0) > 0) {
+      items.push(`${homeState.resume.total_pending_sync} écriture(s) en attente de synchronisation.`);
     } else {
-      items.push("Aucun ticket en attente de synchronisation locale.");
+      items.push("Aucune écriture en attente de synchronisation locale.");
     }
 
     if (uiState.code !== "closed") {
@@ -511,7 +897,7 @@
     });
   };
 
-  const initHome = () => {
+  const renderHome = () => {
     const homeState = buildHomeState();
     const uiState = getUiState(homeState);
 
@@ -520,5 +906,27 @@
     renderWatchList(buildWatchItems(homeState, uiState));
   };
 
-  initHome();
+  const initHome = async () => {
+    renderLoading();
+
+    try {
+      state.data = await loadRemoteData();
+      state.dataSource = "remote";
+      state.loadError = "";
+      state.pendingWritesCount = getPendingWritesCount();
+    } catch (error) {
+      state.data = loadCacheData();
+      state.dataSource = "cache";
+      state.loadError = error.message || "Lecture API impossible.";
+      state.pendingWritesCount = 0;
+    }
+
+    renderHome();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initHome);
+  } else {
+    initHome();
+  }
 })();
