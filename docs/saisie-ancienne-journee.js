@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Saisie ancienne journée V5 :
+    Saisie ancienne journée V6 :
     - Création OU modification d’une journée clôturée historique.
     - Mode édition via saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Charge catalogue + offres depuis Google Sheets.
@@ -14,6 +14,8 @@
     - Produits vendus affichés avec les mêmes tuiles visuelles que Préparation stock.
     - Mode historique : affiche aussi les parfums inactifs / anciens pour permettre la saisie d’anciens marchés.
     - Anti-clignotement : les clics + / - ne reconstruisent plus toute la grille produits.
+    - Saisie progressive : une ancienne journée peut être créée vide puis complétée plus tard.
+    - Garde-fou : si des produits sont saisis, des lignes produits doivent bien partir vers l’API.
   */
 
   const CURRENT_USER = {
@@ -597,6 +599,11 @@
   const getBottleTotal = () =>
     getProductLinesDraft().reduce((sum, line) => sum + line.quantity, 0);
 
+  const isEmptyHistoricalDraft = () =>
+    getPaymentTotal() <= 0 &&
+    getBottleTotal() <= 0 &&
+    state.expenses.length === 0;
+
   const renderFormatControl = (product, label) => {
     if (!product) {
       return `
@@ -816,11 +823,6 @@
       return false;
     }
 
-    if (getPaymentTotal() <= 0 && getBottleTotal() <= 0 && state.expenses.length === 0) {
-      setStatus("Saisis au moins un paiement, une vente produit ou un frais.", "isError");
-      return false;
-    }
-
     return true;
   };
 
@@ -993,8 +995,56 @@
       }));
   };
 
+  const buildDetailTicketFromSaleLines = (activeLines) =>
+    activeLines
+      .filter(isValidStatus)
+      .filter((line) => toNumber(line.quantite, 0) > 0)
+      .map((line) => ({
+        type: "bottle",
+        sku_id: line.sku_id,
+        parfum_code: line.parfum_code,
+        parfum_nom: line.parfum_nom,
+        format_cl: line.format_cl,
+        quantite: line.quantite,
+        prix_unitaire_ttc: line.prix_unitaire_ttc,
+        total_catalogue_ligne_ttc: line.total_catalogue_ligne_ttc
+      }));
+
+  const buildTechnicalCarrierTransaction = ({ ids, transactionId, lines }) => {
+    const now = new Date().toISOString();
+
+    return {
+      transaction_id: transactionId,
+      date_heure: now,
+      mission_id: ids.stockMissionId,
+      stock_mission_id: ids.stockMissionId,
+      evenement_id: ids.eventMissionId,
+      journee_id: ids.journeeId,
+      user_id: CURRENT_USER.user_id,
+      mode_paiement: "HISTORIQUE",
+      mode_paiement_label: "Historique",
+      paiement_provider: "HISTORIQUE",
+      paiement_statut: "PAYE",
+      source: HISTORICAL_SOURCE,
+      source_id: ids.baseId,
+      total_catalogue_ttc: 0,
+      total_catalogue_ht: 0,
+      total_tva: 0,
+      total_encaisse_ttc: 0,
+      remise_totale: 0,
+      motif_remise: "",
+      statut: "annulee",
+      note: "Transaction technique pour annuler les lignes produits historiques.",
+      detail_ticket: "[]",
+      created_at: now,
+      updated_at: now,
+      lignes: lines
+    };
+  };
+
   const buildTransactions = ({ ids }) => {
     const now = new Date().toISOString();
+    const productDraftLines = getProductLinesDraft();
 
     const paymentRows = PAYMENT_ROWS
       .map((row) => {
@@ -1007,7 +1057,7 @@
       })
       .filter((row) => row.amount > 0);
 
-    if (paymentRows.length === 0 && getProductLinesDraft().length > 0) {
+    if (paymentRows.length === 0 && productDraftLines.length > 0) {
       paymentRows.push({
         key: "HISTORIQUE",
         label: "Historique",
@@ -1073,7 +1123,7 @@
         motif_remise: "",
         statut: "validee",
         note: els.noteInput.value.trim(),
-        detail_ticket: JSON.stringify(isPrimary ? activeLines : []),
+        detail_ticket: JSON.stringify(isPrimary ? buildDetailTicketFromSaleLines(activeLines) : []),
         created_at: existing?.created_at || now,
         updated_at: now,
         lignes: lines
@@ -1103,6 +1153,16 @@
 
     if (currentTransactions.length === 0 && cancelledTransactions.length > 0 && allLinesToWrite.length > 0) {
       cancelledTransactions[0].lignes = allLinesToWrite;
+    }
+
+    if (currentTransactions.length === 0 && cancelledTransactions.length === 0 && allLinesToWrite.length > 0) {
+      return [
+        buildTechnicalCarrierTransaction({
+          ids,
+          transactionId: primaryTransactionId,
+          lines: allLinesToWrite
+        })
+      ];
     }
 
     return [...currentTransactions, ...cancelledTransactions];
@@ -1164,6 +1224,28 @@
     return [...activeRows, ...cancelledRows];
   };
 
+  const getWritableSaleLinesFromTransactions = (transactions) =>
+    transactions
+      .flatMap((transaction) => Array.isArray(transaction.lignes) ? transaction.lignes : [])
+      .filter(isValidStatus)
+      .filter((line) => toNumber(line.quantite, 0) > 0);
+
+  const validateProductLinesBeforeSave = (transactions) => {
+    const draftLines = getProductLinesDraft();
+    const linesToWrite = getWritableSaleLinesFromTransactions(transactions);
+
+    if (draftLines.length > 0 && linesToWrite.length === 0) {
+      setStatus(
+        "Les quantités produits sont bien saisies, mais aucune ligne produit ne part vers l’API. Enregistrement bloqué pour éviter une journée incomplète.",
+        "isError"
+      );
+
+      return false;
+    }
+
+    return true;
+  };
+
   const saveBundleFallback = async ({ rows, transactions, fraisRows }) => {
     if (typeof api().saveMission !== "function") {
       throw new Error("LugdurumAPI.saveMission() est indisponible.");
@@ -1177,7 +1259,7 @@
       throw new Error("LugdurumAPI.saveJournee() est indisponible.");
     }
 
-    if (typeof api().saveTransaction !== "function") {
+    if (transactions.length > 0 && typeof api().saveTransaction !== "function") {
       throw new Error("LugdurumAPI.saveTransaction() est indisponible.");
     }
 
@@ -1189,22 +1271,39 @@
       await api().saveTransaction(transaction);
     }
 
-    if (typeof api().saveFrais === "function") {
-      for (const frais of fraisRows) {
-        await api().saveFrais(frais);
-      }
-    } else if (fraisRows.length > 0) {
+    if (fraisRows.length > 0 && typeof api().saveFrais !== "function") {
       throw new Error("LugdurumAPI.saveFrais() est indisponible pour enregistrer les frais.");
     }
+
+    for (const frais of fraisRows) {
+      await api().saveFrais(frais);
+    }
+  };
+
+  const getSuccessMessage = (emptyDraft) => {
+    if (state.edit.isEditMode) {
+      return emptyDraft
+        ? "Journée historique mise à jour. Tu pourras la compléter plus tard."
+        : "Journée historique mise à jour.";
+    }
+
+    return emptyDraft
+      ? "Journée historique créée. Tu pourras la compléter plus tard."
+      : "Journée historique créée.";
   };
 
   const saveOldDay = async () => {
     if (state.isSaving) return;
     if (!validateForm()) return;
 
+    const emptyDraft = isEmptyHistoricalDraft();
     const rows = buildMissionRows();
     const transactions = buildTransactions(rows);
     const fraisRows = buildFraisRows(rows);
+
+    if (!validateProductLinesBeforeSave(transactions)) {
+      return;
+    }
 
     setSaving(true);
     setStatus(
@@ -1235,9 +1334,7 @@
           ? api().getPendingWritesCount()
           : 0;
 
-      const successMessage = state.edit.isEditMode
-        ? "Journée historique mise à jour."
-        : "Journée historique créée.";
+      const successMessage = getSuccessMessage(emptyDraft);
 
       setStatus(
         pendingCount > 0
@@ -1375,7 +1472,9 @@
           format_cl: item.format_cl,
           quantite: item.quantite,
           prix_unitaire_ttc: item.prix_unitaire_ttc,
-          total_catalogue_ligne_ttc: toNumber(item.quantite, 0) * toNumber(item.prix_unitaire_ttc, 0),
+          total_catalogue_ligne_ttc:
+            toNumber(item.total_catalogue_ligne_ttc, 0) ||
+            toNumber(item.quantite, 0) * toNumber(item.prix_unitaire_ttc, 0),
           statut: "valide"
         });
         return;
@@ -1403,6 +1502,27 @@
             total_catalogue_ligne_ttc: unitShare,
             statut: "valide"
           });
+        });
+        return;
+      }
+
+      if (item.sku_id && item.quantite) {
+        lines.push({
+          transaction_id: item.transaction_id || transaction.transaction_id,
+          mission_id: item.mission_id || transaction.mission_id,
+          stock_mission_id: item.stock_mission_id || transaction.stock_mission_id,
+          evenement_id: item.evenement_id || transaction.evenement_id,
+          journee_id: item.journee_id || transaction.journee_id,
+          sku_id: item.sku_id,
+          parfum_code: item.parfum_code,
+          parfum_nom: item.parfum_nom,
+          format_cl: item.format_cl,
+          quantite: item.quantite,
+          prix_unitaire_ttc: item.prix_unitaire_ttc,
+          total_catalogue_ligne_ttc:
+            toNumber(item.total_catalogue_ligne_ttc, 0) ||
+            toNumber(item.quantite, 0) * toNumber(item.prix_unitaire_ttc, 0),
+          statut: item.statut || "valide"
         });
       }
     });
