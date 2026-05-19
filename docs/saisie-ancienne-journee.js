@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Saisie ancienne journée V3 :
+    Saisie ancienne journée V4 :
     - Création OU modification d’une journée clôturée historique.
     - Mode édition via saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Charge catalogue + offres depuis Google Sheets.
@@ -12,12 +12,15 @@
     - Les lignes / transactions / frais retirés sont marqués annule/annulee.
     - Après succès réel API, retour automatique vers la page précédente ou journees-cloturees.html.
     - Produits vendus affichés avec les mêmes tuiles visuelles que Préparation stock.
+    - Mode historique : affiche aussi les parfums inactifs / anciens pour permettre la saisie d’anciens marchés.
   */
 
   const CURRENT_USER = {
     user_id: "U_JEROME",
     nom: "Jérôme"
   };
+
+  const HISTORICAL_SOURCE = "SAISIE_HISTORIQUE";
 
   const EVENT_TYPE_LABELS = {
     MARCHE_ARTISANAL: "Marché artisanal",
@@ -296,9 +299,6 @@
   const getJourneeId = (item) =>
     String(item?.journee_id || "").trim();
 
-  const getMissionId = (item) =>
-    String(item?.stock_mission_id || item?.mission_id || "").trim();
-
   const getTransactionId = (item) =>
     String(item?.transaction_id || "").trim();
 
@@ -345,7 +345,9 @@
       vendable_seul: toBoolean(raw.vendable_seul, false),
       composable_coffret: toBoolean(raw.composable_coffret, false),
       cout_revient: toNumber(raw.cout_revient, 0),
-      actif: toBoolean(raw.actif, false),
+      actif: Object.prototype.hasOwnProperty.call(raw, "actif")
+        ? toBoolean(raw.actif, false)
+        : true,
       visible_webapp: Object.prototype.hasOwnProperty.call(raw, "visible_webapp")
         ? toBoolean(raw.visible_webapp, true)
         : true,
@@ -370,19 +372,29 @@
     prix_ht: toNumber(raw.prix_ht, toNumber(raw.prix_ttc, 0)),
     taux_tva: toNumber(raw.taux_tva, 0),
     regime_tva: String(raw.regime_tva || "").trim(),
-    actif: toBoolean(raw.actif, false),
+    actif: Object.prototype.hasOwnProperty.call(raw, "actif")
+      ? toBoolean(raw.actif, false)
+      : true,
     ordre_affichage: toNumber(raw.ordre_affichage, 1000 + index),
     supplement_parfum_code: String(raw.supplement_parfum_code || "").trim().toUpperCase(),
     supplement_unitaire_ttc: toNumber(raw.supplement_unitaire_ttc, 0),
     note: String(raw.note || "").trim()
   });
 
+  const shouldDisplayProductInHistoricalEntry = (product) => {
+    if (!product) return false;
+    if (product.format_cl !== 50 && product.format_cl !== 20) return false;
+    if (!product.vendable_seul && !product.composable_coffret) return false;
+
+    return true;
+  };
+
+  const isOldOrHiddenProduct = (product) =>
+    !product.actif || product.visible_webapp === false;
+
   const getGroupedCatalogue = () => {
     const products = state.catalogue
-      .filter((product) => product.actif)
-      .filter((product) => product.visible_webapp !== false)
-      .filter((product) => product.format_cl === 50 || product.format_cl === 20)
-      .filter((product) => product.vendable_seul || product.composable_coffret)
+      .filter(shouldDisplayProductInHistoricalEntry)
       .sort((a, b) => {
         const byOrder = a.ordre_affichage - b.ordre_affichage;
         if (byOrder !== 0) return byOrder;
@@ -408,11 +420,17 @@
       groups.get(product.parfum_code).products.push(product);
     });
 
-    return [...groups.values()].sort((a, b) => {
-      const byOrder = a.ordre_affichage - b.ordre_affichage;
-      if (byOrder !== 0) return byOrder;
-      return a.parfum_code.localeCompare(b.parfum_code);
-    });
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        isHistoricalOnly: group.products.every(isOldOrHiddenProduct),
+        hasHistoricalVariant: group.products.some(isOldOrHiddenProduct)
+      }))
+      .sort((a, b) => {
+        const byOrder = a.ordre_affichage - b.ordre_affichage;
+        if (byOrder !== 0) return byOrder;
+        return a.parfum_code.localeCompare(b.parfum_code);
+      });
   };
 
   const getProductBySku = (skuId) =>
@@ -431,13 +449,23 @@
     }
   };
 
-  const getActiveOffers = () =>
-    state.offresVente.filter((offer) => offer.actif);
+  const getHistoricalOffers = () =>
+    state.offresVente
+      .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl)
+      .sort((a, b) => {
+        const byActive = Number(b.actif) - Number(a.actif);
+        if (byActive !== 0) return byActive;
+
+        const byOrder = a.ordre_affichage - b.ordre_affichage;
+        if (byOrder !== 0) return byOrder;
+
+        return String(a.offre_id).localeCompare(String(b.offre_id));
+      });
 
   const findBottleOffer = (product) => {
     const productGamme = normalizeKey(product.gamme_tarif);
 
-    return getActiveOffers().find((offer) => (
+    return getHistoricalOffers().find((offer) => (
       offer.type_offre === "bouteille" &&
       offer.format_cl === product.format_cl &&
       normalizeKey(offer.gamme_tarif) === productGamme
@@ -445,9 +473,9 @@
   };
 
   const findBoxOffer = () => (
-    getActiveOffers().find((offer) => offer.offre_id === "COFFRET_3_20") ||
-    getActiveOffers().find((offer) => offer.offre_id === "COFFRET_6_20") ||
-    getActiveOffers().find((offer) => offer.type_offre === "coffret" && offer.format_cl === 20) ||
+    getHistoricalOffers().find((offer) => offer.offre_id === "COFFRET_3_20") ||
+    getHistoricalOffers().find((offer) => offer.offre_id === "COFFRET_6_20") ||
+    getHistoricalOffers().find((offer) => offer.type_offre === "coffret" && offer.format_cl === 20) ||
     null
   );
 
@@ -568,11 +596,15 @@
     }
 
     const qty = getQuantity(product.sku_id);
+    const oldBadge = isOldOrHiddenProduct(product)
+      ? `<small class="oldDayHistoricalProductBadge">Ancien</small>`
+      : "";
 
     return `
-      <div class="stockGlassFormat">
+      <div class="stockGlassFormat ${isOldOrHiddenProduct(product) ? "isHistoricalProduct" : ""}">
         <div class="stockGlassFormatHead">
           <span>${escapeHtml(label)}</span>
+          ${oldBadge}
         </div>
 
         <div class="stockGlassQtyControl">
@@ -617,7 +649,7 @@
     const groups = getGroupedCatalogue();
 
     if (groups.length === 0) {
-      els.productRows.innerHTML = `<p class="oldDayEmpty">Aucun produit actif trouvé.</p>`;
+      els.productRows.innerHTML = `<p class="oldDayEmpty">Aucun produit catalogue trouvé.</p>`;
       return;
     }
 
@@ -630,7 +662,7 @@
 
         return `
           <article
-            class="stockVisualCard"
+            class="stockVisualCard ${group.isHistoricalOnly ? "isHistoricalProductCard" : ""}"
             style="--stock-bg: url('${escapeAttr(imageSrc)}')"
           >
             <div class="stockVisualBg" aria-hidden="true"></div>
@@ -640,6 +672,13 @@
               <div class="stockVisualTitle">
                 <strong>${escapeHtml(group.parfum_code)}</strong>
                 <span>${escapeHtml(group.parfum_nom)}</span>
+                ${
+                  group.isHistoricalOnly
+                    ? `<small class="oldDayHistoricalProductLabel">Ancien parfum</small>`
+                    : group.hasHistoricalVariant
+                      ? `<small class="oldDayHistoricalProductLabel">Format ancien disponible</small>`
+                      : ""
+                }
               </div>
 
               <div class="stockGlassPanel">
@@ -798,7 +837,7 @@
       type_evenement: type,
       type_evenement_label: EVENT_TYPE_LABELS[type] || type,
       statut: "cloture",
-      source: "SAISIE_HISTORIQUE",
+      source: HISTORICAL_SOURCE,
       note,
       created_at: existingMissionVente?.created_at || now,
       updated_at: now
@@ -821,7 +860,7 @@
       parfums_prepare_count: existingMissionStock?.parfums_prepare_count || "",
       ca_total_ttc: paymentTotal,
       total_frais_ttc: fraisTotal,
-      source: "SAISIE_HISTORIQUE",
+      source: HISTORICAL_SOURCE,
       note,
       created_at: existingMissionStock?.created_at || now,
       updated_at: now,
@@ -839,7 +878,7 @@
       statut: "cloture",
       ca_total_ttc: paymentTotal,
       total_frais_ttc: fraisTotal,
-      source: "SAISIE_HISTORIQUE",
+      source: HISTORICAL_SOURCE,
       note,
       created_at: existingJournee?.created_at || now,
       updated_at: now,
@@ -904,7 +943,7 @@
         marge_brute_ligne: line.product.cout_revient
           ? formatAmount(totalTtc - line.product.cout_revient * line.quantity)
           : 0,
-        source: "SAISIE_HISTORIQUE",
+        source: HISTORICAL_SOURCE,
         statut: "valide",
         note: "Saisie ancienne journée",
         created_at: existingLine?.created_at || now,
@@ -1009,7 +1048,7 @@
         mode_paiement_label: row.label,
         paiement_provider: row.provider,
         paiement_statut: "PAYE",
-        source: "SAISIE_HISTORIQUE",
+        source: HISTORICAL_SOURCE,
         source_id: ids.baseId,
         total_catalogue_ttc: row.amount,
         total_catalogue_ht: row.amount,
@@ -1087,7 +1126,7 @@
         statut: "valide",
         note: expense.note,
         user_id: existing?.user_id || CURRENT_USER.user_id,
-        source: "SAISIE_HISTORIQUE",
+        source: HISTORICAL_SOURCE,
         created_at: existing?.created_at || now,
         updated_at: now
       };
