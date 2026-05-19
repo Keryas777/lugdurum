@@ -2,17 +2,20 @@
   "use strict";
 
   /*
-    Accueil V11 :
+    Accueil V12 :
     - Source prioritaire : Google Sheets via window.LugdurumAPI.
     - Chargement API prioritaire via getCoreData(), puis fallback par getters séparés.
     - Cache localStorage uniquement en secours si l’API est indisponible.
-    - Accès localStorage sécurisé pour Safari privé.
-    - Diagnostic visible dans "À surveiller" : source + compteurs bruts + compteurs filtrés.
+    - Diagnostic visible dans "À surveiller".
     - Ne dépend plus de stock_preparations / stock_preparation_lignes.
     - Utilise mouvements_stock pour détecter une préparation initiale.
-    - Évite les compteurs incohérents entre Safari privé / Safari normal / icône écran d’accueil.
     - Exclut les données historiques SAISIE_HISTORIQUE des compteurs d’accueil.
     - Exclut les missions stock clôturées anciennes du compteur d’accueil.
+    - Corrige l’affichage de la file d’attente :
+      - compteur officiel : lugdurum_pending_writes via LugdurumAPI.
+      - compteur legacy : lugdurum_pending_transactions seulement si non retrouvé dans Sheets.
+      - nettoie automatiquement les anciennes transactions locales déjà synchronisées.
+      - se met à jour sur l’évènement lugdurum:sync-status.
   */
 
   const CURRENT_USER = {
@@ -76,6 +79,7 @@
     dataSource: "loading",
     loadError: "",
     pendingWritesCount: 0,
+    legacyPendingTransactionsCount: 0,
     apiMode: "",
     rawCounts: {
       inscriptions: 0,
@@ -225,8 +229,12 @@
     return [
       "annule",
       "annulee",
+      "annulé",
+      "annulée",
       "refuse",
-      "refusee"
+      "refusee",
+      "refusé",
+      "refusée"
     ].includes(statut);
   };
 
@@ -236,8 +244,12 @@
     return [
       "cloture",
       "cloturee",
+      "clôture",
+      "clôturée",
       "termine",
-      "terminee"
+      "terminee",
+      "terminé",
+      "terminée"
     ].includes(statut);
   };
 
@@ -359,6 +371,8 @@
       return (
         statut === "accepte" ||
         statut === "acceptee" ||
+        statut === "accepté" ||
+        statut === "acceptée" ||
         toBoolean(item.acceptation, false)
       );
     });
@@ -432,6 +446,70 @@
     return 0;
   };
 
+  const getTransactionId = (transaction) =>
+    String(transaction?.transaction_id || transaction?.id || "").trim();
+
+  const getRemoteTransactionIds = (transactions) =>
+    new Set(
+      transactions
+        .map(getTransactionId)
+        .filter(Boolean)
+    );
+
+  const getUnmatchedLegacyPendingTransactions = (remoteTransactions = []) => {
+    const localPending = getArray(STORAGE_KEYS.pendingTransactions);
+
+    if (localPending.length === 0) return [];
+
+    const remoteIds = getRemoteTransactionIds(remoteTransactions);
+
+    if (remoteIds.size === 0) return localPending;
+
+    return localPending.filter((transaction) => {
+      const id = getTransactionId(transaction);
+
+      if (!id) return true;
+
+      return !remoteIds.has(id);
+    });
+  };
+
+  const reconcileLegacyPendingTransactionsLocal = (remoteTransactions = []) => {
+    const localPending = getArray(STORAGE_KEYS.pendingTransactions);
+
+    if (localPending.length === 0) {
+      return {
+        cleaned_count: 0,
+        pending_count: 0,
+        remaining: []
+      };
+    }
+
+    const remaining = getUnmatchedLegacyPendingTransactions(remoteTransactions);
+    const cleanedCount = localPending.length - remaining.length;
+
+    if (cleanedCount > 0) {
+      writeJson(STORAGE_KEYS.pendingTransactions, remaining);
+    }
+
+    return {
+      cleaned_count: cleanedCount,
+      pending_count: remaining.length,
+      remaining
+    };
+  };
+
+  const reconcileLegacyPendingTransactions = (remoteTransactions = []) => {
+    if (
+      hasApi() &&
+      typeof api().reconcileLegacyPendingTransactions === "function"
+    ) {
+      return api().reconcileLegacyPendingTransactions(remoteTransactions);
+    }
+
+    return reconcileLegacyPendingTransactionsLocal(remoteTransactions);
+  };
+
   const normalizeCoreArray = (coreData, key, aliases = []) => {
     const keys = [key, ...aliases];
 
@@ -475,6 +553,12 @@
       transactions: data.transactions.length,
       mouvementsStock: data.mouvementsStock.length
     };
+  };
+
+  const refreshPendingCounts = () => {
+    state.pendingWritesCount = getPendingWritesCount();
+    state.legacyPendingTransactionsCount =
+      getUnmatchedLegacyPendingTransactions(state.data.transactions).length;
   };
 
   const loadRemoteDataWithCoreData = async () => {
@@ -548,6 +632,13 @@
       }
     }
 
+    const legacyCleanup = reconcileLegacyPendingTransactions(data.transactions);
+
+    state.legacyPendingTransactionsCount = toNumber(
+      legacyCleanup?.pending_count,
+      getUnmatchedLegacyPendingTransactions(data.transactions).length
+    );
+
     cacheRemoteData(data);
     updateRawCounts(data);
 
@@ -565,6 +656,9 @@
     });
 
     updateRawCounts(data);
+
+    state.legacyPendingTransactionsCount =
+      getUnmatchedLegacyPendingTransactions(data.transactions).length;
 
     return data;
   };
@@ -665,15 +759,12 @@
 
     if (toBoolean(mission.stock_prepare, false)) return true;
 
-    if (["pret", "en_cours", "termine", "cloture"].includes(normalizeStatus(mission.statut))) {
+    if (["pret", "en_cours", "termine", "terminee", "cloture", "cloturee"].includes(normalizeStatus(mission.statut))) {
       return true;
     }
 
     return hasInitialStockMovement(mission, mouvementsStock);
   };
-
-  const getTransactionId = (transaction) =>
-    String(transaction?.transaction_id || transaction?.id || "").trim();
 
   const getDayTransactions = (journeeId, transactions) => {
     if (!journeeId) return [];
@@ -682,12 +773,12 @@
       .filter(isValidStatus)
       .filter((transaction) => String(transaction.journee_id || "") === String(journeeId));
 
-    const localPendingTransactions = getArray(STORAGE_KEYS.pendingTransactions)
+    const legacyPendingTransactions = getUnmatchedLegacyPendingTransactions(transactions)
       .filter((transaction) => String(transaction.journee_id || "") === String(journeeId));
 
     const byId = new Map();
 
-    [...remoteTransactions, ...localPendingTransactions].forEach((transaction, index) => {
+    [...remoteTransactions, ...legacyPendingTransactions].forEach((transaction, index) => {
       const id = getTransactionId(transaction) || `LOCAL_${index}`;
       byId.set(id, transaction);
     });
@@ -774,11 +865,13 @@
     const revenue = getRevenueForTransactions(dayTransactions);
     const stockPrepared = isStockPrepared(mission, mouvementsStock);
 
-    const localPendingTransactionsCount = getArray(STORAGE_KEYS.pendingTransactions).length;
-    const totalPendingSync = Math.max(
-      state.pendingWritesCount,
-      localPendingTransactionsCount
-    );
+    const legacyPendingTransactions = getUnmatchedLegacyPendingTransactions(transactions);
+
+    state.legacyPendingTransactionsCount = legacyPendingTransactions.length;
+
+    const totalPendingSync =
+      toNumber(state.pendingWritesCount, 0) +
+      toNumber(state.legacyPendingTransactionsCount, 0);
 
     return {
       user: CURRENT_USER,
@@ -801,6 +894,12 @@
       stockPrepared,
       dayTransactions,
 
+      pending: {
+        official: toNumber(state.pendingWritesCount, 0),
+        legacy_transactions: toNumber(state.legacyPendingTransactionsCount, 0),
+        total: totalPendingSync
+      },
+
       filteredCounts: {
         events: events.length,
         stockMissions: stockMissions.length,
@@ -811,7 +910,7 @@
       resume: {
         ca_jour_ttc: revenue,
         nb_transactions: dayTransactions.length,
-        ventes_en_attente_sync: localPendingTransactionsCount,
+        ventes_en_attente_sync: legacyPendingTransactions.length,
         total_pending_sync: totalPendingSync
       }
     };
@@ -939,11 +1038,11 @@
       setText("#todayTickets", homeState.stockPrepared ? "OK" : "À faire");
 
       setText("#statThreeLabel", "À synchroniser");
-      setText("#pendingSync", String(homeState.resume.total_pending_sync || 0));
+      setText("#pendingSync", String(homeState.pending.total || 0));
 
       syncCard?.classList.toggle(
         "hasWarning",
-        Number(homeState.resume.total_pending_sync || 0) > 0
+        Number(homeState.pending.total || 0) > 0
       );
 
       return;
@@ -956,11 +1055,11 @@
     setText("#todayTickets", String(homeState.resume.nb_transactions || 0));
 
     setText("#statThreeLabel", "À synchroniser");
-    setText("#pendingSync", String(homeState.resume.total_pending_sync || 0));
+    setText("#pendingSync", String(homeState.pending.total || 0));
 
     syncCard?.classList.toggle(
       "hasWarning",
-      Number(homeState.resume.total_pending_sync || 0) > 0
+      Number(homeState.pending.total || 0) > 0
     );
   };
 
@@ -1059,6 +1158,14 @@
         items.push("Des missions existent dans Sheets, mais elles sont probablement historiques, annulées ou clôturées anciennes.");
       }
 
+      if (homeState.pending.total > 0) {
+        items.push(
+          `Synchronisation locale : ${homeState.pending.official} écriture(s) API et ${homeState.pending.legacy_transactions} ancienne(s) transaction(s) locale(s).`
+        );
+      } else {
+        items.push("Aucune écriture en attente de synchronisation locale.");
+      }
+
       return items;
     }
 
@@ -1078,8 +1185,16 @@
       items.push("La vente rapide est disponible pour la journée active.");
     }
 
-    if (Number(homeState.resume.total_pending_sync || 0) > 0) {
-      items.push(`${homeState.resume.total_pending_sync} écriture(s) en attente de synchronisation.`);
+    if (homeState.pending.total > 0) {
+      if (homeState.pending.official > 0 && homeState.pending.legacy_transactions > 0) {
+        items.push(
+          `${homeState.pending.total} écriture(s) en attente : ${homeState.pending.official} via file API, ${homeState.pending.legacy_transactions} ancienne(s) transaction(s) locale(s).`
+        );
+      } else if (homeState.pending.official > 0) {
+        items.push(`${homeState.pending.official} écriture(s) API en attente de synchronisation.`);
+      } else {
+        items.push(`${homeState.pending.legacy_transactions} ancienne(s) transaction(s) locale(s) non retrouvée(s) dans Sheets.`);
+      }
     } else {
       items.push("Aucune écriture en attente de synchronisation locale.");
     }
@@ -1108,6 +1223,8 @@
   };
 
   const renderHome = () => {
+    refreshPendingCounts();
+
     const homeState = buildHomeState();
     const uiState = getUiState(homeState);
 
@@ -1123,17 +1240,35 @@
       state.data = await loadRemoteData();
       state.dataSource = "remote";
       state.loadError = "";
-      state.pendingWritesCount = getPendingWritesCount();
+      refreshPendingCounts();
     } catch (error) {
       state.data = loadCacheData();
       state.dataSource = "cache";
       state.loadError = error.message || "Lecture API impossible.";
       state.apiMode = "cache";
-      state.pendingWritesCount = 0;
+      refreshPendingCounts();
     }
 
     renderHome();
   };
+
+  window.addEventListener("lugdurum:sync-status", (event) => {
+    const detail = event.detail || {};
+
+    state.pendingWritesCount = toNumber(
+      detail.pending_count,
+      getPendingWritesCount()
+    );
+
+    state.legacyPendingTransactionsCount = toNumber(
+      detail.legacy_pending_transactions_count,
+      getUnmatchedLegacyPendingTransactions(state.data.transactions).length
+    );
+
+    if (state.dataSource !== "loading") {
+      renderHome();
+    }
+  });
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initHome);
