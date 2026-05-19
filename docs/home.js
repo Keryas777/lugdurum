@@ -892,7 +892,7 @@
     setText("#currentUserName", CURRENT_USER.nom);
     setText("#activeStatusLabel", "Chargement");
     setText("#missionTitle", "Chargement…");
-    setText("#missionMeta", "Lecture des données Google Sheets.");
+    setText("#missionMeta", "Lecture des données.");
 
     setText("#statOneLabel", "Inscriptions");
     setText("#todayRevenue", "…");
@@ -910,7 +910,7 @@
       step: "inscriptions"
     });
 
-    renderWatchList(["Chargement des données Google Sheets…"]);
+    renderWatchList(["Chargement des données…"]);
   };
 
   const renderStats = (homeState, uiState) => {
@@ -1033,7 +1033,7 @@
     const items = [];
 
     if (homeState.dataSource === "remote") {
-      items.push(`Données Google Sheets chargées (${homeState.apiMode || "API"}).`);
+      items.push(`Données chargées (${homeState.apiMode || "API"}).`);
     }
 
     if (homeState.dataSource === "cache") {
