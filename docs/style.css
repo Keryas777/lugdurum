@@ -38,6 +38,9 @@
   --radius-md: 20px;
   --radius-sm: 14px;
   --tap: 48px;
+
+  --shell-inline: 14px;
+  --topbar-space: 104px;
 }
 
 *,
@@ -150,20 +153,22 @@ video {
   margin: 0 auto;
   padding:
     calc(18px + env(safe-area-inset-top))
-    14px
+    var(--shell-inline)
     calc(34px + env(safe-area-inset-bottom));
   overflow: visible;
 }
 
 /* =========================================================
-   Topbar sticky globale
+   Topbar fixed globale
    Logo + titre + retour restent visibles pendant le scroll
    ========================================================= */
 
-.topbar {
-  position: sticky;
+.appShell > .topbar {
+  position: fixed;
   top: env(safe-area-inset-top);
-  z-index: 80;
+  left: max(var(--shell-inline), calc((100vw - 1120px) / 2 + var(--shell-inline)));
+  right: max(var(--shell-inline), calc((100vw - 1120px) / 2 + var(--shell-inline)));
+  z-index: 1000;
   isolation: isolate;
 
   display: flex;
@@ -175,16 +180,16 @@ video {
   background:
     linear-gradient(
       180deg,
-      rgba(246, 241, 232, 0.985) 0%,
-      rgba(246, 241, 232, 0.955) 68%,
-      rgba(246, 241, 232, 0.86) 100%
+      rgba(246, 241, 232, 0.99) 0%,
+      rgba(246, 241, 232, 0.965) 66%,
+      rgba(246, 241, 232, 0.88) 100%
     );
 
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
 }
 
-.topbar::before {
+.appShell > .topbar::before {
   content: "";
   position: absolute;
   inset: calc(-18px - env(safe-area-inset-top)) -24px -16px;
@@ -202,9 +207,13 @@ video {
     );
 }
 
-.topbar > * {
+.appShell > .topbar > * {
   position: relative;
   z-index: 1;
+}
+
+.appShell > main {
+  padding-top: var(--topbar-space);
 }
 
 .brandBlock {
@@ -769,7 +778,11 @@ video {
 }
 
 @media (max-width: 640px) {
-  .topbar {
+  :root {
+    --topbar-space: 92px;
+  }
+
+  .appShell > .topbar {
     gap: 10px;
   }
 
@@ -802,11 +815,15 @@ video {
 }
 
 @media (max-width: 430px) {
+  :root {
+    --topbar-space: 86px;
+  }
+
   .appShell {
     padding-inline: 14px;
   }
 
-  .topbar {
+  .appShell > .topbar {
     align-items: flex-start;
     padding-top: 6px;
     padding-bottom: 16px;
@@ -836,6 +853,10 @@ video {
 }
 
 @media (max-width: 370px) {
+  :root {
+    --topbar-space: 80px;
+  }
+
   .heroStats {
     grid-template-columns: 1fr;
   }
@@ -871,10 +892,15 @@ video {
 }
 
 @media (min-width: 620px) {
+  :root {
+    --shell-inline: 22px;
+    --topbar-space: 112px;
+  }
+
   .appShell {
     padding:
       calc(28px + env(safe-area-inset-top))
-      22px
+      var(--shell-inline)
       calc(48px + env(safe-area-inset-bottom));
   }
 
@@ -932,7 +958,8 @@ video {
 }
 
 @media (display-mode: standalone) {
-  .topbar {
+  .appShell > .topbar {
+    top: env(safe-area-inset-top);
     padding-top: 0;
   }
 }
