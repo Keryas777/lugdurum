@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Inscriptions évènements V6 — connecté Google Sheets :
+    Inscriptions évènements V7 — connecté Google Sheets :
     - Source principale : Google Sheets via window.LugdurumAPI.
     - Cache localStorage conservé en secours si l’API est indisponible.
     - Lecture :
@@ -14,13 +14,14 @@
       - annulation logique d’une inscription
       - création d’un évènement confirmé dans missions_vente
       - génération des journées liées dans journees_vente
-    - Une inscription acceptée peut créer un évènement.
+    - Une inscription acceptée crée automatiquement un évènement si aucun évènement lié n’existe.
     - L’évènement créé est stocké dans missions_vente avec mission_id.
     - L’inscription conserve ce lien dans evenement_id.
     - Les journées utilisent mission_id = mission_id de missions_vente.
     - Les journées gardent aussi evenement_id = mission_id pour compatibilité avec les autres pages.
     - Après création d’un évènement, redirection vers missions.html?event_id=...&auto_select=1.
     - Si l’évènement existe déjà, un bouton Mission stock permet de poursuivre le parcours.
+    - Le bouton Créer l’évènement reste disponible en secours manuel.
     - Le bouton Calendrier ouvre un lien Google Calendar en fallback si l’API calendrier n’est pas disponible.
   */
 
@@ -333,13 +334,20 @@
   const getJournees = () => state.journees;
 
   const getMissionIdFromInscription = (inscription) =>
-    String(inscription.evenement_id || inscription.mission_id || "").trim();
+    String(inscription?.evenement_id || inscription?.mission_id || "").trim();
 
   const getMissionById = (missionId) =>
     getMissions().find((mission) => String(mission.mission_id || "") === String(missionId || ""));
 
   const getMissionStockHref = (missionId) =>
     `./missions.html?event_id=${encodeURIComponent(missionId)}&auto_select=1`;
+
+  const isAcceptedInscription = (inscription) =>
+    Boolean(inscription) &&
+    (
+      inscription.statut === "ACCEPTE" ||
+      toBoolean(inscription.acceptation)
+    );
 
   const upsertLocal = (collectionName, idKey, item) => {
     const collection = state[collectionName];
@@ -854,11 +862,11 @@
     const items = getInscriptions();
     const inscription = items.find((item) => item.inscription_id === inscriptionId);
 
-    if (!inscription) return;
+    if (!inscription) return null;
 
-    if (inscription.statut !== "ACCEPTE" && !toBoolean(inscription.acceptation)) {
+    if (!isAcceptedInscription(inscription)) {
       setStatus("L’inscription doit être acceptée avant de créer un évènement.", "isError");
-      return;
+      return null;
     }
 
     if (getMissionIdFromInscription(inscription)) {
@@ -869,14 +877,17 @@
         window.location.href = getMissionStockHref(missionId);
       }, 650);
 
-      return;
+      return {
+        created: false,
+        missionId
+      };
     }
 
     const dates = getDateRange(inscription.date_debut, inscription.date_fin);
 
     if (dates.length === 0) {
       setStatus("Impossible de créer l’évènement : dates invalides.", "isError");
-      return;
+      return null;
     }
 
     const now = new Date().toISOString();
@@ -926,8 +937,14 @@
       window.setTimeout(() => {
         window.location.href = getMissionStockHref(missionId);
       }, 850);
+
+      return {
+        created: true,
+        missionId
+      };
     } catch (error) {
       setStatus(`Erreur création évènement : ${error.message}`, "isError");
+      return null;
     } finally {
       setSaving(false);
     }
@@ -1002,7 +1019,7 @@
 
     if (!inscription) return;
 
-    if (inscription.statut !== "ACCEPTE" && !toBoolean(inscription.acceptation)) {
+    if (!isAcceptedInscription(inscription)) {
       setStatus("L’inscription doit être acceptée avant l’ajout calendrier.", "isError");
       return;
     }
@@ -1178,11 +1195,14 @@
       `;
     }
 
+    const canCreateEvent = isAcceptedInscription(item);
+
     return `
       <button
         class="trackingSmallBtn primary"
         type="button"
         data-create-event="${escapeAttr(item.inscription_id)}"
+        ${canCreateEvent ? "" : "disabled"}
       >
         Créer l’évènement
       </button>
@@ -1308,6 +1328,7 @@
                 class="trackingSmallBtn"
                 type="button"
                 data-calendar-inscription="${escapeAttr(item.inscription_id)}"
+                ${isAcceptedInscription(item) ? "" : "disabled"}
               >
                 Calendrier
               </button>
@@ -1484,28 +1505,42 @@
 
     if (!inscription) return;
 
+    const isAccepted = isAcceptedInscription(inscription);
+    const alreadyHasEvent = Boolean(getMissionIdFromInscription(inscription));
+
     setSaving(true);
     setStatus(wasEditing ? "Enregistrement des modifications..." : "Enregistrement...");
 
     try {
-      const syncResult = wasEditing
-        ? await syncLinkedEventFromInscription(inscription)
-        : await saveInscriptionOnly(inscription).then(() => ({
-            status: "none",
-            message: ""
-          }));
+      if (!wasEditing) {
+        await saveInscriptionOnly(inscription);
+        renderAll();
 
-      renderAll();
-      resetForm({ keepStatus: true });
+        if (isAccepted && !alreadyHasEvent) {
+          setStatus("Inscription acceptée. Création automatique de l’évènement...", "isSuccess");
+          await createEventFromInscription(inscription.inscription_id);
+          return;
+        }
 
-      if (wasEditing) {
-        const message = syncResult.message || "Modifications enregistrées.";
-        const type = syncResult.status === "warning" ? "isError" : "isSuccess";
-        setStatus(message, type);
+        resetForm({ keepStatus: true });
+        setStatus("Inscription enregistrée.", "isSuccess");
         return;
       }
 
-      setStatus("Inscription enregistrée.", "isSuccess");
+      const syncResult = await syncLinkedEventFromInscription(inscription);
+      renderAll();
+
+      if (isAccepted && !alreadyHasEvent) {
+        setStatus("Inscription acceptée. Création automatique de l’évènement...", "isSuccess");
+        await createEventFromInscription(inscription.inscription_id);
+        return;
+      }
+
+      resetForm({ keepStatus: true });
+
+      const message = syncResult.message || "Modifications enregistrées.";
+      const type = syncResult.status === "warning" ? "isError" : "isSuccess";
+      setStatus(message, type);
     } catch (error) {
       setStatus(`Erreur enregistrement : ${error.message}`, "isError");
     } finally {
