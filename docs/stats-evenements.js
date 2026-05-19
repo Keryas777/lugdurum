@@ -418,10 +418,10 @@
     bindEvents();
 
     if (els.list) {
-      els.list.innerHTML = `<p class="statsEmpty">Chargement depuis Google Sheets…</p>`;
+      els.list.innerHTML = `<p class="statsEmpty">Chargement…</p>`;
     }
 
-    setStatus("Chargement depuis Google Sheets...");
+    setStatus("Chargement...");
 
     try {
       await loadRemote();
