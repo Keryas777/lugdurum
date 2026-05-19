@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Saisie ancienne journée V4 :
+    Saisie ancienne journée V5 :
     - Création OU modification d’une journée clôturée historique.
     - Mode édition via saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Charge catalogue + offres depuis Google Sheets.
@@ -13,6 +13,7 @@
     - Après succès réel API, retour automatique vers la page précédente ou journees-cloturees.html.
     - Produits vendus affichés avec les mêmes tuiles visuelles que Préparation stock.
     - Mode historique : affiche aussi les parfums inactifs / anciens pour permettre la saisie d’anciens marchés.
+    - Anti-clignotement : les clics + / - ne reconstruisent plus toute la grille produits.
   */
 
   const CURRENT_USER = {
@@ -447,6 +448,20 @@
     } else {
       state.quantities.delete(skuId);
     }
+  };
+
+  const updateQuantityInput = (skuId) => {
+    document.querySelectorAll("[data-old-day-input]").forEach((input) => {
+      if (input.dataset.oldDayInput === skuId) {
+        input.value = String(getQuantity(skuId));
+      }
+    });
+  };
+
+  const updateAllQuantityInputs = () => {
+    document.querySelectorAll("[data-old-day-input]").forEach((input) => {
+      input.value = String(getQuantity(input.dataset.oldDayInput));
+    });
   };
 
   const getHistoricalOffers = () =>
@@ -1558,8 +1573,9 @@
       const current = getQuantity(skuId);
 
       setQuantity(skuId, current + delta);
+      updateQuantityInput(skuId);
       setStatus("");
-      renderAll();
+      renderTotals();
       return;
     }
 
@@ -1596,8 +1612,9 @@
 
   els.clearProductsBtn.addEventListener("click", () => {
     state.quantities = new Map();
+    updateAllQuantityInputs();
     setStatus("");
-    renderAll();
+    renderTotals();
   });
 
   els.addExpenseBtn.addEventListener("click", addExpense);
