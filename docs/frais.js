@@ -736,7 +736,7 @@
     resetForm({ keepStatus: true });
 
     try {
-      setStatus("Chargement depuis Google Sheets...");
+      setStatus("Chargement...");
       await loadRemoteData();
 
       const hasContext = loadContext();
