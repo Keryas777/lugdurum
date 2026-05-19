@@ -2,20 +2,23 @@
   "use strict";
 
   /*
-    Stats produits V3 :
+    Stats produits V4 :
     - API Google Sheets prioritaire.
+    - Chargement via getCoreData() si disponible, sinon getters séparés.
     - Pas de rendu local avant la réponse API.
     - Cache/localStorage uniquement si l’API est indisponible.
-    - Corrige les IDs HTML réellement utilisés par stats-produits.html.
     - Analyse ventes_lignes.
-    - Fallback depuis detail_ticket si ventes_lignes est vide.
-    - Supporte les detail_ticket historiques contenant directement des lignes de vente.
+    - Fallback depuis detail_ticket pour les transactions sans lignes.
+    - Correction importante :
+      l’année statistique vient de journees_vente.date via journee_id,
+      et non de created_at / updated_at / date_heure de saisie.
   */
 
   const CACHE_KEYS = {
     transactions: "lugdurum_transactions_cache",
     ventesLignes: "lugdurum_ventes_lignes_cache",
-    catalogue: "lugdurum_catalogue_cache"
+    catalogue: "lugdurum_catalogue_cache",
+    journees: "lugdurum_journees_cache"
   };
 
   const LEGACY_KEYS = {
@@ -31,17 +34,32 @@
     ],
     catalogue: [
       "lugdurum_catalogue_cache"
+    ],
+    journees: [
+      "lugdurum_journees_cache",
+      "lugdurum_journees"
     ]
   };
 
+  const CORE_TABLES = [
+    "transactions",
+    "ventesLignes",
+    "catalogue",
+    "journees"
+  ];
+
+  const CURRENT_YEAR = String(new Date().getFullYear());
+
   const state = {
     source: "loading",
+    apiMode: "",
     loadError: "",
     transactions: [],
     lignes: [],
     catalogue: [],
+    journees: [],
     filters: {
-      year: "ALL",
+      year: "AUTO",
       format: "ALL",
       search: ""
     }
@@ -63,10 +81,9 @@
   };
 
   const api = () => window.LugdurumAPI || null;
-
   const hasApi = () => Boolean(api());
 
-  const waitForApi = (timeoutMs = 1500) =>
+  const waitForApi = (timeoutMs = 1800) =>
     new Promise((resolve) => {
       if (hasApi()) {
         resolve(true);
@@ -145,7 +162,6 @@
     if (!normalized) return fallback;
 
     const number = Number(normalized);
-
     return Number.isFinite(number) ? number : fallback;
   };
 
@@ -164,8 +180,8 @@
   };
 
   const getYearFromDate = (value) => {
-    const text = String(value || "");
-    const match = text.match(/^(\d{4})/);
+    const text = String(value || "").slice(0, 10);
+    const match = text.match(/^(\d{4})-/) || text.match(/^(\d{4})/);
     return match ? match[1] : "";
   };
 
@@ -190,12 +206,10 @@
     return [
       "annule",
       "annulee",
-      "annulé",
-      "annulée",
       "refuse",
-      "refusé",
       "refusee",
-      "refusée"
+      "rembourse",
+      "remboursee"
     ].includes(status);
   };
 
@@ -206,6 +220,9 @@
 
   const getTransactionId = (transaction) =>
     String(transaction?.transaction_id || transaction?.id || "").trim();
+
+  const getJourneeId = (journee) =>
+    String(journee?.journee_id || "").trim();
 
   const getTransactionAmount = (transaction) =>
     toNumber(
@@ -238,6 +255,24 @@
       return map;
     }, new Map());
 
+  const getJourneeById = () =>
+    state.journees.reduce((map, journee) => {
+      const id = getJourneeId(journee);
+      if (id) map.set(id, journee);
+      return map;
+    }, new Map());
+
+  const getTransactionById = () =>
+    state.transactions.reduce((map, transaction) => {
+      const id = getTransactionId(transaction);
+
+      if (id && isValidStatus(transaction)) {
+        map.set(id, transaction);
+      }
+
+      return map;
+    }, new Map());
+
   const parseSku = (skuId) => {
     const text = String(skuId || "").trim();
     const parts = text.split("_");
@@ -252,7 +287,32 @@
     };
   };
 
-  const normalizeLine = (rawLine, transactionMap, catalogueMap) => {
+  const getBusinessDate = (rawLine, transaction, journeeMap) => {
+    const lineJourneeId = String(rawLine?.journee_id || "").trim();
+    const transactionJourneeId = String(transaction?.journee_id || "").trim();
+
+    const journee =
+      journeeMap.get(lineJourneeId) ||
+      journeeMap.get(transactionJourneeId) ||
+      null;
+
+    return (
+      journee?.date ||
+      journee?.date_journee ||
+      journee?.date_debut ||
+      rawLine?.date_vente ||
+      rawLine?.date ||
+      transaction?.date_vente ||
+      transaction?.date ||
+      transaction?.date_heure ||
+      rawLine?.date_heure ||
+      transaction?.created_at ||
+      rawLine?.created_at ||
+      ""
+    );
+  };
+
+  const normalizeLine = (rawLine, transactionMap, catalogueMap, journeeMap) => {
     const transactionId = String(rawLine?.transaction_id || rawLine?.transactionId || "").trim();
     const transaction = transactionMap.get(transactionId) || null;
 
@@ -282,18 +342,16 @@
       quantity * unitPrice
     );
 
+    const businessDate = getBusinessDate(rawLine, transaction, journeeMap);
+    const businessYear = getYearFromDate(businessDate);
+
     return {
+      ligne_id: String(rawLine?.ligne_id || "").trim(),
       transaction_id: transactionId,
       mission_id: rawLine?.mission_id || transaction?.mission_id || "",
       journee_id: rawLine?.journee_id || transaction?.journee_id || "",
-      date_heure:
-        rawLine?.date_heure ||
-        rawLine?.date ||
-        rawLine?.created_at ||
-        transaction?.date_heure ||
-        transaction?.date ||
-        transaction?.created_at ||
-        "",
+      business_date: businessDate,
+      business_year: businessYear,
       sku_id: skuId,
       parfum_code: String(
         rawLine?.parfum_code ||
@@ -333,6 +391,7 @@
     );
 
     lines.push({
+      ligne_id: item.ligne_id || "",
       transaction_id: transactionId,
       mission_id: item.mission_id || transaction.mission_id || "",
       journee_id: item.journee_id || transaction.journee_id || "",
@@ -353,19 +412,30 @@
     });
   };
 
-  const buildLinesFromTransactions = () => {
+  const buildLinesFromTransactions = (skipTransactionIds = new Set()) => {
     const lines = [];
 
     state.transactions
       .filter(isValidStatus)
       .forEach((transaction) => {
         const transactionId = getTransactionId(transaction);
+
+        if (transactionId && skipTransactionIds.has(transactionId)) {
+          return;
+        }
+
         const ticket = parseDetailTicket(transaction);
         const transactionTotal = getTransactionAmount(transaction);
 
         ticket.forEach((item) => {
           if (item?.type === "bottle") {
+            const quantity = toNumber(item.quantite ?? item.qty ?? item.quantity, 0);
+            const unitPrice = toNumber(item.prix_unitaire_ttc ?? item.unit_price ?? item.prix, 0);
+
+            if (!item.sku_id || quantity <= 0) return;
+
             lines.push({
+              ligne_id: item.ligne_id || "",
               transaction_id: transactionId,
               mission_id: transaction.mission_id || "",
               journee_id: transaction.journee_id || "",
@@ -374,10 +444,11 @@
               parfum_code: item.parfum_code,
               parfum_nom: item.parfum_nom,
               format_cl: item.format_cl,
-              quantite: toNumber(item.quantite, 0),
-              total_catalogue_ligne_ttc:
-                toNumber(item.quantite, 0) *
-                toNumber(item.prix_unitaire_ttc, 0),
+              quantite: quantity,
+              total_catalogue_ligne_ttc: toNumber(
+                item.total_catalogue_ligne_ttc ?? item.total_ttc,
+                quantity * unitPrice
+              ),
               source: transaction.source || "DETAIL_TICKET",
               statut: "valide"
             });
@@ -393,7 +464,10 @@
                 : 0;
 
             item.composition.forEach((product) => {
+              if (!product?.sku_id) return;
+
               lines.push({
+                ligne_id: product.ligne_id || "",
                 transaction_id: transactionId,
                 mission_id: transaction.mission_id || "",
                 journee_id: transaction.journee_id || "",
@@ -419,32 +493,58 @@
     return lines;
   };
 
+  const dedupeSheetLines = (lines) => {
+    const map = new Map();
+    const withoutId = [];
+
+    lines.forEach((line) => {
+      const id = String(line?.ligne_id || "").trim();
+
+      if (!id) {
+        withoutId.push(line);
+        return;
+      }
+
+      const existing = map.get(id);
+
+      if (!existing) {
+        map.set(id, line);
+        return;
+      }
+
+      const existingUpdated = String(existing.updated_at || existing.created_at || "");
+      const lineUpdated = String(line.updated_at || line.created_at || "");
+
+      if (lineUpdated >= existingUpdated) {
+        map.set(id, line);
+      }
+    });
+
+    return [...map.values(), ...withoutId];
+  };
+
   const getBaseLines = () => {
-    const validSheetLines = state.lignes.filter(isValidStatus);
+    const validSheetLines = dedupeSheetLines(state.lignes.filter(isValidStatus));
 
-    if (validSheetLines.length > 0) {
-      return validSheetLines;
-    }
+    const transactionIdsWithSheetLines = new Set(
+      validSheetLines
+        .map((line) => String(line.transaction_id || "").trim())
+        .filter(Boolean)
+    );
 
-    return buildLinesFromTransactions();
+    const fallbackLines = buildLinesFromTransactions(transactionIdsWithSheetLines);
+
+    return [...validSheetLines, ...fallbackLines];
   };
 
   const getNormalizedLines = () => {
-    const transactionMap = state.transactions.reduce((map, transaction) => {
-      const id = getTransactionId(transaction);
-
-      if (id && isValidStatus(transaction)) {
-        map.set(id, transaction);
-      }
-
-      return map;
-    }, new Map());
-
+    const transactionMap = getTransactionById();
     const catalogueMap = getCatalogueBySku();
+    const journeeMap = getJourneeById();
 
     return getBaseLines()
       .filter(isValidStatus)
-      .map((line) => normalizeLine(line, transactionMap, catalogueMap))
+      .map((line) => normalizeLine(line, transactionMap, catalogueMap, journeeMap))
       .filter((line) => line.quantite > 0)
       .filter((line) => line.sku_id || line.parfum_code)
       .filter((line) => {
@@ -460,8 +560,7 @@
     const years = new Set();
 
     getNormalizedLines().forEach((line) => {
-      const year = getYearFromDate(line.date_heure);
-      if (year) years.add(year);
+      if (line.business_year) years.add(line.business_year);
     });
 
     return [...years].sort((a, b) => b.localeCompare(a));
@@ -470,7 +569,7 @@
   const syncYearFilter = () => {
     if (!els.year) return;
 
-    const current = els.year.value || state.filters.year;
+    const previous = state.filters.year;
     const years = getAvailableYears();
 
     els.year.innerHTML = `
@@ -478,14 +577,19 @@
       ${years.map((year) => `<option value="${year}">${year}</option>`).join("")}
     `;
 
-    if (current === "ALL" || years.includes(current)) {
-      els.year.value = current;
-      state.filters.year = current;
+    if (previous === "AUTO") {
+      state.filters.year = years.includes(CURRENT_YEAR) ? CURRENT_YEAR : "ALL";
+      els.year.value = state.filters.year;
       return;
     }
 
-    els.year.value = "ALL";
-    state.filters.year = "ALL";
+    if (previous === "ALL" || years.includes(previous)) {
+      els.year.value = previous;
+      return;
+    }
+
+    state.filters.year = years.includes(CURRENT_YEAR) ? CURRENT_YEAR : "ALL";
+    els.year.value = state.filters.year;
   };
 
   const getFilteredLines = () => {
@@ -494,7 +598,7 @@
     return getNormalizedLines()
       .filter((line) => {
         if (state.filters.year === "ALL") return true;
-        return getYearFromDate(line.date_heure) === state.filters.year;
+        return line.business_year === state.filters.year;
       })
       .filter((line) => {
         if (state.filters.format === "ALL") return true;
@@ -536,7 +640,10 @@
       const byCa = b.ca - a.ca;
       if (byCa !== 0) return byCa;
 
-      return String(a.parfum_code).localeCompare(String(b.parfum_code));
+      const byCode = String(a.parfum_code).localeCompare(String(b.parfum_code));
+      if (byCode !== 0) return byCode;
+
+      return toNumber(b.format_cl, 0) - toNumber(a.format_cl, 0);
     });
   };
 
@@ -574,7 +681,7 @@
 
     if (els.formatList) {
       els.formatList.innerHTML =
-        `<p class="statsEmpty">Chargement des formats…</p>`;
+        `<p class="statsEmpty">Chargement…</p>`;
     }
 
     if (els.list) {
@@ -589,6 +696,7 @@
     syncYearFilter();
 
     const normalizedLines = getNormalizedLines();
+    const filteredLines = getFilteredLines();
     const products = computeByProduct();
     const formats = computeByFormat();
 
@@ -651,6 +759,11 @@
       return;
     }
 
+    if (state.source === "api" && filteredLines.length === 0) {
+      setStatus("");
+      return;
+    }
+
     if (state.source === "local") {
       setStatus(
         `API indisponible. Données locales affichées : ${state.loadError}`,
@@ -662,14 +775,60 @@
     setStatus("");
   };
 
+  const normalizeCoreArray = (coreData, key) => {
+    const value = coreData?.[key];
+
+    if (Array.isArray(value)) return value;
+
+    if (value && typeof value === "object" && value.ok === false) {
+      throw new Error(value.error || `Table coreData invalide : ${key}`);
+    }
+
+    return [];
+  };
+
   const callArray = async (fnName) => {
     if (!hasApi() || typeof api()[fnName] !== "function") {
       throw new Error(`Fonction API indisponible : ${fnName}`);
     }
 
     const result = await api()[fnName]();
-
     return Array.isArray(result) ? result : [];
+  };
+
+  const loadRemoteWithCoreData = async () => {
+    if (!hasApi() || typeof api().getCoreData !== "function") {
+      throw new Error("LugdurumAPI.getCoreData() est indisponible.");
+    }
+
+    const coreData = await api().getCoreData(CORE_TABLES);
+
+    if (!coreData || typeof coreData !== "object" || Array.isArray(coreData)) {
+      throw new Error("Réponse getCoreData invalide.");
+    }
+
+    return {
+      transactions: normalizeCoreArray(coreData, "transactions"),
+      lignes: normalizeCoreArray(coreData, "ventesLignes"),
+      catalogue: normalizeCoreArray(coreData, "catalogue"),
+      journees: normalizeCoreArray(coreData, "journees")
+    };
+  };
+
+  const loadRemoteWithSeparateCalls = async () => {
+    const [transactions, lignes, catalogue, journees] = await Promise.all([
+      callArray("getTransactions"),
+      callArray("getVentesLignes"),
+      callArray("getCatalogue"),
+      callArray("getJournees")
+    ]);
+
+    return {
+      transactions,
+      lignes,
+      catalogue,
+      journees
+    };
   };
 
   const loadRemote = async () => {
@@ -679,28 +838,42 @@
       throw new Error("lugdurum-api.js n’est pas chargé.");
     }
 
-    const [transactions, lignes, catalogue] = await Promise.all([
-      callArray("getTransactions"),
-      callArray("getVentesLignes"),
-      callArray("getCatalogue")
-    ]);
+    let data;
 
-    state.transactions = transactions;
-    state.lignes = lignes;
-    state.catalogue = catalogue;
+    try {
+      data = await loadRemoteWithCoreData();
+      state.apiMode = "getCoreData";
+    } catch (coreError) {
+      try {
+        data = await loadRemoteWithSeparateCalls();
+        state.apiMode = `getters séparés après échec getCoreData : ${coreError.message}`;
+      } catch (separateError) {
+        throw new Error(
+          `getCoreData : ${coreError.message} · getters séparés : ${separateError.message}`
+        );
+      }
+    }
+
+    state.transactions = data.transactions;
+    state.lignes = data.lignes;
+    state.catalogue = data.catalogue;
+    state.journees = data.journees;
     state.source = "api";
     state.loadError = "";
 
-    writeJson(CACHE_KEYS.transactions, transactions);
-    writeJson(CACHE_KEYS.ventesLignes, lignes);
-    writeJson(CACHE_KEYS.catalogue, catalogue);
+    writeJson(CACHE_KEYS.transactions, state.transactions);
+    writeJson(CACHE_KEYS.ventesLignes, state.lignes);
+    writeJson(CACHE_KEYS.catalogue, state.catalogue);
+    writeJson(CACHE_KEYS.journees, state.journees);
   };
 
   const loadLocalFallback = (error) => {
     state.transactions = readFirstArray(LEGACY_KEYS.transactions);
     state.lignes = readFirstArray(LEGACY_KEYS.ventesLignes);
     state.catalogue = readFirstArray(LEGACY_KEYS.catalogue);
+    state.journees = readFirstArray(LEGACY_KEYS.journees);
     state.source = "local";
+    state.apiMode = "cache";
     state.loadError = error?.message || "Lecture données impossible.";
   };
 
