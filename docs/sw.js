@@ -1,4 +1,4 @@
-const CACHE_NAME = "lugdurum-cache-v11-home-data";
+const CACHE_NAME = "lugdurum-cache-v12-api-network-only";
 const STATIC_CACHE_PREFIX = "lugdurum-cache-";
 
 const STATIC_EXTENSIONS = [
@@ -23,9 +23,12 @@ const isApiRequest = (url) => {
 
   return (
     href.includes("script.google.com/macros/") ||
+    href.includes("script.googleusercontent.com/macros/") ||
     href.includes("googleusercontent.com/macros/")
   );
 };
+
+const isSameOriginRequest = (url) => url.origin === self.location.origin;
 
 const isCacheableStaticRequest = (request) => {
   if (!request || request.method !== "GET") return false;
@@ -33,8 +36,7 @@ const isCacheableStaticRequest = (request) => {
   const url = new URL(request.url);
 
   if (isApiRequest(url)) return false;
-
-  if (url.origin !== self.location.origin) return false;
+  if (!isSameOriginRequest(url)) return false;
 
   if (request.cache === "only-if-cached" && request.mode !== "same-origin") {
     return false;
@@ -47,7 +49,11 @@ const isCacheableStaticRequest = (request) => {
   );
 };
 
-const fetchAndCache = async (request) => {
+const fetchNetworkOnly = async (request) => {
+  return fetch(request);
+};
+
+const fetchAndCacheStatic = async (request) => {
   const response = await fetch(request);
 
   if (
@@ -66,14 +72,13 @@ const fetchAndCache = async (request) => {
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-  );
+  event.waitUntil(caches.open(CACHE_NAME));
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
+    caches
+      .keys()
       .then((keys) =>
         Promise.all(
           keys
@@ -93,25 +98,39 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;
+  const url = new URL(request.url);
+
+  /*
+    IMPORTANT :
+    Les appels Apps Script / Googleusercontent ne doivent JAMAIS être servis
+    depuis le cache PWA. Sinon l’accueil peut croire que l’API échoue ou
+    afficher de vieilles données.
+  */
+  if (isApiRequest(url)) {
+    event.respondWith(fetchNetworkOnly(request));
+    return;
+  }
 
   if (!isCacheableStaticRequest(request)) {
     return;
   }
 
   event.respondWith(
-    fetchAndCache(request)
-      .catch(async () => {
-        const cached = await caches.match(request);
+    fetchAndCacheStatic(request).catch(async () => {
+      const cached = await caches.match(request);
 
-        if (cached) return cached;
+      if (cached) return cached;
 
-        if (request.mode === "navigate") {
-          const indexCached = await caches.match("./index.html");
+      if (request.mode === "navigate") {
+        const indexCached =
+          (await caches.match("./index.html")) ||
+          (await caches.match("/index.html")) ||
+          (await caches.match(self.location.origin + "/index.html"));
 
-          if (indexCached) return indexCached;
-        }
+        if (indexCached) return indexCached;
+      }
 
-        throw new Error(`Ressource indisponible hors ligne : ${request.url}`);
-      })
+      throw new Error(`Ressource indisponible hors ligne : ${request.url}`);
+    })
   );
 });
