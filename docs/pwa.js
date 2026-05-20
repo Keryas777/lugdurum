@@ -2,22 +2,24 @@
   "use strict";
 
   /*
-    PWA Lugdurum V10_FAST_BATCH :
+    PWA Lugdurum V11_HOME_DATA :
     - Force le navigateur à vérifier la nouvelle version du service worker.
     - Nettoie les anciens caches Lugdurum quand la version change.
     - Évite que l’icône écran d’accueil / Safari garde un ancien JS.
     - Recharge une seule fois si un nouveau service worker prend le contrôle.
+    - Ne touche pas aux caches métier localStorage : home data, pending writes, etc.
   */
 
-  const PWA_VERSION = "v10-fast-batch";
+  const PWA_VERSION = "v11-home-data";
   const SW_URL = `./sw.js?v=${encodeURIComponent(PWA_VERSION)}`;
+
   const VERSION_STORAGE_KEY = "lugdurum_pwa_version";
   const RELOAD_STORAGE_KEY = "lugdurum_pwa_reloaded_for_sw";
 
   const isLugdurumCache = (cacheName) =>
     String(cacheName || "")
       .toLowerCase()
-      .includes("lugdurum");
+      .startsWith("lugdurum-cache-");
 
   const safeLocalGet = (key) => {
     try {
