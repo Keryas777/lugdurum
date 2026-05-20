@@ -1,22 +1,21 @@
-const CACHE_NAME = "lugdurum-cache-v14-scroll-fix";
-const STATIC_CACHE_PREFIX = "lugdurum-cache-";
+/*
+  Lugdurum Service Worker V15_STATIC_NETWORK_ONLY
 
-const STATIC_EXTENSIONS = [
-  ".html",
-  ".css",
-  ".js",
-  ".json",
-  ".webmanifest",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".svg",
-  ".webp",
-  ".ico"
-];
+  Objectif :
+  - Ne plus mettre en cache les fichiers statiques HTML/CSS/JS.
+  - Ne jamais intercepter les appels API Apps Script.
+  - Supprimer les anciens caches PWA Lugdurum.
+  - Garder le service worker actif pour prise de contrôle / mise à jour,
+    mais sans fallback statique susceptible de servir un vieux fichier.
+*/
 
-const isLugdurumCache = (cacheName) =>
-  String(cacheName || "").startsWith(STATIC_CACHE_PREFIX);
+const CACHE_PREFIX = "lugdurum-cache-";
+const SW_VERSION = "v15-static-network-only";
+
+const isLugdurumPwaCache = (cacheName) =>
+  String(cacheName || "")
+    .toLowerCase()
+    .startsWith(CACHE_PREFIX);
 
 const isApiRequest = (url) => {
   const href = String(url?.href || "");
@@ -28,47 +27,18 @@ const isApiRequest = (url) => {
   );
 };
 
-const isSameOriginRequest = (url) => url.origin === self.location.origin;
-
-const isCacheableStaticRequest = (request) => {
-  if (!request || request.method !== "GET") return false;
-
-  const url = new URL(request.url);
-
-  if (isApiRequest(url)) return false;
-  if (!isSameOriginRequest(url)) return false;
-
-  if (request.cache === "only-if-cached" && request.mode !== "same-origin") {
-    return false;
-  }
-
-  if (request.mode === "navigate") return true;
-
-  return STATIC_EXTENSIONS.some((extension) =>
-    url.pathname.toLowerCase().endsWith(extension)
-  );
-};
-
-const fetchAndCacheStatic = async (request) => {
-  const response = await fetch(request);
-
-  if (
-    response &&
-    response.ok &&
-    response.status === 200 &&
-    (response.type === "basic" || response.type === "default")
-  ) {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.put(request, response.clone());
-  }
-
-  return response;
-};
-
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 
-  event.waitUntil(caches.open(CACHE_NAME));
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter(isLugdurumPwaCache)
+          .map((key) => caches.delete(key))
+      )
+    )
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -78,7 +48,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => isLugdurumCache(key) && key !== CACHE_NAME)
+            .filter(isLugdurumPwaCache)
             .map((key) => caches.delete(key))
         )
       )
@@ -97,38 +67,14 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   /*
-    Très important :
-    Les appels Apps Script / Googleusercontent sont volontairement IGNORÉS
-    par le service worker.
-
-    On ne fait pas event.respondWith(fetch(request)).
-    On ne fait pas de cache.
-    On laisse le navigateur gérer l’appel réseau normalement.
+    Important :
+    - API Apps Script : non interceptée.
+    - Fichiers statiques : non mis en cache.
+    - Le navigateur fait son fetch normal.
   */
   if (isApiRequest(url)) {
     return;
   }
 
-  if (!isCacheableStaticRequest(request)) {
-    return;
-  }
-
-  event.respondWith(
-    fetchAndCacheStatic(request).catch(async () => {
-      const cached = await caches.match(request);
-
-      if (cached) return cached;
-
-      if (request.mode === "navigate") {
-        const indexCached =
-          (await caches.match("./index.html")) ||
-          (await caches.match("/index.html")) ||
-          (await caches.match(self.location.origin + "/index.html"));
-
-        if (indexCached) return indexCached;
-      }
-
-      throw new Error(`Ressource indisponible hors ligne : ${request.url}`);
-    })
-  );
+  return;
 });
