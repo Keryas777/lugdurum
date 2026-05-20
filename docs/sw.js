@@ -1,4 +1,4 @@
-const CACHE_NAME = "lugdurum-cache-v13-ignore-api";
+const CACHE_NAME = "lugdurum-cache-v14-scroll-fix";
 const STATIC_CACHE_PREFIX = "lugdurum-cache-";
 
 const STATIC_EXTENSIONS = [
