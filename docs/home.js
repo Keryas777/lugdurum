@@ -2,25 +2,15 @@
   "use strict";
 
   /*
-    Accueil V14 :
-    - Affiche immédiatement le dernier cache accueil connu.
+    Accueil V15 :
+    - Affiche immédiatement le dernier cache accueil connu, mais clairement marqué comme local.
     - Lance ensuite une actualisation en ligne via LugdurumAPI.getHomeData().
-    - Ne sert pas un cache comme s’il était en ligne : badge permanent rouge / jaune / vert.
-    - Source prioritaire : Google Sheets via window.LugdurumAPI.
-    - Chargement rapide prioritaire via LugdurumAPI.getHomeData().
-    - Fallback automatique via getCoreData(), puis getters séparés.
-    - Cache localStorage complet uniquement en secours si l’API complète est indisponible.
+    - Le badge ne passe en vert qu’après une réponse API réussie.
+    - Ajoute une preuve de provenance visible dans “À surveiller”.
     - Cache accueil dédié : lugdurum_home_data_cache.
-    - Diagnostic visible dans "À surveiller".
-    - Ne dépend plus de stock_preparations / stock_preparation_lignes.
-    - Utilise mouvements_stock pour détecter une préparation initiale.
-    - Exclut les données historiques SAISIE_HISTORIQUE des compteurs d’accueil.
-    - Exclut les missions stock clôturées anciennes du compteur d’accueil.
-    - Corrige l’affichage de la file d’attente :
-      - compteur officiel : lugdurum_pending_writes via LugdurumAPI.
-      - compteur legacy : lugdurum_pending_transactions seulement si non retrouvé dans Sheets.
-      - nettoie automatiquement les anciennes transactions locales déjà synchronisées quand l’index distant est fiable.
-      - se met à jour sur l’évènement lugdurum:sync-status.
+    - Fallback API : getCoreData(), puis getters séparés.
+    - File d’attente officielle : lugdurum_pending_writes.
+    - Legacy transactions : lugdurum_pending_transactions.
   */
 
   const CURRENT_USER = {
@@ -87,11 +77,18 @@
     loadError: "",
     pendingWritesCount: 0,
     legacyPendingTransactionsCount: 0,
+
     apiMode: "",
+    apiFetchedAt: "",
+    apiGeneratedAt: "",
+    apiDurationMs: null,
+
     cacheSavedAt: "",
     lastHomePayload: null,
+
     remoteTransactionIds: null,
     remoteTransactionIndexComplete: false,
+
     rawCounts: {
       inscriptions: 0,
       events: 0,
@@ -100,6 +97,7 @@
       transactions: 0,
       mouvementsStock: 0
     },
+
     data: {
       inscriptions: [],
       events: [],
@@ -114,16 +112,6 @@
 
   const api = () => window.LugdurumAPI || null;
   const hasApi = () => Boolean(api());
-
-  const dataState = () => window.LugdurumDataState || null;
-
-  const setDataState = (status, message = "") => {
-    if (dataState() && typeof dataState().set === "function") {
-      dataState().set(status, {
-        message
-      });
-    }
-  };
 
   const safeLocalGet = (key) => {
     try {
@@ -256,6 +244,36 @@
     }
 
     return `${formatDisplayDate(item.date_debut)} → ${formatDisplayDate(item.date_fin)}`;
+  };
+
+  const setDataState = (mode, label = "") => {
+    const badge = qs("#lugdurumDataStateBadge");
+    if (!badge) return;
+
+    const text = badge.querySelector(".lugdurumDataStateBadgeText");
+
+    badge.classList.remove("isLocal", "isRefreshing", "isOnline");
+
+    if (mode === "online") {
+      badge.classList.add("isOnline");
+      if (text) text.textContent = label || "Données en ligne";
+      badge.title = "Source active : API en ligne";
+      document.documentElement.dataset.lugdurumDataSource = "api";
+      return;
+    }
+
+    if (mode === "refreshing") {
+      badge.classList.add("isRefreshing");
+      if (text) text.textContent = label || "Actualisation · lecture en ligne";
+      badge.title = "Actualisation en cours";
+      document.documentElement.dataset.lugdurumDataSource = "refreshing";
+      return;
+    }
+
+    badge.classList.add("isLocal");
+    if (text) text.textContent = label || "Données locales";
+    badge.title = "Source active : cache local";
+    document.documentElement.dataset.lugdurumDataSource = "cache";
   };
 
   const isCancelledStatus = (item) => {
@@ -853,6 +871,7 @@
       transactionIds,
       transactionIndexComplete: indexComplete,
       generatedAt: envelope.generated_at || envelope.generatedAt || "",
+      durationMs: toNumber(envelope.duration_ms ?? envelope.durationMs, null),
       apiMode: envelope.api_mode || envelope.apiMode || "getHomeData",
       homePayload: payload
     };
@@ -880,7 +899,11 @@
 
     state.remoteTransactionIndexComplete = normalized.transactionIndexComplete;
     state.lastHomePayload = normalized.homePayload;
-    state.cacheSavedAt = normalized.generatedAt || "";
+
+    state.apiMode = normalized.apiMode || "getHomeData";
+    state.apiFetchedAt = new Date().toISOString();
+    state.apiGeneratedAt = normalized.generatedAt || "";
+    state.apiDurationMs = normalized.durationMs;
 
     const data = normalized.data;
     data.__rawCounts = normalized.rawCounts;
@@ -902,6 +925,10 @@
     state.remoteTransactionIds = null;
     state.remoteTransactionIndexComplete = true;
     state.lastHomePayload = null;
+
+    state.apiFetchedAt = new Date().toISOString();
+    state.apiGeneratedAt = "";
+    state.apiDurationMs = null;
 
     return normalizeRemoteData({
       inscriptions: normalizeCoreArray(coreData, "inscriptions", ["inscriptions_evenements"]),
@@ -934,6 +961,10 @@
     state.remoteTransactionIndexComplete = true;
     state.lastHomePayload = null;
 
+    state.apiFetchedAt = new Date().toISOString();
+    state.apiGeneratedAt = "";
+    state.apiDurationMs = null;
+
     return normalizeRemoteData({
       inscriptions,
       events,
@@ -956,8 +987,6 @@
 
     try {
       data = await loadRemoteDataWithHomeData();
-      state.apiMode = "getHomeData";
-      shouldCacheGeneric = false;
     } catch (homeError) {
       try {
         data = await loadRemoteDataWithCoreData();
@@ -1023,6 +1052,9 @@
     state.remoteTransactionIndexComplete = normalized.transactionIndexComplete;
     state.cacheSavedAt = cache.saved_at || normalized.generatedAt || "";
     state.apiMode = `cache accueil${state.cacheSavedAt ? ` · ${formatShortDateTime(state.cacheSavedAt)}` : ""}`;
+    state.apiFetchedAt = "";
+    state.apiGeneratedAt = "";
+    state.apiDurationMs = null;
 
     const data = normalized.data;
     data.__rawCounts = normalized.rawCounts;
@@ -1264,8 +1296,13 @@
     return {
       user: CURRENT_USER,
       dataSource: state.dataSource,
-      apiMode: state.apiMode,
       loadError: state.loadError,
+
+      apiMode: state.apiMode,
+      apiFetchedAt: state.apiFetchedAt,
+      apiGeneratedAt: state.apiGeneratedAt,
+      apiDurationMs: state.apiDurationMs,
+
       cacheSavedAt: state.cacheSavedAt,
       rawCounts: state.rawCounts,
 
@@ -1521,7 +1558,16 @@
     const items = [];
 
     if (homeState.dataSource === "remote") {
-      items.push(`Données en ligne chargées (${homeState.apiMode || "API"}).`);
+      const fetched = homeState.apiFetchedAt
+        ? ` à ${formatShortDateTime(homeState.apiFetchedAt)}`
+        : "";
+
+      const duration =
+        homeState.apiDurationMs !== null && homeState.apiDurationMs !== undefined
+          ? ` · ${homeState.apiDurationMs} ms API`
+          : "";
+
+      items.push(`Source active confirmée : API en ligne${fetched} (${homeState.apiMode || "API"}${duration}).`);
     }
 
     if (homeState.dataSource === "cache") {
@@ -1529,7 +1575,7 @@
         ? ` Cache du ${formatShortDateTime(homeState.cacheSavedAt)}.`
         : "";
 
-      items.push(`Données locales affichées.${cacheInfo} ${homeState.loadError || ""}`.trim());
+      items.push(`Source active : cache local.${cacheInfo} ${homeState.loadError || ""}`.trim());
     }
 
     items.push(
@@ -1644,8 +1690,8 @@
       setDataState(
         "local",
         state.cacheSavedAt
-          ? `cache du ${formatShortDateTime(state.cacheSavedAt)}`
-          : "cache accueil"
+          ? `Données locales · cache du ${formatShortDateTime(state.cacheSavedAt)}`
+          : "Données locales · cache accueil"
       );
 
       renderHome();
@@ -1662,10 +1708,14 @@
 
     if (!cacheRendered) {
       renderLoading();
-      setDataState("refreshing", "lecture en ligne");
-    } else {
-      setDataState("refreshing", "mise à jour");
     }
+
+    setDataState(
+      "refreshing",
+      cacheRendered
+        ? "Actualisation · vérification en ligne"
+        : "Actualisation · lecture en ligne"
+    );
 
     try {
       state.data = await loadRemoteData();
@@ -1673,7 +1723,11 @@
       state.loadError = "";
       refreshPendingCounts();
 
-      setDataState("online", "à jour");
+      const onlineLabel = state.apiFetchedAt
+        ? `Données en ligne · ${formatShortDateTime(state.apiFetchedAt)}`
+        : "Données en ligne";
+
+      setDataState("online", onlineLabel);
 
       renderHome();
     } catch (error) {
@@ -1686,7 +1740,7 @@
       state.apiMode = state.apiMode || "cache";
       refreshPendingCounts();
 
-      setDataState("local", "actualisation impossible");
+      setDataState("local", "Données locales · actualisation impossible");
 
       renderHome();
     }
