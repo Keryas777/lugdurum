@@ -13,6 +13,7 @@
     - Nettoyage robuste de la file après succès batch.
     - Nettoyage des anciennes transactions locales legacy : lugdurum_pending_transactions.
     - Évènement global lugdurum:sync-status pour rafraîchir l’UI.
+    - État données permanent : local / actualisation / en ligne.
     - Évite les doublons d’écriture ventes_lignes quand Apps Script sauvegarde déjà les lignes dans les bundles.
   */
 
@@ -23,6 +24,7 @@
     pendingWrites: "lugdurum_pending_writes",
     lastSyncState: "lugdurum_last_sync_state",
     legacyPendingTransactions: "lugdurum_pending_transactions",
+    dataState: "lugdurum_data_state",
 
     activeMissionId: "lugdurum_active_mission_id",
     activeStockMissionId: "lugdurum_active_stock_mission_id",
@@ -31,6 +33,12 @@
   };
 
   const FLUSH_BATCH_SIZE = 20;
+
+  const DATA_STATE_LABELS = {
+    local: "Données locales",
+    refreshing: "Actualisation",
+    online: "Données en ligne"
+  };
 
   let isFlushing = false;
   let flushTimer = null;
@@ -77,6 +85,154 @@
     const day = String(date.getDate()).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
+  };
+
+  const ensureDataStateStyle = () => {
+    if (document.getElementById("lugdurumDataStateStyle")) return;
+
+    const style = document.createElement("style");
+    style.id = "lugdurumDataStateStyle";
+    style.textContent = `
+      .lugdurumDataStateBadge {
+        position: fixed;
+        left: max(12px, env(safe-area-inset-left));
+        bottom: max(12px, env(safe-area-inset-bottom));
+        z-index: 9999;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        max-width: calc(100vw - 24px);
+        padding: 7px 10px;
+        border-radius: 999px;
+        font: 700 11px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0.01em;
+        color: #1f1b16;
+        background: rgba(255, 250, 241, 0.92);
+        border: 1px solid rgba(31, 27, 22, 0.12);
+        box-shadow: 0 10px 30px rgba(31, 27, 22, 0.12);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        pointer-events: none;
+      }
+
+      .lugdurumDataStateBadgeDot {
+        width: 8px;
+        height: 8px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: #b35c3a;
+        box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.12);
+      }
+
+      .lugdurumDataStateBadgeText {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .lugdurumDataStateBadge.isLocal .lugdurumDataStateBadgeDot {
+        background: #b35c3a;
+        box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.13);
+      }
+
+      .lugdurumDataStateBadge.isRefreshing .lugdurumDataStateBadgeDot {
+        background: #d8a04f;
+        box-shadow: 0 0 0 4px rgba(216, 160, 79, 0.16);
+      }
+
+      .lugdurumDataStateBadge.isOnline .lugdurumDataStateBadgeDot {
+        background: #3f6f4f;
+        box-shadow: 0 0 0 4px rgba(63, 111, 79, 0.15);
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  const ensureDataStateBadge = () => {
+    if (!document.body) return null;
+
+    ensureDataStateStyle();
+
+    let badge = document.getElementById("lugdurumDataStateBadge");
+
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.id = "lugdurumDataStateBadge";
+      badge.className = "lugdurumDataStateBadge isLocal";
+      badge.innerHTML = `
+        <span class="lugdurumDataStateBadgeDot" aria-hidden="true"></span>
+        <span class="lugdurumDataStateBadgeText">Données locales</span>
+      `;
+      badge.setAttribute("aria-live", "polite");
+      badge.setAttribute("role", "status");
+      document.body.appendChild(badge);
+    }
+
+    return badge;
+  };
+
+  const setDataState = (status, details = {}) => {
+    const safeStatus = DATA_STATE_LABELS[status] ? status : "local";
+    const label = details.label || DATA_STATE_LABELS[safeStatus];
+    const message = details.message || "";
+    const text = message ? `${label} · ${message}` : label;
+
+    const state = {
+      status: safeStatus,
+      label,
+      message,
+      updated_at: nowIso(),
+      ...details
+    };
+
+    writeJson(STORAGE_KEYS.dataState, state);
+
+    const render = () => {
+      const badge = ensureDataStateBadge();
+
+      if (!badge) return;
+
+      badge.classList.remove("isLocal", "isRefreshing", "isOnline");
+
+      if (safeStatus === "online") {
+        badge.classList.add("isOnline");
+      } else if (safeStatus === "refreshing") {
+        badge.classList.add("isRefreshing");
+      } else {
+        badge.classList.add("isLocal");
+      }
+
+      const textElement = badge.querySelector(".lugdurumDataStateBadgeText");
+      if (textElement) textElement.textContent = text;
+    };
+
+    if (document.body) {
+      render();
+    } else {
+      document.addEventListener("DOMContentLoaded", render, { once: true });
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("lugdurum:data-state", {
+        detail: state
+      })
+    );
+
+    return state;
+  };
+
+  const getDataState = () =>
+    readJson(STORAGE_KEYS.dataState, {
+      status: "local",
+      label: DATA_STATE_LABELS.local,
+      message: "",
+      updated_at: ""
+    });
+
+  const initDataStateBadge = () => {
+    const saved = getDataState();
+    setDataState(saved.status || "local", saved);
   };
 
   const buildQueueId = () => {
@@ -628,6 +784,7 @@
 
     const url = new URL(API_URL);
     url.searchParams.set("action", action);
+    url.searchParams.set("_", String(Date.now()));
 
     Object.entries(params || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === "") return;
@@ -641,7 +798,10 @@
 
     const response = await fetch(url.toString(), {
       method: "GET",
-      cache: "no-store"
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache"
+      }
     });
 
     if (!response.ok) {
@@ -1054,6 +1214,11 @@
       operations
     });
 
+  window.LugdurumDataState = {
+    set: setDataState,
+    get: getDataState
+  };
+
   window.LugdurumAPI = {
     ping() {
       return requestGet("ping", {}, { flushBeforeRead: false });
@@ -1201,6 +1366,10 @@
       status: "offline",
       last_message: "Connexion perdue. Les prochaines écritures seront gardées localement."
     });
+
+    setDataState("local", {
+      message: "hors ligne"
+    });
   });
 
   window.addEventListener("focus", () => {
@@ -1212,6 +1381,8 @@
       scheduleFlush(450);
     }
   });
+
+  initDataStateBadge();
 
   writeSyncState({
     status: getPendingWritesCount() > 0 ? "pending" : "idle",
