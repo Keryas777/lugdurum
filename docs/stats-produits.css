@@ -302,32 +302,32 @@
   box-shadow: 0 8px 18px rgba(75, 48, 22, 0.055);
 }
 
-.productVisualRow::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(255, 250, 241, 0.22),
-      rgba(255, 250, 241, 0.76) 38%,
-      rgba(255, 250, 241, 0.92) 100%
-    );
-  z-index: 0;
-}
-
 .productVisualRow.hasImage {
   background-image:
     linear-gradient(
       90deg,
-      rgba(255, 250, 241, 0.2),
-      rgba(255, 250, 241, 0.84) 46%,
+      rgba(255, 250, 241, 0.1),
+      rgba(255, 250, 241, 0.78) 45%,
       rgba(255, 250, 241, 0.96)
     ),
     var(--product-image);
   background-size: cover;
   background-position: center;
+}
+
+.productVisualRow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 250, 241, 0.16),
+      rgba(255, 250, 241, 0.74) 40%,
+      rgba(255, 250, 241, 0.94) 100%
+    );
 }
 
 .productVisualRow > * {
