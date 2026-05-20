@@ -18,11 +18,11 @@
 
     <title>Lugdurum — Accueil</title>
 
-    <link rel="stylesheet" href="./style.css?v=15" />
+    <link rel="stylesheet" href="./style.css?v=16" />
 
-    <script src="./lugdurum-api.js?v=4" defer></script>
-    <script src="./home.js?v=12" defer></script>
-    <script src="./pwa.js?v=6" defer></script>
+    <script src="./lugdurum-api.js?v=11" defer></script>
+    <script src="./home.js?v=14" defer></script>
+    <script src="./pwa.js?v=11" defer></script>
   </head>
 
   <body class="page-home">
@@ -186,6 +186,16 @@
           </ul>
         </section>
       </main>
+    </div>
+
+    <div
+      class="lugdurumDataStateBadge isLocal"
+      id="lugdurumDataStateBadge"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="lugdurumDataStateBadgeDot" aria-hidden="true"></span>
+      <span class="lugdurumDataStateBadgeText">Données locales</span>
     </div>
   </body>
 </html>
