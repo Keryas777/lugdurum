@@ -2,22 +2,18 @@
   "use strict";
 
   /*
-    PWA Lugdurum V12_API_NETWORK_ONLY :
-    - Force le navigateur à vérifier la nouvelle version du service worker.
-    - Nettoie tous les anciens caches PWA Lugdurum.
-    - Ne touche pas aux caches métier localStorage :
-      home data, pending writes, transactions locales, etc.
-    - Recharge une seule fois si un nouveau service worker prend le contrôle.
-    - Expose window.LugdurumDataState pour piloter la barre :
-      local / refreshing / online.
+    PWA Lugdurum V15_STATIC_NETWORK_ONLY :
+    - Nettoie uniquement les caches PWA CacheStorage Lugdurum.
+    - Ne touche pas aux caches métier localStorage.
+    - Force la mise à jour du service worker.
+    - Garde window.LugdurumDataState.
   */
 
-  const PWA_VERSION = "v14-scroll-fix";
+  const PWA_VERSION = "v15-static-network-only";
   const SW_URL = `./sw.js?v=${encodeURIComponent(PWA_VERSION)}`;
 
   const VERSION_STORAGE_KEY = "lugdurum_pwa_version";
   const RELOAD_STORAGE_KEY = "lugdurum_pwa_reloaded_for_sw";
-
   const DATA_STATE_BADGE_ID = "lugdurumDataStateBadge";
 
   let currentDataState = {
@@ -36,23 +32,19 @@
   const safeLocalSet = (key, value) => {
     try {
       localStorage.setItem(key, value);
-    } catch {
-      // Non critique.
-    }
+    } catch {}
   };
 
   const safeLocalRemove = (key) => {
     try {
       localStorage.removeItem(key);
-    } catch {
-      // Non critique.
-    }
+    } catch {}
   };
 
-  const isLugdurumCache = (cacheName) =>
+  const isLugdurumPwaCache = (cacheName) =>
     String(cacheName || "")
       .toLowerCase()
-      .includes("lugdurum");
+      .startsWith("lugdurum-cache-");
 
   const normalizeDataStateStatus = (status) => {
     if (status === "online") return "online";
@@ -63,13 +55,8 @@
   const getDataStateLabel = (status, message = "") => {
     const suffix = message ? ` · ${message}` : "";
 
-    if (status === "online") {
-      return `Données en ligne${suffix}`;
-    }
-
-    if (status === "refreshing") {
-      return `Actualisation${suffix}`;
-    }
+    if (status === "online") return `Données en ligne${suffix}`;
+    if (status === "refreshing") return `Actualisation${suffix}`;
 
     return `Données locales${suffix}`;
   };
@@ -125,31 +112,31 @@
     }
   };
 
-  const initDataStateBadge = () => {
-    applyDataStateToBadge();
-  };
-
-  const clearOldCachesIfNeeded = async () => {
+  const clearOldPwaCaches = async () => {
     if (!("caches" in window)) return;
-
-    const previousVersion = safeLocalGet(VERSION_STORAGE_KEY);
-
-    if (previousVersion === PWA_VERSION) return;
 
     try {
       const cacheNames = await caches.keys();
 
       await Promise.all(
         cacheNames
-          .filter(isLugdurumCache)
+          .filter(isLugdurumPwaCache)
           .map((cacheName) => caches.delete(cacheName))
       );
-
-      safeLocalSet(VERSION_STORAGE_KEY, PWA_VERSION);
-      safeLocalRemove(RELOAD_STORAGE_KEY);
     } catch (error) {
       console.warn("Nettoyage cache PWA impossible :", error);
     }
+  };
+
+  const clearOldCachesIfNeeded = async () => {
+    const previousVersion = safeLocalGet(VERSION_STORAGE_KEY);
+
+    if (previousVersion === PWA_VERSION) return;
+
+    await clearOldPwaCaches();
+
+    safeLocalSet(VERSION_STORAGE_KEY, PWA_VERSION);
+    safeLocalRemove(RELOAD_STORAGE_KEY);
   };
 
   const askWaitingWorkerToActivate = (registration) => {
@@ -160,9 +147,7 @@
         type: "SKIP_WAITING",
         version: PWA_VERSION
       });
-    } catch {
-      // Si sw.js ne gère pas encore ce message, ce n’est pas bloquant.
-    }
+    } catch {}
   };
 
   const registerServiceWorker = async () => {
@@ -181,7 +166,6 @@
 
       registration.addEventListener("updatefound", () => {
         const newWorker = registration.installing;
-
         if (!newWorker) return;
 
         newWorker.addEventListener("statechange", () => {
@@ -203,6 +187,10 @@
     } catch (error) {
       console.warn("Service worker non enregistré :", error);
     }
+  };
+
+  const initDataStateBadge = () => {
+    applyDataStateToBadge();
   };
 
   const initPwa = () => {
