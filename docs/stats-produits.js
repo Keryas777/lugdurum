@@ -2,18 +2,19 @@
   "use strict";
 
   /*
-    Stats produits V5 :
+    Stats produits V6 :
     - API Google Sheets prioritaire.
     - Chargement via getCoreData() si disponible, sinon getters séparés.
-    - Pas de rendu local avant la réponse API.
     - Cache/localStorage uniquement si l’API est indisponible.
     - Analyse ventes_lignes.
     - Fallback depuis detail_ticket pour les transactions sans lignes.
     - Année statistique via journees_vente.date.
-    - Sépare clairement :
+    - Sépare :
       50 cL = bouteilles vendues
       20 cL = compositions / coffrets
-    - Rendu plus visuel : cartes de synthèse, podium, listes compactes par format.
+    - Rendu visuel cohérent :
+      médailles top 3, barre de progression partout, quantité toujours à droite.
+    - Utilise les visuels de parfums déjà présents dans le catalogue si disponibles.
   */
 
   const CACHE_KEYS = {
@@ -43,13 +44,7 @@
     ]
   };
 
-  const CORE_TABLES = [
-    "transactions",
-    "ventesLignes",
-    "catalogue",
-    "journees"
-  ];
-
+  const CORE_TABLES = ["transactions", "ventesLignes", "catalogue", "journees"];
   const CURRENT_YEAR = String(new Date().getFullYear());
 
   const state = {
@@ -87,24 +82,13 @@
 
   const waitForApi = (timeoutMs = 1800) =>
     new Promise((resolve) => {
-      if (hasApi()) {
-        resolve(true);
-        return;
-      }
+      if (hasApi()) return resolve(true);
 
       const startedAt = Date.now();
 
       const tick = () => {
-        if (hasApi()) {
-          resolve(true);
-          return;
-        }
-
-        if (Date.now() - startedAt >= timeoutMs) {
-          resolve(false);
-          return;
-        }
-
+        if (hasApi()) return resolve(true);
+        if (Date.now() - startedAt >= timeoutMs) return resolve(false);
         window.setTimeout(tick, 50);
       };
 
@@ -114,8 +98,7 @@
   const readJsonNullable = (key) => {
     try {
       const raw = localStorage.getItem(key);
-      if (raw === null) return null;
-      return JSON.parse(raw);
+      return raw === null ? null : JSON.parse(raw);
     } catch {
       return null;
     }
@@ -145,6 +128,9 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+
+  const escapeAttr = (value) =>
+    escapeHtml(value).replaceAll("`", "&#096;");
 
   const normalizeText = (value) =>
     String(value ?? "")
@@ -197,9 +183,7 @@
     els.status.textContent = message;
     els.status.className = "statsStatus statsProductsStatus";
 
-    if (type) {
-      els.status.classList.add(type);
-    }
+    if (type) els.status.classList.add(type);
   };
 
   const isInvalidStatus = (value) => {
@@ -249,10 +233,56 @@
     }
   };
 
+  const parseSku = (skuId) => {
+    const text = String(skuId || "").trim();
+    const parts = text.split("_");
+
+    const maybeFormat = parts
+      .map((part) => toNumber(part, 0))
+      .find((number) => number === 50 || number === 20);
+
+    return {
+      parfum_code: String(parts[0] || "").toUpperCase(),
+      format_cl: maybeFormat || 0
+    };
+  };
+
+  const getProductImageFromCatalogue = (item) => {
+    if (!item || typeof item !== "object") return "";
+
+    return String(
+      item.tuile_url ||
+      item.tile_url ||
+      item.visuel_url ||
+      item.image_url ||
+      item.image ||
+      item.background_url ||
+      item.background ||
+      item.asset_url ||
+      item.photo_url ||
+      item.photo ||
+      ""
+    ).trim();
+  };
+
   const getCatalogueBySku = () =>
     state.catalogue.reduce((map, item) => {
       const skuId = String(item?.sku_id || "").trim();
       if (skuId) map.set(skuId, item);
+      return map;
+    }, new Map());
+
+  const getCatalogueByParfumCode = () =>
+    state.catalogue.reduce((map, item) => {
+      const code = String(item?.parfum_code || "").trim().toUpperCase();
+      const current = map.get(code);
+
+      if (!code) return map;
+
+      if (!current || getProductImageFromCatalogue(item)) {
+        map.set(code, item);
+      }
+
       return map;
     }, new Map());
 
@@ -273,20 +303,6 @@
 
       return map;
     }, new Map());
-
-  const parseSku = (skuId) => {
-    const text = String(skuId || "").trim();
-    const parts = text.split("_");
-
-    const maybeFormat = parts
-      .map((part) => toNumber(part, 0))
-      .find((number) => number === 50 || number === 20);
-
-    return {
-      parfum_code: String(parts[0] || "").toUpperCase(),
-      format_cl: maybeFormat || 0
-    };
-  };
 
   const getBusinessDate = (rawLine, transaction, journeeMap) => {
     const lineJourneeId = String(rawLine?.journee_id || "").trim();
@@ -321,19 +337,8 @@
     const catalogueItem = catalogueMap.get(skuId) || null;
     const parsedSku = parseSku(skuId);
 
-    const quantity = toNumber(
-      rawLine?.quantite ??
-      rawLine?.qty ??
-      rawLine?.quantity,
-      0
-    );
-
-    const unitPrice = toNumber(
-      rawLine?.prix_unitaire_ttc ??
-      rawLine?.unit_price ??
-      rawLine?.prix,
-      0
-    );
+    const quantity = toNumber(rawLine?.quantite ?? rawLine?.qty ?? rawLine?.quantity, 0);
+    const unitPrice = toNumber(rawLine?.prix_unitaire_ttc ?? rawLine?.unit_price ?? rawLine?.prix, 0);
 
     const lineTotal = toNumber(
       rawLine?.total_catalogue_ligne_ttc ??
@@ -373,6 +378,7 @@
       ),
       quantite: quantity,
       total_ttc: lineTotal,
+      image_url: getProductImageFromCatalogue(catalogueItem),
       source: rawLine?.source || transaction?.source || "",
       statut: rawLine?.statut || transaction?.statut || "valide"
     };
@@ -384,12 +390,7 @@
 
     if (!item?.sku_id || quantity <= 0) return;
 
-    const unitPrice = toNumber(
-      item?.prix_unitaire_ttc ??
-      item?.unit_price ??
-      item?.prix,
-      0
-    );
+    const unitPrice = toNumber(item?.prix_unitaire_ttc ?? item?.unit_price ?? item?.prix, 0);
 
     lines.push({
       ligne_id: item.ligne_id || "",
@@ -421,9 +422,7 @@
       .forEach((transaction) => {
         const transactionId = getTransactionId(transaction);
 
-        if (transactionId && skipTransactionIds.has(transactionId)) {
-          return;
-        }
+        if (transactionId && skipTransactionIds.has(transactionId)) return;
 
         const ticket = parseDetailTicket(transaction);
         const transactionTotal = getTransactionAmount(transaction);
@@ -459,10 +458,7 @@
 
           if (item?.type === "box" && Array.isArray(item.composition)) {
             const boxTotal = toNumber(item.prix_ttc, transactionTotal);
-            const unitShare =
-              item.composition.length > 0
-                ? boxTotal / item.composition.length
-                : 0;
+            const unitShare = item.composition.length > 0 ? boxTotal / item.composition.length : 0;
 
             item.composition.forEach((product) => {
               if (!product?.sku_id) return;
@@ -533,9 +529,10 @@
         .filter(Boolean)
     );
 
-    const fallbackLines = buildLinesFromTransactions(transactionIdsWithSheetLines);
-
-    return [...validSheetLines, ...fallbackLines];
+    return [
+      ...validSheetLines,
+      ...buildLinesFromTransactions(transactionIdsWithSheetLines)
+    ];
   };
 
   const getNormalizedLines = () => {
@@ -575,7 +572,7 @@
 
     els.year.innerHTML = `
       <option value="ALL">Toutes</option>
-      ${years.map((year) => `<option value="${year}">${year}</option>`).join("")}
+      ${years.map((year) => `<option value="${escapeAttr(year)}">${escapeHtml(year)}</option>`).join("")}
     `;
 
     if (previous === "AUTO") {
@@ -597,39 +594,39 @@
     const query = normalizeText(state.filters.search);
 
     return getNormalizedLines()
-      .filter((line) => {
-        if (state.filters.year === "ALL") return true;
-        return line.business_year === state.filters.year;
-      })
-      .filter((line) => {
-        if (state.filters.format === "ALL") return true;
-        return String(line.format_cl) === String(state.filters.format);
-      })
+      .filter((line) => state.filters.year === "ALL" || line.business_year === state.filters.year)
+      .filter((line) => state.filters.format === "ALL" || String(line.format_cl) === String(state.filters.format))
       .filter((line) => {
         if (!query) return true;
 
-        return normalizeText(
-          `${line.parfum_code} ${line.parfum_nom} ${line.sku_id}`
-        ).includes(query);
+        return normalizeText(`${line.parfum_code} ${line.parfum_nom} ${line.sku_id}`).includes(query);
       });
   };
 
   const computeByProduct = (lines = getFilteredLines()) => {
+    const catalogueByCode = getCatalogueByParfumCode();
     const map = new Map();
 
     lines.forEach((line) => {
       const key = line.sku_id || `${line.parfum_code}_${line.format_cl}`;
+      const catalogueFallback = catalogueByCode.get(line.parfum_code) || null;
+
       const current = map.get(key) || {
         sku_id: key,
         parfum_code: line.parfum_code,
         parfum_nom: line.parfum_nom,
         format_cl: line.format_cl,
         quantite: 0,
-        ca: 0
+        ca: 0,
+        image_url: line.image_url || getProductImageFromCatalogue(catalogueFallback)
       };
 
       current.quantite += toNumber(line.quantite, 0);
       current.ca += toNumber(line.total_ttc, 0);
+
+      if (!current.image_url) {
+        current.image_url = line.image_url || getProductImageFromCatalogue(catalogueFallback);
+      }
 
       map.set(key, current);
     });
@@ -670,20 +667,28 @@
   const splitProducts = () => {
     const lines = getFilteredLines();
 
-    const bottleLines = lines.filter((line) => toNumber(line.format_cl, 0) === 50);
-    const boxLines = lines.filter((line) => toNumber(line.format_cl, 0) === 20);
-    const otherLines = lines.filter((line) => ![50, 20].includes(toNumber(line.format_cl, 0)));
-
     return {
-      bottles50: computeByProduct(bottleLines),
-      boxes20: computeByProduct(boxLines),
-      other: computeByProduct(otherLines)
+      bottles50: computeByProduct(lines.filter((line) => toNumber(line.format_cl, 0) === 50)),
+      boxes20: computeByProduct(lines.filter((line) => toNumber(line.format_cl, 0) === 20)),
+      other: computeByProduct(lines.filter((line) => ![50, 20].includes(toNumber(line.format_cl, 0))))
     };
   };
 
   const getPercent = (value, max) => {
     if (!max) return 0;
     return Math.max(4, Math.min(100, Math.round((value / max) * 100)));
+  };
+
+  const getRankLabel = (rank) => {
+    if (rank === 1) return "🥇";
+    if (rank === 2) return "🥈";
+    if (rank === 3) return "🥉";
+    return `#${rank}`;
+  };
+
+  const getImageStyle = (url) => {
+    if (!url) return "";
+    return ` style="--product-image: url('${escapeAttr(url)}');"`;
   };
 
   const renderLoading = () => {
@@ -697,13 +702,11 @@
     setText(els.references, "—");
 
     if (els.formatList) {
-      els.formatList.innerHTML =
-        `<p class="statsEmpty">Chargement…</p>`;
+      els.formatList.innerHTML = `<p class="statsEmpty">Chargement…</p>`;
     }
 
     if (els.list) {
-      els.list.innerHTML =
-        `<p class="statsEmpty">Chargement…</p>`;
+      els.list.innerHTML = `<p class="statsEmpty">Chargement…</p>`;
     }
 
     setStatus("Chargement…");
@@ -714,10 +717,11 @@
 
     els.formatList.innerHTML = formats.length
       ? formats.map((item) => {
+          const format = toNumber(item.format_cl, 0);
           const label =
-            toNumber(item.format_cl, 0) === 50
+            format === 50
               ? "Bouteilles"
-              : toNumber(item.format_cl, 0) === 20
+              : format === 20
                 ? "Compositions coffrets"
                 : "Autres formats";
 
@@ -735,10 +739,13 @@
 
   const renderProductRow = (product, maxQty, rank) => {
     const percent = getPercent(product.quantite, maxQty);
+    const hasImage = Boolean(product.image_url);
 
     return `
-      <article class="productVisualRow">
-        <div class="productVisualRank">${rank}</div>
+      <article class="productVisualRow ${hasImage ? "hasImage" : ""}"${getImageStyle(product.image_url)}>
+        <div class="productVisualMedia" aria-hidden="true">
+          <span class="productVisualRank">${escapeHtml(getRankLabel(rank))}</span>
+        </div>
 
         <div class="productVisualMain">
           <div class="productVisualTitle">
@@ -780,8 +787,6 @@
     const maxQty = Math.max(...products.map((product) => product.quantite), 0);
     const totalQty = products.reduce((sum, product) => sum + product.quantite, 0);
     const totalCa = products.reduce((sum, product) => sum + product.ca, 0);
-    const topThree = products.slice(0, 3);
-    const rest = products.slice(3);
 
     return `
       <section class="productVisualGroup">
@@ -797,22 +802,8 @@
           </div>
         </div>
 
-        <div class="productPodium">
-          ${topThree.map((product, index) => `
-            <article class="productPodiumCard rank${index + 1}">
-              <span class="productPodiumRank">#${index + 1}</span>
-              <strong>${escapeHtml(product.parfum_code)}</strong>
-              <small>${escapeHtml(product.parfum_nom || product.parfum_code)}</small>
-              <em>${escapeHtml(String(product.quantite))}</em>
-            </article>
-          `).join("")}
-        </div>
-
         <div class="productVisualList">
-          ${rest.length
-            ? rest.map((product, index) => renderProductRow(product, maxQty, index + 4)).join("")
-            : `<p class="statsEmpty compact">Seulement ${topThree.length} référence${topThree.length > 1 ? "s" : ""} sur cette période.</p>`
-          }
+          ${products.map((product, index) => renderProductRow(product, maxQty, index + 1)).join("")}
         </div>
       </section>
     `;
@@ -877,11 +868,6 @@
         `Données chargées, mais aucune ligne produit exploitable. Transactions : ${state.transactions.length} · ventes_lignes : ${state.lignes.length}`,
         "isError"
       );
-      return;
-    }
-
-    if (state.source === "api" && filteredLines.length === 0) {
-      setStatus("");
       return;
     }
 
