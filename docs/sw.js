@@ -1,4 +1,4 @@
-const CACHE_NAME = "lugdurum-cache-v12-api-network-only";
+const CACHE_NAME = "lugdurum-cache-v13-ignore-api";
 const STATIC_CACHE_PREFIX = "lugdurum-cache-";
 
 const STATIC_EXTENSIONS = [
@@ -49,10 +49,6 @@ const isCacheableStaticRequest = (request) => {
   );
 };
 
-const fetchNetworkOnly = async (request) => {
-  return fetch(request);
-};
-
 const fetchAndCacheStatic = async (request) => {
   const response = await fetch(request);
 
@@ -101,13 +97,15 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   /*
-    IMPORTANT :
-    Les appels Apps Script / Googleusercontent ne doivent JAMAIS être servis
-    depuis le cache PWA. Sinon l’accueil peut croire que l’API échoue ou
-    afficher de vieilles données.
+    Très important :
+    Les appels Apps Script / Googleusercontent sont volontairement IGNORÉS
+    par le service worker.
+
+    On ne fait pas event.respondWith(fetch(request)).
+    On ne fait pas de cache.
+    On laisse le navigateur gérer l’appel réseau normalement.
   */
   if (isApiRequest(url)) {
-    event.respondWith(fetchNetworkOnly(request));
     return;
   }
 
