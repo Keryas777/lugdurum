@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Stats produits V6 :
+    Stats produits V7 :
     - API Google Sheets prioritaire.
     - Chargement via getCoreData() si disponible, sinon getters séparés.
     - Cache/localStorage uniquement si l’API est indisponible.
@@ -14,7 +14,7 @@
       20 cL = compositions / coffrets
     - Rendu visuel cohérent :
       médailles top 3, barre de progression partout, quantité toujours à droite.
-    - Utilise les visuels de parfums déjà présents dans le catalogue si disponibles.
+    - Utilise les visuels de parfums dans ./assets/parfums/{code}.webp.
   */
 
   const CACHE_KEYS = {
@@ -247,6 +247,16 @@
     };
   };
 
+  const getParfumImageUrl = (product) => {
+    const code = String(product?.parfum_code || "")
+      .trim()
+      .toLowerCase();
+
+    if (!code || code === "?") return "";
+
+    return `./assets/parfums/${code}.webp`;
+  };
+
   const getProductImageFromCatalogue = (item) => {
     if (!item || typeof item !== "object") return "";
 
@@ -264,6 +274,11 @@
       ""
     ).trim();
   };
+
+  const getProductImageUrl = (product, catalogueItem = null) =>
+    getProductImageFromCatalogue(catalogueItem) ||
+    String(product?.image_url || "").trim() ||
+    getParfumImageUrl(product);
 
   const getCatalogueBySku = () =>
     state.catalogue.reduce((map, item) => {
@@ -351,7 +366,7 @@
     const businessDate = getBusinessDate(rawLine, transaction, journeeMap);
     const businessYear = getYearFromDate(businessDate);
 
-    return {
+    const normalized = {
       ligne_id: String(rawLine?.ligne_id || "").trim(),
       transaction_id: transactionId,
       mission_id: rawLine?.mission_id || transaction?.mission_id || "",
@@ -378,10 +393,14 @@
       ),
       quantite: quantity,
       total_ttc: lineTotal,
-      image_url: getProductImageFromCatalogue(catalogueItem),
+      image_url: "",
       source: rawLine?.source || transaction?.source || "",
       statut: rawLine?.statut || transaction?.statut || "valide"
     };
+
+    normalized.image_url = getProductImageUrl(normalized, catalogueItem);
+
+    return normalized;
   };
 
   const pushGenericTicketLine = (lines, transaction, item) => {
@@ -618,14 +637,14 @@
         format_cl: line.format_cl,
         quantite: 0,
         ca: 0,
-        image_url: line.image_url || getProductImageFromCatalogue(catalogueFallback)
+        image_url: getProductImageUrl(line, catalogueFallback)
       };
 
       current.quantite += toNumber(line.quantite, 0);
       current.ca += toNumber(line.total_ttc, 0);
 
       if (!current.image_url) {
-        current.image_url = line.image_url || getProductImageFromCatalogue(catalogueFallback);
+        current.image_url = getProductImageUrl(line, catalogueFallback);
       }
 
       map.set(key, current);
@@ -739,10 +758,11 @@
 
   const renderProductRow = (product, maxQty, rank) => {
     const percent = getPercent(product.quantite, maxQty);
-    const hasImage = Boolean(product.image_url);
+    const imageUrl = getProductImageUrl(product);
+    const hasImage = Boolean(imageUrl);
 
     return `
-      <article class="productVisualRow ${hasImage ? "hasImage" : ""}"${getImageStyle(product.image_url)}>
+      <article class="productVisualRow ${hasImage ? "hasImage" : ""}"${getImageStyle(imageUrl)}>
         <div class="productVisualMedia" aria-hidden="true">
           <span class="productVisualRank">${escapeHtml(getRankLabel(rank))}</span>
         </div>
@@ -847,7 +867,6 @@
     syncYearFilter();
 
     const normalizedLines = getNormalizedLines();
-    const filteredLines = getFilteredLines();
     const products = computeByProduct();
     const formats = computeByFormat();
 
