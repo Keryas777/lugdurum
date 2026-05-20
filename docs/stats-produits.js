@@ -2,16 +2,18 @@
   "use strict";
 
   /*
-    Stats produits V4 :
+    Stats produits V5 :
     - API Google Sheets prioritaire.
     - Chargement via getCoreData() si disponible, sinon getters séparés.
     - Pas de rendu local avant la réponse API.
     - Cache/localStorage uniquement si l’API est indisponible.
     - Analyse ventes_lignes.
     - Fallback depuis detail_ticket pour les transactions sans lignes.
-    - Correction importante :
-      l’année statistique vient de journees_vente.date via journee_id,
-      et non de created_at / updated_at / date_heure de saisie.
+    - Année statistique via journees_vente.date.
+    - Sépare clairement :
+      50 cL = bouteilles vendues
+      20 cL = compositions / coffrets
+    - Rendu plus visuel : cartes de synthèse, podium, listes compactes par format.
   */
 
   const CACHE_KEYS = {
@@ -237,7 +239,6 @@
     const raw = transaction?.detail_ticket;
 
     if (Array.isArray(raw)) return raw;
-
     if (typeof raw !== "string" || !raw.trim()) return [];
 
     try {
@@ -613,10 +614,10 @@
       });
   };
 
-  const computeByProduct = () => {
+  const computeByProduct = (lines = getFilteredLines()) => {
     const map = new Map();
 
-    getFilteredLines().forEach((line) => {
+    lines.forEach((line) => {
       const key = line.sku_id || `${line.parfum_code}_${line.format_cl}`;
       const current = map.get(key) || {
         sku_id: key,
@@ -640,10 +641,7 @@
       const byCa = b.ca - a.ca;
       if (byCa !== 0) return byCa;
 
-      const byCode = String(a.parfum_code).localeCompare(String(b.parfum_code));
-      if (byCode !== 0) return byCode;
-
-      return toNumber(b.format_cl, 0) - toNumber(a.format_cl, 0);
+      return String(a.parfum_code).localeCompare(String(b.parfum_code));
     });
   };
 
@@ -669,6 +667,25 @@
     );
   };
 
+  const splitProducts = () => {
+    const lines = getFilteredLines();
+
+    const bottleLines = lines.filter((line) => toNumber(line.format_cl, 0) === 50);
+    const boxLines = lines.filter((line) => toNumber(line.format_cl, 0) === 20);
+    const otherLines = lines.filter((line) => ![50, 20].includes(toNumber(line.format_cl, 0)));
+
+    return {
+      bottles50: computeByProduct(bottleLines),
+      boxes20: computeByProduct(boxLines),
+      other: computeByProduct(otherLines)
+    };
+  };
+
+  const getPercent = (value, max) => {
+    if (!max) return 0;
+    return Math.max(4, Math.min(100, Math.round((value / max) * 100)));
+  };
+
   const renderLoading = () => {
     if (els.year) {
       els.year.innerHTML = `<option value="ALL">Chargement…</option>`;
@@ -692,6 +709,149 @@
     setStatus("Chargement…");
   };
 
+  const renderFormatSummary = (formats) => {
+    if (!els.formatList) return;
+
+    els.formatList.innerHTML = formats.length
+      ? formats.map((item) => {
+          const label =
+            toNumber(item.format_cl, 0) === 50
+              ? "Bouteilles"
+              : toNumber(item.format_cl, 0) === 20
+                ? "Compositions coffrets"
+                : "Autres formats";
+
+          return `
+            <article class="productFormatCard">
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(String(item.format_cl))} cL</strong>
+              <em>${escapeHtml(String(item.quantite))} vendu${item.quantite > 1 ? "s" : ""}</em>
+              <small>${escapeHtml(formatCurrency(item.ca))}</small>
+            </article>
+          `;
+        }).join("")
+      : `<p class="statsEmpty">Aucune vente produit sur cette période.</p>`;
+  };
+
+  const renderProductRow = (product, maxQty, rank) => {
+    const percent = getPercent(product.quantite, maxQty);
+
+    return `
+      <article class="productVisualRow">
+        <div class="productVisualRank">${rank}</div>
+
+        <div class="productVisualMain">
+          <div class="productVisualTitle">
+            <strong>${escapeHtml(product.parfum_code)}</strong>
+            <span>${escapeHtml(product.parfum_nom || product.parfum_code)}</span>
+          </div>
+
+          <div class="productVisualBar" aria-hidden="true">
+            <span style="width: ${percent}%"></span>
+          </div>
+
+          <div class="productVisualMeta">
+            <span>${escapeHtml(product.sku_id)}</span>
+            <span>${escapeHtml(formatCurrency(product.ca))}</span>
+          </div>
+        </div>
+
+        <strong class="productVisualQty">${escapeHtml(String(product.quantite))}</strong>
+      </article>
+    `;
+  };
+
+  const renderProductGroup = ({ title, subtitle, products, empty }) => {
+    if (!products.length) {
+      return `
+        <section class="productVisualGroup">
+          <div class="productVisualGroupHeader">
+            <div>
+              <p class="sectionEyebrow">${escapeHtml(subtitle)}</p>
+              <h2>${escapeHtml(title)}</h2>
+            </div>
+          </div>
+
+          <p class="statsEmpty">${escapeHtml(empty)}</p>
+        </section>
+      `;
+    }
+
+    const maxQty = Math.max(...products.map((product) => product.quantite), 0);
+    const totalQty = products.reduce((sum, product) => sum + product.quantite, 0);
+    const totalCa = products.reduce((sum, product) => sum + product.ca, 0);
+    const topThree = products.slice(0, 3);
+    const rest = products.slice(3);
+
+    return `
+      <section class="productVisualGroup">
+        <div class="productVisualGroupHeader">
+          <div>
+            <p class="sectionEyebrow">${escapeHtml(subtitle)}</p>
+            <h2>${escapeHtml(title)}</h2>
+          </div>
+
+          <div class="productGroupTotals">
+            <strong>${escapeHtml(String(totalQty))}</strong>
+            <span>${escapeHtml(formatCurrency(totalCa))}</span>
+          </div>
+        </div>
+
+        <div class="productPodium">
+          ${topThree.map((product, index) => `
+            <article class="productPodiumCard rank${index + 1}">
+              <span class="productPodiumRank">#${index + 1}</span>
+              <strong>${escapeHtml(product.parfum_code)}</strong>
+              <small>${escapeHtml(product.parfum_nom || product.parfum_code)}</small>
+              <em>${escapeHtml(String(product.quantite))}</em>
+            </article>
+          `).join("")}
+        </div>
+
+        <div class="productVisualList">
+          ${rest.length
+            ? rest.map((product, index) => renderProductRow(product, maxQty, index + 4)).join("")
+            : `<p class="statsEmpty compact">Seulement ${topThree.length} référence${topThree.length > 1 ? "s" : ""} sur cette période.</p>`
+          }
+        </div>
+      </section>
+    `;
+  };
+
+  const renderProducts = () => {
+    if (!els.list) return;
+
+    const groups = splitProducts();
+
+    const html = [
+      renderProductGroup({
+        title: "Bouteilles 50 cL",
+        subtitle: "Ventes directes",
+        products: groups.bottles50,
+        empty: "Aucune bouteille 50 cL vendue sur cette période."
+      }),
+      renderProductGroup({
+        title: "Compositions 20 cL",
+        subtitle: "Coffrets",
+        products: groups.boxes20,
+        empty: "Aucune composition 20 cL vendue sur cette période."
+      })
+    ];
+
+    if (groups.other.length > 0) {
+      html.push(
+        renderProductGroup({
+          title: "Autres formats",
+          subtitle: "À vérifier",
+          products: groups.other,
+          empty: "Aucun autre format."
+        })
+      );
+    }
+
+    els.list.innerHTML = html.join("");
+  };
+
   const render = () => {
     syncYearFilter();
 
@@ -709,47 +869,8 @@
     setText(els.topProduct, top ? `${top.parfum_code} · ${top.quantite}` : "—");
     setText(els.references, String(products.length));
 
-    if (els.formatList) {
-      els.formatList.innerHTML = formats.length
-        ? formats.map((item) => `
-            <article class="statFormatCard productFormatCard">
-              <strong>${escapeHtml(String(item.format_cl))} cL</strong>
-              <span>
-                ${escapeHtml(String(item.quantite))}
-                vendu${item.quantite > 1 ? "s" : ""}
-              </span>
-              <small>${escapeHtml(formatCurrency(item.ca))}</small>
-            </article>
-          `).join("")
-        : `<p class="statsEmpty">Aucune vente produit sur cette période.</p>`;
-    }
-
-    if (els.list) {
-      els.list.innerHTML = products.length
-        ? products.map((product) => `
-            <article class="statsCard productStatCard">
-              <div class="statsCardHeader">
-                <div class="statsCardTitle">
-                  <strong>
-                    ${escapeHtml(product.parfum_code)}
-                    ${escapeHtml(String(product.format_cl))} cL
-                  </strong>
-                  <span>${escapeHtml(product.parfum_nom || product.parfum_code)}</span>
-                </div>
-
-                <strong class="statsAmount">
-                  ${escapeHtml(String(product.quantite))}
-                </strong>
-              </div>
-
-              <div class="statsMeta">
-                <span>${escapeHtml(formatCurrency(product.ca))}</span>
-                <span>${escapeHtml(product.sku_id)}</span>
-              </div>
-            </article>
-          `).join("")
-        : `<p class="statsEmpty">Aucune vente produit à afficher.</p>`;
-    }
+    renderFormatSummary(formats);
+    renderProducts();
 
     if (state.source === "api" && normalizedLines.length === 0) {
       setStatus(
