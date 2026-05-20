@@ -2,24 +2,28 @@
   "use strict";
 
   /*
-    PWA Lugdurum V11_HOME_DATA :
+    PWA Lugdurum V12_API_NETWORK_ONLY :
     - Force le navigateur à vérifier la nouvelle version du service worker.
-    - Nettoie les anciens caches Lugdurum quand la version change.
-    - Évite que l’icône écran d’accueil / Safari garde un ancien JS.
+    - Nettoie tous les anciens caches PWA Lugdurum.
+    - Ne touche pas aux caches métier localStorage :
+      home data, pending writes, transactions locales, etc.
     - Recharge une seule fois si un nouveau service worker prend le contrôle.
-    - Ne touche pas aux caches métier localStorage : home data, pending writes, etc.
+    - Expose window.LugdurumDataState pour piloter la barre :
+      local / refreshing / online.
   */
 
-  const PWA_VERSION = "v11-home-data";
+  const PWA_VERSION = "v12-api-network-only";
   const SW_URL = `./sw.js?v=${encodeURIComponent(PWA_VERSION)}`;
 
   const VERSION_STORAGE_KEY = "lugdurum_pwa_version";
   const RELOAD_STORAGE_KEY = "lugdurum_pwa_reloaded_for_sw";
 
-  const isLugdurumCache = (cacheName) =>
-    String(cacheName || "")
-      .toLowerCase()
-      .startsWith("lugdurum-cache-");
+  const DATA_STATE_BADGE_ID = "lugdurumDataStateBadge";
+
+  let currentDataState = {
+    status: "local",
+    message: ""
+  };
 
   const safeLocalGet = (key) => {
     try {
@@ -43,6 +47,86 @@
     } catch {
       // Non critique.
     }
+  };
+
+  const isLugdurumCache = (cacheName) =>
+    String(cacheName || "")
+      .toLowerCase()
+      .includes("lugdurum");
+
+  const normalizeDataStateStatus = (status) => {
+    if (status === "online") return "online";
+    if (status === "refreshing") return "refreshing";
+    return "local";
+  };
+
+  const getDataStateLabel = (status, message = "") => {
+    const suffix = message ? ` · ${message}` : "";
+
+    if (status === "online") {
+      return `Données en ligne${suffix}`;
+    }
+
+    if (status === "refreshing") {
+      return `Actualisation${suffix}`;
+    }
+
+    return `Données locales${suffix}`;
+  };
+
+  const applyDataStateToBadge = () => {
+    const badge = document.getElementById(DATA_STATE_BADGE_ID);
+    if (!badge) return;
+
+    const status = normalizeDataStateStatus(currentDataState.status);
+    const text = badge.querySelector(".lugdurumDataStateBadgeText");
+
+    badge.classList.remove("isLocal", "isRefreshing", "isOnline");
+
+    if (status === "online") {
+      badge.classList.add("isOnline");
+    } else if (status === "refreshing") {
+      badge.classList.add("isRefreshing");
+    } else {
+      badge.classList.add("isLocal");
+    }
+
+    badge.dataset.state = status;
+
+    if (text) {
+      text.textContent = getDataStateLabel(status, currentDataState.message);
+    }
+  };
+
+  const setDataState = (status, options = {}) => {
+    currentDataState = {
+      status: normalizeDataStateStatus(status),
+      message: String(options.message || "").trim(),
+      updated_at: new Date().toISOString()
+    };
+
+    applyDataStateToBadge();
+
+    window.dispatchEvent(
+      new CustomEvent("lugdurum:data-state", {
+        detail: currentDataState
+      })
+    );
+
+    return currentDataState;
+  };
+
+  window.LugdurumDataState = {
+    set: setDataState,
+    get() {
+      return {
+        ...currentDataState
+      };
+    }
+  };
+
+  const initDataStateBadge = () => {
+    applyDataStateToBadge();
   };
 
   const clearOldCachesIfNeeded = async () => {
@@ -101,7 +185,10 @@
         if (!newWorker) return;
 
         newWorker.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+          if (
+            newWorker.state === "installed" &&
+            navigator.serviceWorker.controller
+          ) {
             askWaitingWorkerToActivate(registration);
           }
         });
@@ -118,5 +205,16 @@
     }
   };
 
-  window.addEventListener("load", registerServiceWorker);
+  const initPwa = () => {
+    initDataStateBadge();
+    registerServiceWorker();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initDataStateBadge);
+  } else {
+    initDataStateBadge();
+  }
+
+  window.addEventListener("load", initPwa);
 })();
