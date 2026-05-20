@@ -41,6 +41,7 @@
 
   --shell-inline: 14px;
   --topbar-space: 104px;
+  --data-state-space: 54px;
 }
 
 *,
@@ -161,7 +162,7 @@ video {
   padding:
     calc(18px + env(safe-area-inset-top))
     var(--shell-inline)
-    calc(34px + env(safe-area-inset-bottom));
+    calc(34px + env(safe-area-inset-bottom) + var(--data-state-space));
   overflow: visible;
 }
 
@@ -773,6 +774,69 @@ video {
   font-weight: 950;
 }
 
+/* =========================================================
+   Badge permanent état des données
+   Rouge = cache local
+   Jaune = actualisation en cours
+   Vert = données en ligne
+   ========================================================= */
+
+.lugdurumDataStateBadge {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100vw - 24px);
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(31, 27, 22, 0.12);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(255, 250, 241, 0.92);
+  box-shadow: 0 10px 30px rgba(31, 27, 22, 0.12);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.lugdurumDataStateBadgeDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.12);
+}
+
+.lugdurumDataStateBadgeText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lugdurumDataStateBadge.isLocal .lugdurumDataStateBadgeDot {
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.13);
+}
+
+.lugdurumDataStateBadge.isRefreshing .lugdurumDataStateBadgeDot {
+  background: var(--amber);
+  box-shadow: 0 0 0 4px rgba(216, 160, 79, 0.16);
+}
+
+.lugdurumDataStateBadge.isOnline .lugdurumDataStateBadgeDot {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(63, 111, 79, 0.15);
+}
+
 @media (hover: hover) {
   .tile:hover,
   .workflowCard:hover {
@@ -857,6 +921,12 @@ video {
     margin-top: 4px;
     font-size: 0.95rem;
   }
+
+  .lugdurumDataStateBadge {
+    right: auto;
+    max-width: calc(100vw - 24px);
+    font-size: 0.7rem;
+  }
 }
 
 @media (max-width: 370px) {
@@ -908,7 +978,7 @@ video {
     padding:
       calc(28px + env(safe-area-inset-top))
       var(--shell-inline)
-      calc(48px + env(safe-area-inset-bottom));
+      calc(48px + env(safe-area-inset-bottom) + var(--data-state-space));
   }
 
   .heroActions {
