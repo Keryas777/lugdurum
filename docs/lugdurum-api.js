@@ -2,9 +2,9 @@
   "use strict";
 
   /*
-    Lugdurum API V11 FRONT QUEUE + HOME DATA
+    Lugdurum API V12 FRONT QUEUE + HOME DATA + JSONP GET
     - Connexion Apps Script / Google Sheets.
-    - Lectures GET directes.
+    - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
     - Ajout méthode rapide getHomeData() pour l’accueil.
     - getHomeData() ne bloque pas le rendu sur la synchronisation de la file.
     - Écritures POST avec file d’attente offline officielle : lugdurum_pending_writes.
@@ -763,11 +763,91 @@
     }, delay);
   };
 
-  const requestGet = async (action, params = {}, options = {}) => {
-    if (!API_URL) {
-      throw new Error("API_URL manquante dans lugdurum-api.js");
-    }
+  const requestGetJsonp = (action, params = {}, timeoutMs = 15000) =>
+    new Promise((resolve, reject) => {
+      if (!API_URL) {
+        reject(new Error("API_URL manquante dans lugdurum-api.js"));
+        return;
+      }
 
+      const callbackName = `__lugdurum_jsonp_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+      const url = new URL(API_URL);
+      url.searchParams.set("action", action);
+      url.searchParams.set("callback", callbackName);
+      url.searchParams.set("_", String(Date.now()));
+
+      Object.entries(params || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === "") return;
+
+        if (Array.isArray(value)) {
+          url.searchParams.set(key, value.join(","));
+        } else {
+          url.searchParams.set(key, String(value));
+        }
+      });
+
+      let script = null;
+      let timer = null;
+      let settled = false;
+
+      const cleanup = () => {
+        if (timer) {
+          window.clearTimeout(timer);
+          timer = null;
+        }
+
+        try {
+          delete window[callbackName];
+        } catch {
+          window[callbackName] = undefined;
+        }
+
+        if (script && script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+      };
+
+      const settleResolve = (value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(value);
+      };
+
+      const settleReject = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      timer = window.setTimeout(() => {
+        settleReject(new Error(`Timeout JSONP sur ${action}`));
+      }, timeoutMs);
+
+      window[callbackName] = (result) => {
+        try {
+          settleResolve(normaliseResponse(result, action));
+        } catch (error) {
+          settleReject(error);
+        }
+      };
+
+      script = document.createElement("script");
+      script.async = true;
+      script.src = url.toString();
+
+      script.onerror = () => {
+        settleReject(new Error(`Lecture JSONP impossible sur ${action}`));
+      };
+
+      document.head.appendChild(script);
+    });
+
+  const requestGet = async (action, params = {}, options = {}) => {
     const flushBeforeRead = options.flushBeforeRead !== false;
 
     if (flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
@@ -782,35 +862,7 @@
       scheduleFlush(250);
     }
 
-    const url = new URL(API_URL);
-    url.searchParams.set("action", action);
-    url.searchParams.set("_", String(Date.now()));
-
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === "") return;
-
-      if (Array.isArray(value)) {
-        url.searchParams.set(key, value.join(","));
-      } else {
-        url.searchParams.set(key, String(value));
-      }
-    });
-
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache"
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Erreur API ${response.status}`);
-    }
-
-    const result = await response.json();
-
-    return normaliseResponse(result, action);
+    return requestGetJsonp(action, params, options.timeoutMs || 15000);
   };
 
   const afterSuccessfulDirectWrite = (action) => {
