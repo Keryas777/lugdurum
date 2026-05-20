@@ -12,7 +12,7 @@
       local / refreshing / online.
   */
 
-  const PWA_VERSION = "v12-api-network-only";
+  const PWA_VERSION = "v13-api-network-only";
   const SW_URL = `./sw.js?v=${encodeURIComponent(PWA_VERSION)}`;
 
   const VERSION_STORAGE_KEY = "lugdurum_pwa_version";
