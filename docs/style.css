@@ -1,5 +1,4 @@
 :root {
-  /* Palette Lugdurum — crème / kraft / rhum ambré */
   --bg: #f6f1e8;
   --bg-soft: #ede2d0;
   --paper: #fffaf1;
@@ -40,8 +39,7 @@
   --tap: 48px;
 
   --shell-inline: 14px;
-  --topbar-space: 104px;
-  --data-state-space: 54px;
+  --topbar-space: 140px;
 }
 
 *,
@@ -83,7 +81,6 @@ body {
   text-size-adjust: 100%;
 }
 
-/* Fond haut étendu : réduit l’effet blanc lors du pull / rubber-band iOS */
 body::before {
   content: "";
   position: fixed;
@@ -91,7 +88,7 @@ body::before {
   top: 0;
   left: 0;
   right: 0;
-  height: calc(280px + env(safe-area-inset-top));
+  height: calc(300px + env(safe-area-inset-top));
   pointer-events: none;
   background:
     radial-gradient(circle at 12% 0%, rgba(216, 160, 79, 0.24), transparent 22rem),
@@ -162,14 +159,9 @@ video {
   padding:
     calc(18px + env(safe-area-inset-top))
     var(--shell-inline)
-    calc(34px + env(safe-area-inset-bottom) + var(--data-state-space));
+    calc(34px + env(safe-area-inset-bottom));
   overflow: visible;
 }
-
-/* =========================================================
-   Topbar fixed globale
-   Logo + titre + retour restent visibles pendant le scroll
-   ========================================================= */
 
 .appShell > .topbar {
   position: fixed;
@@ -179,18 +171,16 @@ video {
   z-index: 1000;
   isolation: isolate;
 
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 10px 2px 18px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 2px 14px;
 
   background:
     linear-gradient(
       180deg,
       rgba(246, 241, 232, 0.99) 0%,
-      rgba(246, 241, 232, 0.965) 66%,
-      rgba(246, 241, 232, 0.88) 100%
+      rgba(246, 241, 232, 0.965) 68%,
+      rgba(246, 241, 232, 0.9) 100%
     );
 
   -webkit-backdrop-filter: blur(16px);
@@ -218,6 +208,14 @@ video {
 .appShell > .topbar > * {
   position: relative;
   z-index: 1;
+}
+
+.topbarMain {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
 }
 
 .appShell > main {
@@ -303,6 +301,56 @@ video {
   box-shadow: var(--shadow-soft);
   font-weight: 800;
   white-space: nowrap;
+}
+
+.lugdurumDataStateBar {
+  width: 100%;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(31, 27, 22, 0.1);
+  border-radius: 999px;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 241, 0.94), rgba(255, 250, 241, 0.72));
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+  font-size: 0.74rem;
+  font-weight: 850;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+
+.lugdurumDataStateBadgeDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.12);
+}
+
+.lugdurumDataStateBadgeText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lugdurumDataStateBar.isLocal .lugdurumDataStateBadgeDot {
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.13);
+}
+
+.lugdurumDataStateBar.isRefreshing .lugdurumDataStateBadgeDot {
+  background: var(--amber);
+  box-shadow: 0 0 0 4px rgba(216, 160, 79, 0.16);
+}
+
+.lugdurumDataStateBar.isOnline .lugdurumDataStateBadgeDot {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(63, 111, 79, 0.15);
 }
 
 .mainContent {
@@ -774,69 +822,6 @@ video {
   font-weight: 950;
 }
 
-/* =========================================================
-   Badge permanent état des données
-   Rouge = cache local
-   Jaune = actualisation en cours
-   Vert = données en ligne
-   ========================================================= */
-
-.lugdurumDataStateBadge {
-  position: fixed;
-  left: max(12px, env(safe-area-inset-left));
-  bottom: max(12px, env(safe-area-inset-bottom));
-  z-index: 9999;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: calc(100vw - 24px);
-  min-height: 34px;
-  padding: 7px 10px;
-  border: 1px solid rgba(31, 27, 22, 0.12);
-  border-radius: 999px;
-  color: var(--text);
-  background: rgba(255, 250, 241, 0.92);
-  box-shadow: 0 10px 30px rgba(31, 27, 22, 0.12);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  font-size: 0.72rem;
-  font-weight: 850;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  pointer-events: none;
-}
-
-.lugdurumDataStateBadgeDot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--red);
-  box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.12);
-}
-
-.lugdurumDataStateBadgeText {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.lugdurumDataStateBadge.isLocal .lugdurumDataStateBadgeDot {
-  background: var(--red);
-  box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.13);
-}
-
-.lugdurumDataStateBadge.isRefreshing .lugdurumDataStateBadgeDot {
-  background: var(--amber);
-  box-shadow: 0 0 0 4px rgba(216, 160, 79, 0.16);
-}
-
-.lugdurumDataStateBadge.isOnline .lugdurumDataStateBadgeDot {
-  background: var(--green);
-  box-shadow: 0 0 0 4px rgba(63, 111, 79, 0.15);
-}
-
 @media (hover: hover) {
   .tile:hover,
   .workflowCard:hover {
@@ -850,10 +835,14 @@ video {
 
 @media (max-width: 640px) {
   :root {
-    --topbar-space: 92px;
+    --topbar-space: 124px;
   }
 
   .appShell > .topbar {
+    gap: 8px;
+  }
+
+  .topbarMain {
     gap: 10px;
   }
 
@@ -887,7 +876,7 @@ video {
 
 @media (max-width: 430px) {
   :root {
-    --topbar-space: 86px;
+    --topbar-space: 120px;
   }
 
   .appShell {
@@ -895,9 +884,8 @@ video {
   }
 
   .appShell > .topbar {
-    align-items: flex-start;
     padding-top: 6px;
-    padding-bottom: 16px;
+    padding-bottom: 12px;
   }
 
   .brandLogo {
@@ -922,16 +910,14 @@ video {
     font-size: 0.95rem;
   }
 
-  .lugdurumDataStateBadge {
-    right: auto;
-    max-width: calc(100vw - 24px);
+  .lugdurumDataStateBar {
     font-size: 0.7rem;
   }
 }
 
 @media (max-width: 370px) {
   :root {
-    --topbar-space: 80px;
+    --topbar-space: 114px;
   }
 
   .heroStats {
@@ -971,14 +957,14 @@ video {
 @media (min-width: 620px) {
   :root {
     --shell-inline: 22px;
-    --topbar-space: 112px;
+    --topbar-space: 148px;
   }
 
   .appShell {
     padding:
       calc(28px + env(safe-area-inset-top))
       var(--shell-inline)
-      calc(48px + env(safe-area-inset-bottom) + var(--data-state-space));
+      calc(48px + env(safe-area-inset-bottom));
   }
 
   .heroActions {
