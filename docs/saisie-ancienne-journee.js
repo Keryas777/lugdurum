@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Saisie ancienne journée V6 :
+    Saisie ancienne journée V7 :
     - Création OU modification d’une journée clôturée historique.
     - Mode édition via saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Charge catalogue + offres depuis Google Sheets.
@@ -16,6 +16,8 @@
     - Anti-clignotement : les clics + / - ne reconstruisent plus toute la grille produits.
     - Saisie progressive : une ancienne journée peut être créée vide puis complétée plus tard.
     - Garde-fou : si des produits sont saisis, des lignes produits doivent bien partir vers l’API.
+    - Catégories de frais pilotées par EXPENSE_LABELS.
+    - Ajout catégorie : Compensation perte salaire.
   */
 
   const CURRENT_USER = {
@@ -44,6 +46,7 @@
     MATERIEL: "Matériel",
     COMMUNICATION: "Communication",
     CONSOMMABLES: "Consommables",
+    COMPENSATION_PERTE_SALAIRE: "Compensation perte salaire",
     AUTRE: "Autre"
   };
 
@@ -248,6 +251,22 @@
     ].forEach((button) => {
       if (button) button.disabled = isSaving;
     });
+  };
+
+  const renderExpenseCategoryOptions = () => {
+    if (!els.expenseCategoryInput) return;
+
+    const previousValue = els.expenseCategoryInput.value || "EMPLACEMENT";
+
+    els.expenseCategoryInput.innerHTML = Object.entries(EXPENSE_LABELS)
+      .map(([value, label]) => `
+        <option value="${escapeAttr(value)}">${escapeHtml(label)}</option>
+      `)
+      .join("");
+
+    els.expenseCategoryInput.value = EXPENSE_LABELS[previousValue]
+      ? previousValue
+      : "EMPLACEMENT";
   };
 
   const getReturnUrl = () => {
@@ -1362,6 +1381,7 @@
 
   const resetAfterSave = () => {
     els.form.reset();
+    renderExpenseCategoryOptions();
     els.eventDateInput.value = formatIsoDate(new Date());
     state.quantities = new Map();
     state.expenses = [];
@@ -1755,6 +1775,7 @@
 
   const init = async () => {
     configureModeLabels();
+    renderExpenseCategoryOptions();
 
     els.eventDateInput.value = formatIsoDate(new Date());
     renderAll();
