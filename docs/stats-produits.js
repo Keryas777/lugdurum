@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Stats produits V7 :
+    Stats produits V8 :
     - API Google Sheets prioritaire.
     - Chargement via getCoreData() si disponible, sinon getters séparés.
     - Cache/localStorage uniquement si l’API est indisponible.
@@ -14,7 +14,10 @@
       20 cL = compositions / coffrets
     - Rendu visuel cohérent :
       médailles top 3, barre de progression partout, quantité toujours à droite.
-    - Utilise les visuels de parfums dans ./assets/parfums/{code}.webp.
+    - SKU masqué dans l’interface.
+    - Tuiles plus aérées.
+    - Visuel parfum en fond avec effet verre dépoli / verre brossé.
+    - Utilise ./assets/parfums/{code}.webp.
   */
 
   const CACHE_KEYS = {
@@ -82,13 +85,24 @@
 
   const waitForApi = (timeoutMs = 1800) =>
     new Promise((resolve) => {
-      if (hasApi()) return resolve(true);
+      if (hasApi()) {
+        resolve(true);
+        return;
+      }
 
       const startedAt = Date.now();
 
       const tick = () => {
-        if (hasApi()) return resolve(true);
-        if (Date.now() - startedAt >= timeoutMs) return resolve(false);
+        if (hasApi()) {
+          resolve(true);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+
         window.setTimeout(tick, 50);
       };
 
@@ -777,9 +791,8 @@
             <span style="width: ${percent}%"></span>
           </div>
 
-          <div class="productVisualMeta">
-            <span>${escapeHtml(product.sku_id)}</span>
-            <span>${escapeHtml(formatCurrency(product.ca))}</span>
+          <div class="productVisualFooter">
+            <span class="productVisualRevenue">${escapeHtml(formatCurrency(product.ca))}</span>
           </div>
         </div>
 
