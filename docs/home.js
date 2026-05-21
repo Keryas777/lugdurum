@@ -1586,7 +1586,7 @@
     setText("#statTwoLabel", "Tickets");
     setText("#todayTickets", String(homeState.resume.nb_transactions || 0));
 
-    setText("#statThreeLabel", "À synchroniser");
+    setText("#statThreeLabel", "À synchro");
     setText("#pendingSync", String(homeState.pending.total || 0));
 
     syncCard?.classList.toggle(
