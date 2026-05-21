@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Préparation stock V4 :
+    Préparation stock V5 :
     - Lit la mission de stock active depuis lugdurum_preparation_context.
     - Charge missions_stock, journees_vente, missions_vente, catalogue et mouvements_stock depuis Google Sheets.
     - Fallback localStorage si lecture Sheets impossible.
@@ -20,6 +20,10 @@
     - Met à jour journees_vente via l’API.
     - La file d’attente offline est gérée par lugdurum-api.js.
     - Le cache localStorage reste utilisé pour garder l’interface exploitable.
+    - Quantités produits :
+      - affiche un placeholder 0 au lieu d’une vraie valeur 0.
+      - sélectionne automatiquement la valeur au toucher/focus pour remplacer vite.
+      - évite de reconstruire toute la grille sur les clics + / -.
   */
 
   const SHEETS = {
@@ -220,6 +224,18 @@
     });
   };
 
+  const selectQuantityInput = (input) => {
+    if (!input) return;
+
+    window.setTimeout(() => {
+      try {
+        input.select();
+      } catch {
+        // Certains navigateurs mobiles sont capricieux sur input[type="number"].
+      }
+    }, 0);
+  };
+
   const getEventId = (eventItem) =>
     String(eventItem?.mission_id || eventItem?.evenement_id || "").trim();
 
@@ -281,6 +297,22 @@
     } else {
       state.quantities.delete(skuId);
     }
+  };
+
+  const updateStockInput = (skuId) => {
+    document.querySelectorAll("[data-stock-input]").forEach((input) => {
+      if (input.dataset.stockInput === skuId) {
+        const qty = getQuantity(skuId);
+        input.value = qty > 0 ? String(qty) : "";
+      }
+    });
+  };
+
+  const updateAllStockInputs = () => {
+    document.querySelectorAll("[data-stock-input]").forEach((input) => {
+      const qty = getQuantity(input.dataset.stockInput);
+      input.value = qty > 0 ? String(qty) : "";
+    });
   };
 
   const refreshMissionContextFromState = () => {
@@ -914,7 +946,8 @@
             inputmode="numeric"
             min="0"
             step="1"
-            value="${qty}"
+            value="${qty > 0 ? qty : ""}"
+            placeholder="0"
             data-stock-input="${escapeAttr(product.sku_id)}"
             aria-label="Quantité ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
           />
@@ -1027,11 +1060,13 @@
     state.events = Array.isArray(events) ? events : [];
     state.stockMissions = Array.isArray(stockMissions) ? stockMissions : [];
     state.journees = Array.isArray(journees) ? journees : [];
-    state.mouvementsStock = mouvementsStock;
+    state.mouvementsStock = Array.isArray(mouvementsStock) ? mouvementsStock : [];
 
-    state.catalogue = catalogue
-      .map((row, index) => normalizeProduct(row, index))
-      .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
+    state.catalogue = Array.isArray(catalogue)
+      ? catalogue
+          .map((row, index) => normalizeProduct(row, index))
+          .filter((product) => product.sku_id && product.parfum_code && product.format_cl)
+      : [];
 
     state.dataLoaded = true;
 
@@ -1043,15 +1078,35 @@
 
   document.addEventListener("click", (event) => {
     const deltaButton = event.target.closest("[data-stock-delta]");
+
     if (deltaButton) {
       const skuId = deltaButton.dataset.sku;
       const delta = toNumber(deltaButton.dataset.stockDelta, 0);
       const current = getQuantity(skuId);
 
       setQuantity(skuId, current + delta);
+      updateStockInput(skuId);
       setStatus("");
-      renderAll();
+      renderTotals();
     }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const input = event.target.closest?.("[data-stock-input]");
+
+    if (!input) return;
+
+    selectQuantityInput(input);
+  });
+
+  document.addEventListener("pointerup", (event) => {
+    const input = event.target.closest?.("[data-stock-input]");
+
+    if (!input) return;
+
+    event.preventDefault();
+    input.focus();
+    selectQuantityInput(input);
   });
 
   document.addEventListener("input", (event) => {
@@ -1065,8 +1120,9 @@
 
   els.clearStockBtn.addEventListener("click", () => {
     state.quantities = new Map();
+    updateAllStockInputs();
     setStatus("");
-    renderAll();
+    renderTotals();
   });
 
   els.saveDraftBtn.addEventListener("click", () => {
