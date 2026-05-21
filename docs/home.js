@@ -1460,7 +1460,7 @@
         meta: "Crée ou valide un évènement, puis prépare une mission de stock.",
         primaryText: "Gérer les inscriptions",
         primaryHref: "./inscriptions-evenements.html",
-        secondaryText: "Missions stock",
+        secondaryText: "Préparation mission",
         secondaryHref: "./missions.html"
       };
     }
@@ -1474,7 +1474,7 @@
         meta: `${getDateLabel(mission)} · ${homeState.linkedDays.length || 1} journée(s) liée(s)`,
         primaryText: "Préparer le stock",
         primaryHref: "./preparation-stock.html",
-        secondaryText: "Missions stock",
+        secondaryText: "Préparation mission",
         secondaryHref: "./missions.html"
       };
     }
@@ -1488,7 +1488,7 @@
         meta: `${mission.nom || "Mission"} · ${formatDisplayDate(journee.date)}`,
         primaryText: "Voir le dashboard",
         primaryHref: "./dashboard.html",
-        secondaryText: "Missions stock",
+        secondaryText: "Préparation mission",
         secondaryHref: "./missions.html"
       };
     }
@@ -1531,11 +1531,11 @@
     setText("#statTwoLabel", "Acceptées");
     setText("#todayTickets", "…");
 
-    setText("#statThreeLabel", "Missions stock");
+    setText("#statThreeLabel", "Préparation mission");
     setText("#pendingSync", "…");
 
     setLink("#primaryAction", "Gérer les inscriptions", "./inscriptions-evenements.html");
-    setLink("#secondaryAction", "Missions stock", "./missions.html");
+    setLink("#secondaryAction", "Préparation mission", "./missions.html");
 
     renderWorkflow({
       step: "inscriptions"
@@ -1556,7 +1556,7 @@
       setText("#statTwoLabel", "Acceptées");
       setText("#todayTickets", String(homeState.acceptedInscriptions.length));
 
-      setText("#statThreeLabel", "Missions stock");
+      setText("#statThreeLabel", "Préparation mission");
       setText("#pendingSync", String(homeState.stockMissions.length));
 
       return;
