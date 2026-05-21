@@ -479,28 +479,41 @@ video {
 
 .statCard {
   min-width: 0;
+  min-height: 102px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 7px;
   border: 1px solid rgba(86, 65, 42, 0.16);
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: 14px 10px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 250, 241, 0.52));
   box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+  text-align: center;
 }
 
 .statCard span {
   display: block;
-  margin-bottom: 6px;
+  max-width: 100%;
+  margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 750;
+  line-height: 1.14;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .statCard strong {
   display: block;
+  max-width: 100%;
   color: var(--rum);
   font-size: clamp(1.2rem, 5.2vw, 2rem);
+  line-height: 1.02;
   letter-spacing: -0.04em;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
 }
 
 .statCard.warning.hasWarning {
@@ -923,11 +936,14 @@ video {
   }
 
   .statCard {
-    padding: 12px 10px;
+    min-height: 92px;
+    padding: 12px 8px;
+    gap: 6px;
   }
 
   .statCard span {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
+    line-height: 1.12;
   }
 
   .statCard strong {
