@@ -2,13 +2,15 @@
   "use strict";
 
   /*
-    Frais V1 :
+    Frais V2 :
     - Lit le contexte actif depuis lugdurum_frais_context.
     - Fallback sur lugdurum_preparation_context / activeStockMissionId si besoin.
     - Charge missions_stock, journees_vente et frais depuis Google Sheets si l’API est disponible.
     - Fonctionne en localStorage si l’API n’est pas disponible.
     - Enregistre les frais dans l’onglet frais via LugdurumAPI.saveFrais().
-    - La file d’attente offline sera gérée par lugdurum-api.js.
+    - La file d’attente offline est gérée par lugdurum-api.js.
+    - Le sélecteur de catégories est généré depuis CATEGORY_ORDER / CATEGORY_LABELS.
+    - Ajoute la catégorie COMPENSATION_PERTE_SALAIRE.
   */
 
   const CURRENT_USER = {
@@ -23,6 +25,19 @@
     AUTRE: "Autre"
   };
 
+  const CATEGORY_ORDER = [
+    "EMPLACEMENT",
+    "ESSENCE",
+    "PEAGE",
+    "REPAS",
+    "HEBERGEMENT",
+    "MATERIEL",
+    "COMMUNICATION",
+    "CONSOMMABLES",
+    "COMPENSATION_PERTE_SALAIRE",
+    "AUTRE"
+  ];
+
   const CATEGORY_LABELS = {
     EMPLACEMENT: "Emplacement",
     ESSENCE: "Essence",
@@ -32,6 +47,7 @@
     MATERIEL: "Matériel",
     COMMUNICATION: "Communication",
     CONSOMMABLES: "Consommables",
+    COMPENSATION_PERTE_SALAIRE: "Compensation perte salaire",
     AUTRE: "Autre"
   };
 
@@ -200,6 +216,34 @@
     ].forEach((button) => {
       if (button) button.disabled = isSaving;
     });
+  };
+
+  const renderCategoryOptions = () => {
+    if (!els.expenseCategoryInput) return;
+
+    const currentValue = els.expenseCategoryInput.value || "EMPLACEMENT";
+
+    const knownCategories = new Set(CATEGORY_ORDER);
+    Object.keys(CATEGORY_LABELS).forEach((key) => knownCategories.add(key));
+
+    const orderedCategories = [
+      ...CATEGORY_ORDER,
+      ...Object.keys(CATEGORY_LABELS).filter((key) => !CATEGORY_ORDER.includes(key))
+    ].filter((key, index, array) => array.indexOf(key) === index);
+
+    els.expenseCategoryInput.innerHTML = orderedCategories
+      .map((key) => `
+        <option value="${escapeAttr(key)}">
+          ${escapeHtml(CATEGORY_LABELS[key] || key)}
+        </option>
+      `)
+      .join("");
+
+    if (knownCategories.has(currentValue)) {
+      els.expenseCategoryInput.value = currentValue;
+    } else {
+      els.expenseCategoryInput.value = "EMPLACEMENT";
+    }
   };
 
   const cacheData = () => {
@@ -486,6 +530,8 @@
   const fillForm = (frais) => {
     state.editingId = frais.frais_id;
 
+    renderCategoryOptions();
+
     els.expenseIdInput.value = frais.frais_id || "";
     els.expenseDateInput.value = frais.date || formatIsoDate(new Date());
     els.expenseDayInput.value = frais.journee_id || "";
@@ -512,6 +558,8 @@
     state.editingId = "";
 
     els.form.reset();
+    renderCategoryOptions();
+
     els.expenseIdInput.value = "";
     els.expenseDateInput.value = formatIsoDate(new Date());
     els.expensePaidByInput.value = CURRENT_USER.user_id;
@@ -665,6 +713,7 @@
 
   const renderAll = () => {
     renderMissionContext();
+    renderCategoryOptions();
     renderDayOptions();
     renderDays();
     renderStats();
@@ -730,6 +779,7 @@
   });
 
   const init = async () => {
+    renderCategoryOptions();
     loadLocalCaches();
     loadContext();
     renderAll();
