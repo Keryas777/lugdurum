@@ -312,15 +312,12 @@
       rgba(255, 250, 241, 0.92)
     ),
     var(--product-image);
-
   background-size:
     cover,
     100% auto;
-
   background-repeat:
     no-repeat,
     no-repeat;
-
   background-position:
     center,
     center;
@@ -504,8 +501,6 @@
   text-align: right;
   white-space: nowrap;
 }
-
-/* Ancienne classe neutralisée si encore présente dans le DOM */
 
 .productVisualMeta {
   display: none;
