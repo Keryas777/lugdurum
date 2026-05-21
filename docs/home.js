@@ -2,15 +2,17 @@
   "use strict";
 
   /*
-    Accueil V16 :
+    Accueil V17 :
     - Affiche immédiatement le dernier cache accueil connu, mais clairement marqué comme local.
     - Lance ensuite une actualisation en ligne via LugdurumAPI.getHomeData().
     - Le badge ne passe en vert qu’après une réponse API réussie.
     - Corrige la pastille :
       - passe par window.LugdurumDataState quand disponible.
-      - ne modifie plus uniquement le DOM en direct.
+      - envoie label + message pour rester compatible avec lugdurum-api.js ET pwa.js.
       - reste compatible avec un fallback DOM si le pont global n’est pas encore prêt.
     - Ajoute une preuve de provenance visible dans “À surveiller”.
+    - Diagnostic sync masqué par défaut :
+      visible uniquement avec ?debug=sync ou localStorage lugdurum_show_diagnostic_sync = "1".
     - Cache accueil dédié : lugdurum_home_data_cache.
     - Fallback API : getCoreData(), puis getters séparés.
     - File d’attente officielle : lugdurum_pending_writes.
@@ -38,7 +40,8 @@
     activeJourneeId: "lugdurum_active_journee_id",
     preparationContext: "lugdurum_preparation_context",
 
-    pendingTransactions: "lugdurum_pending_transactions"
+    pendingTransactions: "lugdurum_pending_transactions",
+    showDiagnosticSync: "lugdurum_show_diagnostic_sync"
   };
 
   const CORE_TABLES = [
@@ -61,6 +64,12 @@
     "entree_initiale",
     "preparation"
   ];
+
+  const DATA_STATE_BASE_LABELS = {
+    local: "Données locales",
+    refreshing: "Actualisation",
+    online: "Données en ligne"
+  };
 
   const formatEuro = new Intl.NumberFormat("fr-FR", {
     style: "currency",
@@ -256,6 +265,44 @@
     return "local";
   };
 
+  const buildDataStatePayload = (mode, label = "") => {
+    const safeMode = normalizeDataSourceMode(mode);
+    const baseLabel = DATA_STATE_BASE_LABELS[safeMode] || DATA_STATE_BASE_LABELS.local;
+    const rawLabel = String(label || "").trim();
+
+    if (!rawLabel) {
+      return {
+        label: baseLabel,
+        message: "",
+        text: baseLabel
+      };
+    }
+
+    if (rawLabel === baseLabel) {
+      return {
+        label: baseLabel,
+        message: "",
+        text: baseLabel
+      };
+    }
+
+    if (rawLabel.startsWith(`${baseLabel} · `)) {
+      const message = rawLabel.slice(`${baseLabel} · `.length).trim();
+
+      return {
+        label: baseLabel,
+        message,
+        text: message ? `${baseLabel} · ${message}` : baseLabel
+      };
+    }
+
+    return {
+      label: rawLabel,
+      message: "",
+      text: rawLabel
+    };
+  };
+
   const setDocumentDataSource = (mode) => {
     const safeMode = normalizeDataSourceMode(mode);
 
@@ -277,46 +324,40 @@
     if (!badge) return null;
 
     const safeMode = normalizeDataSourceMode(mode);
+    const payload = buildDataStatePayload(safeMode, label);
     const text = badge.querySelector(".lugdurumDataStateBadgeText");
 
     badge.classList.remove("isLocal", "isRefreshing", "isOnline");
 
     if (safeMode === "online") {
       badge.classList.add("isOnline");
-      if (text) text.textContent = label || "Données en ligne";
       badge.title = "Source active : API en ligne";
       badge.dataset.state = "online";
-      return {
-        status: "online",
-        label: label || "Données en ligne"
-      };
-    }
-
-    if (safeMode === "refreshing") {
+    } else if (safeMode === "refreshing") {
       badge.classList.add("isRefreshing");
-      if (text) text.textContent = label || "Actualisation · lecture en ligne";
       badge.title = "Actualisation en cours";
       badge.dataset.state = "refreshing";
-      return {
-        status: "refreshing",
-        label: label || "Actualisation · lecture en ligne"
-      };
+    } else {
+      badge.classList.add("isLocal");
+      badge.title = "Source active : cache local";
+      badge.dataset.state = "local";
     }
 
-    badge.classList.add("isLocal");
-    if (text) text.textContent = label || "Données locales";
-    badge.title = "Source active : cache local";
-    badge.dataset.state = "local";
+    if (text) {
+      text.textContent = payload.text;
+    }
 
     return {
-      status: "local",
-      label: label || "Données locales"
+      status: safeMode,
+      label: payload.label,
+      message: payload.message,
+      text: payload.text
     };
   };
 
   const setDataState = (mode, label = "") => {
     const safeMode = normalizeDataSourceMode(mode);
-    const safeLabel = String(label || "").trim();
+    const payload = buildDataStatePayload(safeMode, label);
 
     setDocumentDataSource(safeMode);
 
@@ -325,15 +366,20 @@
       typeof window.LugdurumDataState.set === "function"
     ) {
       try {
-        return window.LugdurumDataState.set(safeMode, {
-          label: safeLabel || undefined
+        const result = window.LugdurumDataState.set(safeMode, {
+          label: payload.label,
+          message: payload.message
         });
+
+        applyDataStateDirectlyToBadge(safeMode, payload.text);
+
+        return result;
       } catch (error) {
         console.warn("Mise à jour LugdurumDataState impossible, fallback DOM utilisé.", error);
       }
     }
 
-    return applyDataStateDirectlyToBadge(safeMode, safeLabel);
+    return applyDataStateDirectlyToBadge(safeMode, payload.text);
   };
 
   const isCancelledStatus = (item) => {
@@ -1711,6 +1757,119 @@
     return items;
   };
 
+  const shouldShowDiagnosticSyncLink = () => {
+    const params = new URLSearchParams(window.location.search);
+    const debugParam = params.get("debug");
+
+    return (
+      debugParam === "sync" ||
+      debugParam === "1" ||
+      safeLocalGet(STORAGE_KEYS.showDiagnosticSync) === "1"
+    );
+  };
+
+  const ensureDiagnosticSyncLinkStyle = () => {
+    if (document.getElementById("lugdurumDiagnosticSyncLinkStyle")) return;
+
+    const style = document.createElement("style");
+    style.id = "lugdurumDiagnosticSyncLinkStyle";
+    style.textContent = `
+      .diagnosticSyncLink {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin-top: 14px;
+        border: 1px solid rgba(179, 92, 58, 0.22);
+        border-radius: var(--radius-md);
+        padding: 14px 16px;
+        color: var(--text);
+        text-decoration: none;
+        background:
+          linear-gradient(
+            145deg,
+            rgba(255, 250, 241, 0.9),
+            rgba(245, 231, 208, 0.58)
+          );
+        box-shadow: 0 8px 18px rgba(75, 48, 22, 0.06);
+      }
+
+      .diagnosticSyncLink:active {
+        transform: scale(0.985);
+      }
+
+      .diagnosticSyncLinkIcon {
+        width: 42px;
+        height: 42px;
+        display: inline-grid;
+        place-items: center;
+        flex: 0 0 auto;
+        border-radius: 16px;
+        background: rgba(179, 92, 58, 0.12);
+        font-size: 1.25rem;
+      }
+
+      .diagnosticSyncLinkText {
+        min-width: 0;
+        display: grid;
+        gap: 3px;
+        flex: 1;
+      }
+
+      .diagnosticSyncLinkText strong {
+        color: var(--text);
+        font-size: 1rem;
+        font-weight: 950;
+        line-height: 1.1;
+        letter-spacing: -0.025em;
+      }
+
+      .diagnosticSyncLinkText span {
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 800;
+        line-height: 1.25;
+      }
+
+      .diagnosticSyncLinkArrow {
+        color: var(--rum);
+        font-size: 1.35rem;
+        font-weight: 950;
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  const renderDiagnosticSyncLink = () => {
+    const list = qs("#watchList");
+    if (!list) return;
+
+    const parent = list.parentElement;
+    if (!parent) return;
+
+    parent.querySelector("#diagnosticSyncLink")?.remove();
+
+    if (!shouldShowDiagnosticSyncLink()) return;
+
+    ensureDiagnosticSyncLinkStyle();
+
+    const link = document.createElement("a");
+    link.id = "diagnosticSyncLink";
+    link.className = "diagnosticSyncLink";
+    link.href = "./diagnostic-sync.html";
+    link.innerHTML = `
+      <span class="diagnosticSyncLinkIcon" aria-hidden="true">🛠️</span>
+      <span class="diagnosticSyncLinkText">
+        <strong>Diagnostic sync</strong>
+        <span>Vérifier les données locales, la file d’attente et les anciennes transactions.</span>
+      </span>
+      <span class="diagnosticSyncLinkArrow" aria-hidden="true">→</span>
+    `;
+
+    parent.appendChild(link);
+  };
+
   const renderWatchList = (items) => {
     const list = qs("#watchList");
 
@@ -1723,6 +1882,8 @@
       li.textContent = item;
       list.appendChild(li);
     });
+
+    renderDiagnosticSyncLink();
   };
 
   const renderHome = () => {
