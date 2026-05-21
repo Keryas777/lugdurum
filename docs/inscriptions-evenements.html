@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="./inscriptions-evenements.css?v=3" />
 
     <script src="./lugdurum-api.js?v=8" defer></script>
-    <script src="./inscriptions-evenements.js?v=7" defer></script>
+    <script src="./inscriptions-evenements.js?v=8" defer></script>
     <script src="./pwa.js?v=8" defer></script>
   </head>
 
@@ -122,6 +122,15 @@
                   <option value="ACCEPTE">Accepté</option>
                   <option value="REFUSE">Refusé</option>
                   <option value="ANNULE">Annulé</option>
+                </select>
+              </label>
+
+              <label class="trackingField">
+                <span>Paiement</span>
+                <select id="paymentStatusInput">
+                  <option value="A_ENVOYER">À envoyer</option>
+                  <option value="ENVOYE">Envoyé</option>
+                  <option value="ENCAISSE">Encaissé</option>
                 </select>
               </label>
 
@@ -284,12 +293,12 @@
               </label>
 
               <label class="trackingField">
-                <span>Paiement / caution</span>
+                <span>Détail paiement / caution</span>
                 <input
                   id="paymentInput"
                   type="text"
                   autocomplete="off"
-                  placeholder="Ex : chèque envoyé, caution 50€"
+                  placeholder="Ex : chèque de caution 50 €, virement prévu..."
                 />
               </label>
 
