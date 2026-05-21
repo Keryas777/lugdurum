@@ -18,6 +18,9 @@
     - Garde-fou : si des produits sont saisis, des lignes produits doivent bien partir vers l’API.
     - Catégories de frais pilotées par EXPENSE_LABELS.
     - Ajout catégorie : Compensation perte salaire.
+    - Quantités produits :
+      - affiche un placeholder 0 au lieu d’une vraie valeur 0.
+      - sélectionne automatiquement la valeur au toucher/focus pour remplacer vite.
   */
 
   const CURRENT_USER = {
@@ -253,6 +256,18 @@
     });
   };
 
+  const selectQuantityInput = (input) => {
+    if (!input) return;
+
+    window.setTimeout(() => {
+      try {
+        input.select();
+      } catch {
+        // Certains navigateurs mobiles sont capricieux sur input[type="number"].
+      }
+    }, 0);
+  };
+
   const renderExpenseCategoryOptions = () => {
     if (!els.expenseCategoryInput) return;
 
@@ -474,14 +489,16 @@
   const updateQuantityInput = (skuId) => {
     document.querySelectorAll("[data-old-day-input]").forEach((input) => {
       if (input.dataset.oldDayInput === skuId) {
-        input.value = String(getQuantity(skuId));
+        const qty = getQuantity(skuId);
+        input.value = qty > 0 ? String(qty) : "";
       }
     });
   };
 
   const updateAllQuantityInputs = () => {
     document.querySelectorAll("[data-old-day-input]").forEach((input) => {
-      input.value = String(getQuantity(input.dataset.oldDayInput));
+      const qty = getQuantity(input.dataset.oldDayInput);
+      input.value = qty > 0 ? String(qty) : "";
     });
   };
 
@@ -663,7 +680,8 @@
             inputmode="numeric"
             min="0"
             step="1"
-            value="${qty}"
+            value="${qty > 0 ? qty : ""}"
+            placeholder="0"
             data-old-day-input="${escapeAttr(product.sku_id)}"
             aria-label="Quantité ${escapeAttr(label)} ${escapeAttr(product.parfum_code)}"
           />
@@ -1728,6 +1746,24 @@
       renderExpenses();
       renderTotals();
     }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const quantityInput = event.target.closest?.("[data-old-day-input]");
+
+    if (!quantityInput) return;
+
+    selectQuantityInput(quantityInput);
+  });
+
+  document.addEventListener("pointerup", (event) => {
+    const quantityInput = event.target.closest?.("[data-old-day-input]");
+
+    if (!quantityInput) return;
+
+    event.preventDefault();
+    quantityInput.focus();
+    selectQuantityInput(quantityInput);
   });
 
   document.addEventListener("input", (event) => {
