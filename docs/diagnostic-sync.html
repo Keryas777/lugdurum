@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f6f1e8" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+  <title>Lugdurum · Diagnostic synchro</title>
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+  <link rel="stylesheet" href="./diagnostic-sync.css" />
+</head>
+<body class="page-diagnostic-sync">
+  <main class="appShell diagnosticShell">
+    <header class="diagnosticTopbar">
+      <a class="backBtn" href="./index.html" aria-label="Retour à l’accueil">←</a>
+
+      <div class="brandHeader">
+        <img class="brandLogo" src="./assets/icons/icon-192.png" alt="" loading="lazy" />
+        <div class="brandBlock">
+          <p class="brandName">Lugdurum</p>
+          <h1>Diagnostic synchro</h1>
+          <p class="diagnosticSubtitle">Retrouver, comparer, réenvoyer ou supprimer les anciennes ventes locales.</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="diagnosticHero" aria-labelledby="diagnosticTitle">
+      <div>
+        <p class="sectionEyebrow">Trousse de secours</p>
+        <h2 id="diagnosticTitle">Transactions locales legacy</h2>
+        <p>
+          Cette page ne touche qu’à <code>lugdurum_pending_transactions</code>. Elle ne supprime pas les caches métier, ni les données Sheets.
+        </p>
+      </div>
+
+      <div class="diagnosticActions" aria-label="Actions principales">
+        <button class="diagnosticBtn isPrimary" id="refreshDiagnosticBtn" type="button">
+          <span>↻</span>
+          Actualiser
+        </button>
+        <button class="diagnosticBtn" id="cleanSyncedBtn" type="button">
+          <span>✓</span>
+          Nettoyer déjà synchronisées
+        </button>
+      </div>
+    </section>
+
+    <section class="diagnosticKpis" aria-label="Résumé diagnostic">
+      <article>
+        <span>Résidus locaux</span>
+        <strong id="legacyCount">—</strong>
+      </article>
+      <article>
+        <span>Déjà dans Sheets</span>
+        <strong id="alreadyRemoteCount">—</strong>
+      </article>
+      <article>
+        <span>À vérifier</span>
+        <strong id="toReviewCount">—</strong>
+      </article>
+      <article>
+        <span>File API officielle</span>
+        <strong id="officialQueueCount">—</strong>
+      </article>
+    </section>
+
+    <section class="diagnosticPanel">
+      <div class="panelHeaderLine">
+        <div>
+          <p class="sectionEyebrow">Comparaison</p>
+          <h2>Résidus détectés</h2>
+        </div>
+
+        <button class="selectAllBtn" id="toggleSelectAllBtn" type="button">Tout sélectionner</button>
+      </div>
+
+      <p class="diagnosticStatus" id="diagnosticStatus" aria-live="polite">Chargement…</p>
+
+      <div class="diagnosticBulkActions" aria-label="Actions sur la sélection">
+        <button class="diagnosticBtn isPrimary" id="sendSelectedBtn" type="button">
+          <span>↑</span>
+          Réenvoyer sélection
+        </button>
+        <button class="diagnosticBtn isDanger" id="deleteSelectedBtn" type="button">
+          <span>×</span>
+          Supprimer sélection
+        </button>
+        <button class="diagnosticBtn isGhostDanger" id="clearAllLegacyBtn" type="button">
+          Vider tous les résidus
+        </button>
+      </div>
+
+      <div class="legacyTransactionsList" id="legacyTransactionsList">
+        <p class="diagnosticEmpty">Chargement…</p>
+      </div>
+    </section>
+
+    <section class="diagnosticPanel isHelp">
+      <p class="sectionEyebrow">Mode d’emploi</p>
+      <h2>Comment l’utiliser</h2>
+      <div class="helpGrid">
+        <article>
+          <strong>Déjà dans Sheets</strong>
+          <span>La transaction locale a le même <code>transaction_id</code> qu’une ligne distante : elle peut être nettoyée.</span>
+        </article>
+        <article>
+          <strong>À réenvoyer</strong>
+          <span>La transaction locale n’a pas été retrouvée dans Sheets : tu peux la renvoyer vers l’API.</span>
+        </article>
+        <article>
+          <strong>Sans ID</strong>
+          <span>Impossible de comparer proprement. À supprimer seulement si c’est clairement un vieux test.</span>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="./pwa.js" defer></script>
+  <script src="./lugdurum-api.js" defer></script>
+  <script src="./diagnostic-sync.js" defer></script>
+</body>
+</html>
