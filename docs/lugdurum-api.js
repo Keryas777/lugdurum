@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Lugdurum API V12 FRONT QUEUE + HOME DATA + JSONP GET
+    Lugdurum API V13 DATA STATE FIX + FRONT QUEUE + HOME DATA + JSONP GET
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
     - Ajout méthode rapide getHomeData() pour l’accueil.
@@ -14,6 +14,9 @@
     - Nettoyage des anciennes transactions locales legacy : lugdurum_pending_transactions.
     - Évènement global lugdurum:sync-status pour rafraîchir l’UI.
     - État données permanent : local / actualisation / en ligne.
+    - Corrige la pastille :
+      après toute lecture JSONP réussie, l’état passe explicitement en ligne.
+    - Compatible avec une pastille déjà présente dans le HTML ou créée dynamiquement.
     - Évite les doublons d’écriture ventes_lignes quand Apps Script sauvegarde déjà les lignes dans les bundles.
   */
 
@@ -88,6 +91,7 @@
   };
 
   const ensureDataStateStyle = () => {
+    if (!document.head) return;
     if (document.getElementById("lugdurumDataStateStyle")) return;
 
     const style = document.createElement("style");
@@ -130,17 +134,20 @@
         text-overflow: ellipsis;
       }
 
-      .lugdurumDataStateBadge.isLocal .lugdurumDataStateBadgeDot {
+      .lugdurumDataStateBadge.isLocal .lugdurumDataStateBadgeDot,
+      .lugdurumDataStateBar.isLocal .lugdurumDataStateBadgeDot {
         background: #b35c3a;
         box-shadow: 0 0 0 4px rgba(179, 92, 58, 0.13);
       }
 
-      .lugdurumDataStateBadge.isRefreshing .lugdurumDataStateBadgeDot {
+      .lugdurumDataStateBadge.isRefreshing .lugdurumDataStateBadgeDot,
+      .lugdurumDataStateBar.isRefreshing .lugdurumDataStateBadgeDot {
         background: #d8a04f;
         box-shadow: 0 0 0 4px rgba(216, 160, 79, 0.16);
       }
 
-      .lugdurumDataStateBadge.isOnline .lugdurumDataStateBadgeDot {
+      .lugdurumDataStateBadge.isOnline .lugdurumDataStateBadgeDot,
+      .lugdurumDataStateBar.isOnline .lugdurumDataStateBadgeDot {
         background: #3f6f4f;
         box-shadow: 0 0 0 4px rgba(63, 111, 79, 0.15);
       }
@@ -164,10 +171,25 @@
         <span class="lugdurumDataStateBadgeDot" aria-hidden="true"></span>
         <span class="lugdurumDataStateBadgeText">Données locales</span>
       `;
-      badge.setAttribute("aria-live", "polite");
-      badge.setAttribute("role", "status");
       document.body.appendChild(badge);
     }
+
+    if (!badge.querySelector(".lugdurumDataStateBadgeDot")) {
+      const dot = document.createElement("span");
+      dot.className = "lugdurumDataStateBadgeDot";
+      dot.setAttribute("aria-hidden", "true");
+      badge.prepend(dot);
+    }
+
+    if (!badge.querySelector(".lugdurumDataStateBadgeText")) {
+      const text = document.createElement("span");
+      text.className = "lugdurumDataStateBadgeText";
+      text.textContent = "Données locales";
+      badge.appendChild(text);
+    }
+
+    badge.setAttribute("aria-live", "polite");
+    badge.setAttribute("role", "status");
 
     return badge;
   };
@@ -175,15 +197,15 @@
   const setDataState = (status, details = {}) => {
     const safeStatus = DATA_STATE_LABELS[status] ? status : "local";
     const label = details.label || DATA_STATE_LABELS[safeStatus];
-    const message = details.message || "";
+    const message = String(details.message || "").trim();
     const text = message ? `${label} · ${message}` : label;
 
     const state = {
+      ...details,
       status: safeStatus,
       label,
       message,
-      updated_at: nowIso(),
-      ...details
+      updated_at: nowIso()
     };
 
     writeJson(STORAGE_KEYS.dataState, state);
@@ -203,8 +225,15 @@
         badge.classList.add("isLocal");
       }
 
-      const textElement = badge.querySelector(".lugdurumDataStateBadgeText");
-      if (textElement) textElement.textContent = text;
+      badge.dataset.state = safeStatus;
+
+      const textElement =
+        badge.querySelector(".lugdurumDataStateBadgeText") ||
+        badge.querySelector("[data-data-state-text]");
+
+      if (textElement) {
+        textElement.textContent = text;
+      }
     };
 
     if (document.body) {
@@ -232,7 +261,47 @@
 
   const initDataStateBadge = () => {
     const saved = getDataState();
-    setDataState(saved.status || "local", saved);
+
+    setDataState(saved.status || "local", {
+      ...saved,
+      message: saved.message || ""
+    });
+  };
+
+  const markDataRefreshing = (action) => {
+    if (!isOnline()) {
+      setDataState("local", {
+        message: "hors ligne",
+        last_action: action || ""
+      });
+      return;
+    }
+
+    setDataState("refreshing", {
+      message: action || "lecture API",
+      last_action: action || ""
+    });
+  };
+
+  const markDataOnline = (action, durationMs = 0) => {
+    setDataState("online", {
+      message: action ? `${action} · ${durationMs} ms API` : "API Sheets",
+      last_action: action || "",
+      duration_ms: durationMs,
+      last_error: ""
+    });
+  };
+
+  const markDataLocalAfterReadError = (action, error) => {
+    const message = isOnline()
+      ? `API indisponible (${action})`
+      : "hors ligne";
+
+    setDataState("local", {
+      message,
+      last_action: action || "",
+      last_error: error?.message || "Lecture API impossible"
+    });
   };
 
   const buildQueueId = () => {
@@ -398,6 +467,12 @@
       last_queued_action: action
     });
 
+    setDataState("local", {
+      message: `${writes.length} écriture(s) en attente`,
+      last_action: action,
+      last_error: reason || ""
+    });
+
     return {
       queued: true,
       queue_id: item.id,
@@ -535,11 +610,8 @@
 
   const extractBatchResults = (batchResult) => {
     if (Array.isArray(batchResult)) return batchResult;
-
     if (Array.isArray(batchResult?.results)) return batchResult.results;
-
     if (Array.isArray(batchResult?.data?.results)) return batchResult.data.results;
-
     return [];
   };
 
@@ -565,6 +637,10 @@
       writeSyncState({
         status: "offline",
         last_message: "Synchronisation impossible : hors ligne."
+      });
+
+      setDataState("local", {
+        message: "hors ligne"
       });
 
       return {
@@ -593,6 +669,10 @@
     }
 
     isFlushing = true;
+
+    setDataState("refreshing", {
+      message: `sync ${initialCount} écriture(s)`
+    });
 
     writeSyncState({
       status: "syncing",
@@ -723,6 +803,17 @@
         pending_count: pendingCount
       });
 
+      if (pendingCount === 0) {
+        setDataState("online", {
+          message: "sync OK"
+        });
+      } else {
+        setDataState("local", {
+          message: `${pendingCount} écriture(s) en attente`,
+          last_error: getSyncState().last_error || ""
+        });
+      }
+
       return {
         ok: pendingCount === 0,
         synced_count: syncedCount,
@@ -848,21 +939,37 @@
     });
 
   const requestGet = async (action, params = {}, options = {}) => {
+    const startedAt = Date.now();
     const flushBeforeRead = options.flushBeforeRead !== false;
 
-    if (flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
-      try {
-        await flushPendingWrites();
-      } catch (error) {
-        console.warn("Lecture avant synchronisation complète.", error);
+    markDataRefreshing(action);
+
+    try {
+      if (flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
+        try {
+          await flushPendingWrites();
+        } catch (error) {
+          console.warn("Lecture avant synchronisation complète.", error);
+        }
       }
-    }
 
-    if (!flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
-      scheduleFlush(250);
-    }
+      if (!flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
+        scheduleFlush(250);
+      }
 
-    return requestGetJsonp(action, params, options.timeoutMs || 15000);
+      const data = await requestGetJsonp(
+        action,
+        params,
+        options.timeoutMs || 15000
+      );
+
+      markDataOnline(action, Date.now() - startedAt);
+
+      return data;
+    } catch (error) {
+      markDataLocalAfterReadError(action, error);
+      throw error;
+    }
   };
 
   const afterSuccessfulDirectWrite = (action) => {
@@ -877,6 +984,14 @@
       last_synced_action: action,
       last_error: "",
       pending_count: pendingCount
+    });
+
+    setDataState("online", {
+      message:
+        pendingCount > 0
+          ? `${pendingCount} écriture(s) en attente`
+          : `écriture OK · ${action}`,
+      last_action: action
     });
 
     if (pendingCount > 0) {
@@ -1408,6 +1523,10 @@
     writeSyncState({
       status: "online",
       last_message: "Connexion retrouvée."
+    });
+
+    setDataState("refreshing", {
+      message: "connexion retrouvée"
     });
 
     scheduleFlush(250);
