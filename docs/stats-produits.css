@@ -305,22 +305,10 @@
 }
 
 .productVisualRow.hasImage {
-  background-image:
-    linear-gradient(
-      90deg,
-      rgba(255, 250, 241, 0.72),
-      rgba(255, 250, 241, 0.92)
-    ),
-    var(--product-image);
-  background-size:
-    cover,
-    100% auto;
-  background-repeat:
-    no-repeat,
-    no-repeat;
-  background-position:
-    center,
-    center;
+  background-image: var(--product-image);
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 .productVisualRow::before {
@@ -331,14 +319,14 @@
   pointer-events: none;
   background:
     linear-gradient(
-      115deg,
-      rgba(255, 255, 255, 0.46) 0%,
-      rgba(255, 255, 255, 0.2) 28%,
-      rgba(255, 250, 241, 0.5) 62%,
-      rgba(255, 255, 255, 0.34) 100%
+      90deg,
+      rgba(255, 250, 241, 0.58) 0%,
+      rgba(255, 250, 241, 0.46) 34%,
+      rgba(255, 250, 241, 0.66) 68%,
+      rgba(255, 250, 241, 0.82) 100%
     );
-  backdrop-filter: blur(9px) saturate(1.08);
-  -webkit-backdrop-filter: blur(9px) saturate(1.08);
+  backdrop-filter: blur(3px) saturate(1.04);
+  -webkit-backdrop-filter: blur(3px) saturate(1.04);
 }
 
 .productVisualRow::after {
@@ -351,20 +339,19 @@
   background:
     linear-gradient(
       120deg,
-      rgba(255, 255, 255, 0.34) 0%,
-      rgba(255, 255, 255, 0.06) 18%,
-      rgba(138, 90, 43, 0.035) 45%,
-      rgba(255, 255, 255, 0.24) 78%,
-      rgba(255, 255, 255, 0.08) 100%
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.06) 34%,
+      rgba(138, 90, 43, 0.025) 58%,
+      rgba(255, 255, 255, 0.18) 100%
     ),
     repeating-linear-gradient(
       105deg,
-      rgba(255, 255, 255, 0.18) 0,
-      rgba(255, 255, 255, 0.18) 1px,
+      rgba(255, 255, 255, 0.14) 0,
+      rgba(255, 255, 255, 0.14) 1px,
       rgba(255, 255, 255, 0) 1px,
-      rgba(255, 255, 255, 0) 8px
+      rgba(255, 255, 255, 0) 10px
     );
-  opacity: 0.86;
+  opacity: 0.42;
 }
 
 .productVisualRow > * {
@@ -656,6 +643,10 @@
     min-height: 106px;
     border-radius: 23px;
     padding: 14px 14px 14px 11px;
+  }
+
+  .productVisualRow::after {
+    border-radius: 22px;
   }
 
   .productVisualMedia {
