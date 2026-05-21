@@ -2,10 +2,14 @@
   "use strict";
 
   /*
-    Accueil V15 :
+    Accueil V16 :
     - Affiche immédiatement le dernier cache accueil connu, mais clairement marqué comme local.
     - Lance ensuite une actualisation en ligne via LugdurumAPI.getHomeData().
     - Le badge ne passe en vert qu’après une réponse API réussie.
+    - Corrige la pastille :
+      - passe par window.LugdurumDataState quand disponible.
+      - ne modifie plus uniquement le DOM en direct.
+      - reste compatible avec un fallback DOM si le pont global n’est pas encore prêt.
     - Ajoute une preuve de provenance visible dans “À surveiller”.
     - Cache accueil dédié : lugdurum_home_data_cache.
     - Fallback API : getCoreData(), puis getters séparés.
@@ -246,34 +250,90 @@
     return `${formatDisplayDate(item.date_debut)} → ${formatDisplayDate(item.date_fin)}`;
   };
 
-  const setDataState = (mode, label = "") => {
-    const badge = qs("#lugdurumDataStateBadge");
-    if (!badge) return;
+  const normalizeDataSourceMode = (mode) => {
+    if (mode === "online") return "online";
+    if (mode === "refreshing") return "refreshing";
+    return "local";
+  };
 
-    const text = badge.querySelector(".lugdurumDataStateBadgeText");
+  const setDocumentDataSource = (mode) => {
+    const safeMode = normalizeDataSourceMode(mode);
 
-    badge.classList.remove("isLocal", "isRefreshing", "isOnline");
-
-    if (mode === "online") {
-      badge.classList.add("isOnline");
-      if (text) text.textContent = label || "Données en ligne";
-      badge.title = "Source active : API en ligne";
+    if (safeMode === "online") {
       document.documentElement.dataset.lugdurumDataSource = "api";
       return;
     }
 
-    if (mode === "refreshing") {
+    if (safeMode === "refreshing") {
+      document.documentElement.dataset.lugdurumDataSource = "refreshing";
+      return;
+    }
+
+    document.documentElement.dataset.lugdurumDataSource = "cache";
+  };
+
+  const applyDataStateDirectlyToBadge = (mode, label = "") => {
+    const badge = qs("#lugdurumDataStateBadge");
+    if (!badge) return null;
+
+    const safeMode = normalizeDataSourceMode(mode);
+    const text = badge.querySelector(".lugdurumDataStateBadgeText");
+
+    badge.classList.remove("isLocal", "isRefreshing", "isOnline");
+
+    if (safeMode === "online") {
+      badge.classList.add("isOnline");
+      if (text) text.textContent = label || "Données en ligne";
+      badge.title = "Source active : API en ligne";
+      badge.dataset.state = "online";
+      return {
+        status: "online",
+        label: label || "Données en ligne"
+      };
+    }
+
+    if (safeMode === "refreshing") {
       badge.classList.add("isRefreshing");
       if (text) text.textContent = label || "Actualisation · lecture en ligne";
       badge.title = "Actualisation en cours";
-      document.documentElement.dataset.lugdurumDataSource = "refreshing";
-      return;
+      badge.dataset.state = "refreshing";
+      return {
+        status: "refreshing",
+        label: label || "Actualisation · lecture en ligne"
+      };
     }
 
     badge.classList.add("isLocal");
     if (text) text.textContent = label || "Données locales";
     badge.title = "Source active : cache local";
-    document.documentElement.dataset.lugdurumDataSource = "cache";
+    badge.dataset.state = "local";
+
+    return {
+      status: "local",
+      label: label || "Données locales"
+    };
+  };
+
+  const setDataState = (mode, label = "") => {
+    const safeMode = normalizeDataSourceMode(mode);
+    const safeLabel = String(label || "").trim();
+
+    setDocumentDataSource(safeMode);
+
+    if (
+      window.LugdurumDataState &&
+      typeof window.LugdurumDataState.set === "function"
+    ) {
+      try {
+        return window.LugdurumDataState.set(safeMode, {
+          label: safeLabel || undefined
+        });
+      } catch (error) {
+        console.warn("Mise à jour LugdurumDataState impossible, fallback DOM utilisé.", error);
+      }
+    }
+
+    return applyDataStateDirectlyToBadge(safeMode, safeLabel);
   };
 
   const isCancelledStatus = (item) => {
