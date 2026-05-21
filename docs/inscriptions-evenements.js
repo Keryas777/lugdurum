@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Inscriptions évènements V7 — connecté Google Sheets :
+    Inscriptions évènements V8 — connecté Google Sheets :
     - Source principale : Google Sheets via window.LugdurumAPI.
     - Cache localStorage conservé en secours si l’API est indisponible.
     - Lecture :
@@ -23,6 +23,11 @@
     - Si l’évènement existe déjà, un bouton Mission stock permet de poursuivre le parcours.
     - Le bouton Créer l’évènement reste disponible en secours manuel.
     - Le bouton Calendrier ouvre un lien Google Calendar en fallback si l’API calendrier n’est pas disponible.
+    - Ajoute un vrai sélecteur paiement :
+      paiement_statut = A_ENVOYER / ENVOYE / ENCAISSE
+      paiement_statut_label = libellé lisible
+    - Le champ texte “Détail paiement / caution” est stocké dans caution.
+    - Compat ancienne donnée : si paiement_statut contenait du texte libre, il est repris dans caution.
   */
 
   const CURRENT_USER = {
@@ -58,6 +63,12 @@
     ANNULE: "Annulé"
   };
 
+  const PAYMENT_STATUS_LABELS = {
+    A_ENVOYER: "À envoyer",
+    ENVOYE: "Envoyé",
+    ENCAISSE: "Encaissé"
+  };
+
   const STORAGE_KEYS = {
     inscriptions: "lugdurum_inscriptions_evenements",
     missions: "lugdurum_evenements",
@@ -84,6 +95,7 @@
     nameInput: document.getElementById("nameInput"),
     eventKindInput: document.getElementById("eventKindInput"),
     statusInput: document.getElementById("statusInput"),
+    paymentStatusInput: document.getElementById("paymentStatusInput"),
     startDateInput: document.getElementById("startDateInput"),
     endDateInput: document.getElementById("endDateInput"),
     scheduleInput: document.getElementById("scheduleInput"),
@@ -264,6 +276,51 @@
     return dates;
   };
 
+  const isKnownPaymentStatus = (value) =>
+    Object.prototype.hasOwnProperty.call(
+      PAYMENT_STATUS_LABELS,
+      String(value || "").trim()
+    );
+
+  const getPaymentStatusValue = (item) => {
+    const value = String(item?.paiement_statut || "").trim();
+
+    if (isKnownPaymentStatus(value)) return value;
+
+    return "A_ENVOYER";
+  };
+
+  const getPaymentStatusLabel = (itemOrValue) => {
+    const rawValue =
+      typeof itemOrValue === "object"
+        ? String(itemOrValue?.paiement_statut || "").trim()
+        : String(itemOrValue || "").trim();
+
+    if (isKnownPaymentStatus(rawValue)) {
+      return PAYMENT_STATUS_LABELS[rawValue];
+    }
+
+    if (typeof itemOrValue === "object") {
+      const label = String(itemOrValue?.paiement_statut_label || "").trim();
+      if (label) return label;
+    }
+
+    return PAYMENT_STATUS_LABELS.A_ENVOYER;
+  };
+
+  const getLegacyPaymentDetail = (inscription) => {
+    const caution = String(inscription?.caution || "").trim();
+    if (caution) return caution;
+
+    const oldPaymentValue = String(inscription?.paiement_statut || "").trim();
+
+    if (oldPaymentValue && !isKnownPaymentStatus(oldPaymentValue)) {
+      return oldPaymentValue;
+    }
+
+    return "";
+  };
+
   const getPendingWritesCount = () => {
     if (hasApi() && typeof api().getPendingWritesCount === "function") {
       return api().getPendingWritesCount();
@@ -388,7 +445,8 @@
   const buildNoteFromInscription = (inscription) =>
     [
       inscription.commentaire ? `Commentaire : ${inscription.commentaire}` : "",
-      inscription.paiement_statut ? `Paiement/caution : ${inscription.paiement_statut}` : "",
+      inscription.paiement_statut_label ? `Paiement : ${inscription.paiement_statut_label}` : "",
+      inscription.caution ? `Détail paiement/caution : ${inscription.caution}` : "",
       inscription.contact_nom ? `Contact : ${inscription.contact_nom}` : "",
       inscription.contact_mail ? `Mail : ${inscription.contact_mail}` : "",
       inscription.contact_tel ? `Téléphone : ${inscription.contact_tel}` : ""
@@ -438,6 +496,10 @@
       statut = "ACCEPTE";
     }
 
+    const paiementStatut = isKnownPaymentStatus(els.paymentStatusInput?.value)
+      ? els.paymentStatusInput.value
+      : "A_ENVOYER";
+
     return {
       inscription_id: id,
       nom: name,
@@ -460,8 +522,9 @@
       date_acceptation: acceptation
         ? existing?.date_acceptation || now.slice(0, 10)
         : "",
-      paiement_statut: els.paymentInput.value.trim(),
-      caution: existing?.caution || "",
+      paiement_statut: paiementStatut,
+      paiement_statut_label: PAYMENT_STATUS_LABELS[paiementStatut] || paiementStatut,
+      caution: els.paymentInput.value.trim(),
       table_fournie: els.tableInput.checked,
       barnum_fourni: els.barnumInput.checked,
       chaises_fournies: els.chairsInput.checked,
@@ -755,6 +818,11 @@
     els.form.reset();
     els.inscriptionIdInput.value = "";
     els.statusInput.value = "A_CONTACTER";
+
+    if (els.paymentStatusInput) {
+      els.paymentStatusInput.value = "A_ENVOYER";
+    }
+
     els.ownerInput.value = CURRENT_USER.user_id;
 
     if (els.formTitle) {
@@ -779,6 +847,11 @@
     els.nameInput.value = inscription.nom || "";
     els.eventKindInput.value = inscription.type_evenement || "MARCHE_ARTISANAL";
     els.statusInput.value = inscription.statut || "A_CONTACTER";
+
+    if (els.paymentStatusInput) {
+      els.paymentStatusInput.value = getPaymentStatusValue(inscription);
+    }
+
     els.startDateInput.value = inscription.date_debut || "";
     els.endDateInput.value = inscription.date_fin || "";
     els.scheduleInput.value = inscription.horaires || "";
@@ -800,7 +873,7 @@
     els.contactNameInput.value = inscription.contact_nom || "";
     els.contactMailInput.value = inscription.contact_mail || "";
     els.contactPhoneInput.value = inscription.contact_tel || "";
-    els.paymentInput.value = inscription.paiement_statut || "";
+    els.paymentInput.value = getLegacyPaymentDetail(inscription);
     els.commentInput.value = inscription.commentaire || "";
 
     if (els.formTitle) {
@@ -965,6 +1038,8 @@
         inscription.mise_en_place ? `Mise en place : ${inscription.mise_en_place}` : "",
         OPERATORS[inscription.responsable_user_id] ? `Qui : ${OPERATORS[inscription.responsable_user_id]}` : "",
         inscription.prix_emplacement ? `Prix : ${formatCurrency(inscription.prix_emplacement)}` : "",
+        inscription.paiement_statut_label ? `Paiement : ${inscription.paiement_statut_label}` : "",
+        inscription.caution ? `Détail paiement/caution : ${inscription.caution}` : "",
         inscription.contact_nom ? `Contact : ${inscription.contact_nom}` : "",
         inscription.contact_mail ? `Mail : ${inscription.contact_mail}` : "",
         inscription.contact_tel ? `Téléphone : ${inscription.contact_tel}` : "",
@@ -1090,7 +1165,9 @@
           item.adresse,
           item.contact_nom,
           item.contact_mail,
-          item.commentaire
+          item.commentaire,
+          item.paiement_statut_label,
+          item.caution
         ]
           .filter(Boolean)
           .join(" ")
@@ -1118,6 +1195,15 @@
     if (item.statut === "ACCEPTE") return "isAcceptedCard";
     if (item.statut === "DOSSIER_A_ENVOYER") return "isTodoCard";
     if (item.statut === "EN_ATTENTE_REPONSE" && toBoolean(item.dossier_envoye)) return "isWaitingCard";
+    return "";
+  };
+
+  const getPaymentFlagClass = (item) => {
+    const value = getPaymentStatusValue(item);
+
+    if (value === "ENCAISSE") return "flagOk";
+    if (value === "A_ENVOYER") return "flagWarning";
+
     return "";
   };
 
@@ -1240,6 +1326,9 @@
         const price = formatCurrency(item.prix_emplacement);
         const responsibleLabel = getResponsibleLabel(item);
         const missionId = getMissionIdFromInscription(item);
+        const paymentLabel = getPaymentStatusLabel(item);
+        const paymentFlagClass = getPaymentFlagClass(item);
+        const paymentDetail = getLegacyPaymentDetail(item);
 
         const material = [
           toBoolean(item.table_fournie) ? "Table" : "",
@@ -1274,6 +1363,8 @@
               ${item.mise_en_place ? `<span>🚚 ${escapeHtml(item.mise_en_place)}</span>` : ""}
               ${price ? `<span>💶 ${escapeHtml(price)}</span>` : ""}
               ${responsibleLabel ? `<span>👤 ${escapeHtml(responsibleLabel)}</span>` : ""}
+              ${paymentLabel ? `<span>💳 ${escapeHtml(paymentLabel)}</span>` : ""}
+              ${paymentDetail ? `<span>🧾 ${escapeHtml(paymentDetail)}</span>` : ""}
             </div>
 
             ${
@@ -1307,6 +1398,7 @@
             <div class="inscriptionFlags">
               ${toBoolean(item.dossier_envoye) ? `<span class="flagOk">Dossier envoyé</span>` : `<span>Dossier non envoyé</span>`}
               ${toBoolean(item.acceptation) ? `<span class="flagOk">Accepté</span>` : ""}
+              ${paymentLabel ? `<span class="${escapeAttr(paymentFlagClass)}">Paiement : ${escapeHtml(paymentLabel)}</span>` : ""}
               ${missionId ? `<span class="flagOk">Évènement créé</span>` : ""}
               ${item.calendar_statut === "ajoute" ? `<span class="flagOk">Calendrier OK</span>` : ""}
               ${item.calendar_statut === "a_synchroniser" ? `<span class="flagWarning">Calendrier à synchroniser</span>` : ""}
@@ -1553,6 +1645,11 @@
   });
 
   setDefaultDate();
+
+  if (els.paymentStatusInput) {
+    els.paymentStatusInput.value = "A_ENVOYER";
+  }
+
   loadFromCache();
   renderAll();
   loadData();
