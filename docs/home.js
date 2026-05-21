@@ -1569,7 +1569,7 @@
       setText("#statTwoLabel", "Stock");
       setText("#todayTickets", homeState.stockPrepared ? "OK" : "À faire");
 
-      setText("#statThreeLabel", "À synchroniser");
+      setText("#statThreeLabel", "À synchro");
       setText("#pendingSync", String(homeState.pending.total || 0));
 
       syncCard?.classList.toggle(
