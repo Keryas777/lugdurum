@@ -2,85 +2,260 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#a88f68" />
+
     <link rel="manifest" href="./manifest.webmanifest" />
+
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Lugdurum" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
     <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
-    <title>Lugdurum — Revenus</title>
-    <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./revenus.css?v=1" />
-    <script src="./lugdurum-api.js?v=5" defer></script>
-    <script src="./revenus.js?v=1" defer></script>
-    <script src="./pwa.js?v=6" defer></script>
+
+    <title>Lugdurum — Saisie historique pro</title>
+
+    <link rel="stylesheet" href="./style.css?v=20" />
+    <link rel="stylesheet" href="./revenus.css?v=2" />
+
+    <script src="./lugdurum-api.js?v=13" defer></script>
+    <script src="./revenus.js?v=2" defer></script>
+    <script src="./pwa.js?v=15" defer></script>
   </head>
 
-  <body class="page-revenus">
-    <div class="appShell revenusShell">
-      <header class="topbar revenusTopbar">
-        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">←</a>
+  <body class="page-historique-pro">
+    <div class="appShell historiqueProShell">
+      <header class="topbar historiqueProTopbar">
+        <a class="backBtn" href="./facturation-pro.html" aria-label="Retour à la facturation pro">←</a>
+
         <div class="brandBlock">
           <div class="brandHeader">
             <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
             <div class="brandText">
               <p class="brandName">LUGDURUM</p>
-              <h1>Revenus</h1>
+              <h1>Saisie historique pro</h1>
             </div>
           </div>
         </div>
       </header>
 
-      <main class="revenusLayout">
-        <section class="revenusHero">
+      <main class="historiqueProLayout">
+        <section class="historiqueProHero">
           <div>
-            <p class="sectionKicker">Hors terrain</p>
-            <h2>Autres entrées d’argent</h2>
-            <p class="revenusHeroText">Pros, commandes directes, animations et revenus hors salons.</p>
-          </div>
-          <div class="revenusStats"><article class="revenusStatCard"><span>Total revenus</span><strong id="revenuesTotal">—</strong></article>
-            <article class="revenusStatCard"><span>Nombre</span><strong id="revenuesCount">—</strong></article></div>
-        </section>
-        <section class="revenusPanel">
-          <div class="sectionHeader compact">
-            <div>
-              <p class="sectionKicker">Saisie</p>
-              <h2 id="revenueFormTitle">Ajouter un revenu</h2>
-            </div>
-            <button class="smallTextBtn" type="button" id="resetRevenueBtn">Réinitialiser</button>
+            <p class="sectionKicker">Rattrapage</p>
+            <h2>Commande pro déjà facturée</h2>
+            <p class="historiqueProHeroText">
+              Ajoute une ancienne commande pro déjà livrée et facturée pour compléter les statistiques.
+            </p>
           </div>
 
-          <form class="revenusForm" id="revenueForm">
-            <input id="revenueIdInput" type="hidden" />
+          <div class="historiqueProHeroStats">
+            <article>
+              <span>Montant facturé</span>
+              <strong id="heroAmount">0 €</strong>
+            </article>
+
+            <article>
+              <span>Bouteilles</span>
+              <strong id="heroBottles">0</strong>
+            </article>
+          </div>
+        </section>
+
+        <form class="historiqueProForm" id="historiqueProForm">
+          <section class="historiqueProPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 1</p>
+                <h2>Client</h2>
+              </div>
+            </div>
+
             <div class="formGrid">
-              <label class="fieldBlock"><span>Date</span><input id="revenueDateInput" type="date" required /></label>
-              <label class="fieldBlock"><span>Canal</span><select id="revenueChannelInput" required><option value="PRO">Pro</option><option value="COMMANDE_DIRECTE">Commande directe</option><option value="ANIMATION">Animation</option><option value="SITE_WEB">Site web</option><option value="AUTRE">Autre</option></select></label>
-              <label class="fieldBlock"><span>Client / source</span><input id="revenueClientInput" type="text" placeholder="Ex : Cave, client direct…" /></label>
-              <label class="fieldBlock"><span>Montant</span><input id="revenueAmountInput" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0,00" required /></label>
-              <label class="fieldBlock"><span>Mode</span><select id="revenuePaymentInput"><option value="VIR">Virement</option><option value="CB">CB</option><option value="ESP">Espèces</option><option value="CHQ">Chèque</option><option value="AUTRE">Autre</option></select></label>
-              <label class="fieldBlock"><span>Statut</span><select id="revenueStatusInput"><option value="encaisse">Encaissé</option><option value="attente">En attente</option><option value="annule">Annulé</option></select></label>
-            </div>
-            <label class="fieldBlock"><span>Note</span><textarea id="revenueNoteInput" rows="3" placeholder="Détail de commande, référence, commentaire…"></textarea></label>
-            <div class="revenusActions">
-              <button class="btn btnGhost" type="button" id="cancelRevenueEditBtn" hidden>Annuler modification</button>
-              <button class="btn btnPrimary" type="submit" id="saveRevenueBtn">Enregistrer le revenu</button>
-            </div>
-            <p class="revenusStatus" id="revenueStatus" role="status"></p>
-          </form>
-        </section>
+              <label class="fieldBlock wide">
+                <span>Client existant</span>
+                <select id="clientSelect">
+                  <option value="">Nouveau client ou saisie manuelle</option>
+                </select>
+              </label>
 
-        <section class="revenusPanel">
-          <div class="sectionHeader compact">
-            <div>
-              <p class="sectionKicker">Historique</p>
-              <h2>Revenus saisis</h2>
+              <label class="fieldBlock">
+                <span>Type client</span>
+                <select id="clientTypeInput">
+                  <option value="caviste">Caviste</option>
+                  <option value="epicerie_fine">Épicerie fine</option>
+                  <option value="restaurant">Restaurant</option>
+                  <option value="gite">Gîte / boutique locale</option>
+                  <option value="revendeur">Revendeur</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Statut client</span>
+                <select id="clientStatusInput">
+                  <option value="client_actif">Client actif</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="contacte">Contacté</option>
+                  <option value="interesse">Intéressé</option>
+                  <option value="a_relancer">À relancer</option>
+                  <option value="client_inactif">Client inactif</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Nom commercial</span>
+                <input id="clientCommercialNameInput" type="text" autocomplete="organization" placeholder="Ex : Cave des Monts d’Or" required />
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Raison sociale</span>
+                <input id="clientLegalNameInput" type="text" autocomplete="organization" placeholder="Ex : Cave Exemple SARL" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>SIRET</span>
+                <input id="clientSiretInput" type="text" inputmode="numeric" placeholder="14 chiffres" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Email</span>
+                <input id="clientEmailInput" type="email" autocomplete="email" placeholder="contact@exemple.fr" />
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Adresse</span>
+                <input id="clientAddressInput" type="text" autocomplete="street-address" placeholder="Rue, numéro, complément" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Code postal</span>
+                <input id="clientZipInput" type="text" inputmode="numeric" autocomplete="postal-code" placeholder="69000" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Ville</span>
+                <input id="clientCityInput" type="text" autocomplete="address-level2" placeholder="Lyon" />
+              </label>
             </div>
-          </div>
-          <div class="revenusList" id="revenuesList">
-            <p class="revenusEmpty">Aucun revenu saisi.</p>
-          </div>
-        </section>
+          </section>
+
+          <section class="historiqueProPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 2</p>
+                <h2>Facture existante</h2>
+              </div>
+            </div>
+
+            <div class="formGrid">
+              <label class="fieldBlock">
+                <span>Date facture</span>
+                <input id="invoiceDateInput" type="date" required />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Date livraison</span>
+                <input id="deliveryDateInput" type="date" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Type opération</span>
+                <select id="operationTypeInput">
+                  <option value="commande_ferme">Commande ferme</option>
+                  <option value="depot_initial">Dépôt initial</option>
+                  <option value="reassort_depot">Réassort dépôt</option>
+                  <option value="regularisation_depot">Régularisation dépôt</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Statut paiement</span>
+                <select id="paymentStatusInput">
+                  <option value="paye">Payée</option>
+                  <option value="partiel">Partiel</option>
+                  <option value="non_paye">Non payée</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Montant facturé TTC</span>
+                <input id="invoiceAmountInput" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0,00" required />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Numéro facture</span>
+                <input id="invoiceNumberInput" type="text" autocomplete="off" placeholder="Ex : F2024-012" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Mode paiement</span>
+                <select id="paymentModeInput">
+                  <option value="VIR">Virement</option>
+                  <option value="CB">CB</option>
+                  <option value="ESP">Espèces</option>
+                  <option value="CHQ">Chèque</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Note</span>
+                <textarea id="orderNoteInput" rows="3" placeholder="Contexte, salon d’origine, conditions pro, remarque utile…"></textarea>
+              </label>
+            </div>
+
+            <p class="historiqueProHint">
+              Cette page ne crée aucune facture VosFactures. Elle enregistre seulement l’historique déjà facturé.
+            </p>
+          </section>
+
+          <section class="historiqueProPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 3</p>
+                <h2>Bouteilles vendues</h2>
+              </div>
+            </div>
+
+            <p class="historiqueProHint">
+              Saisis les quantités par parfum. Le montant officiel reste le montant facturé saisi au-dessus.
+            </p>
+
+            <div class="historiqueProToolbar">
+              <button class="smallTextBtn" id="reloadProductsBtn" type="button">Recharger catalogue</button>
+              <button class="smallTextBtn" id="clearProductsBtn" type="button">Vider les quantités</button>
+            </div>
+
+            <div class="historiqueProductRows" id="productRows">
+              <p class="historiqueProEmpty">Chargement du catalogue…</p>
+            </div>
+
+            <div class="historiqueProTotalLine">
+              <span>Total catalogue estimé</span>
+              <strong id="catalogueTotal">0 €</strong>
+            </div>
+          </section>
+
+          <section class="historiqueProPanel finalPanel">
+            <div>
+              <p class="sectionKicker">Validation</p>
+              <h2>Enregistrer l’historique pro</h2>
+              <p class="historiqueProHint">
+                Les données seront enregistrées dans les onglets pro du Google Sheets, sans passer par VosFactures.
+              </p>
+            </div>
+
+            <button class="primaryBtn" id="saveHistoricalProBtn" type="submit">
+              Enregistrer l’historique pro
+            </button>
+
+            <p class="historiqueProStatus" id="historiqueProStatus" role="status"></p>
+          </section>
+        </form>
       </main>
     </div>
   </body>
