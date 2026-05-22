@@ -2,18 +2,18 @@
   "use strict";
 
   /*
-    Facturation Pro Hub V2
+    Facturation Pro Hub V3
     - Page d’orientation vers les parcours pro :
       1) Commande ferme + facture
       2) Réapprovisionnement + facture
       3) Saisie historique pro
     - Aucun appel API.
     - Aucune création de facture.
+    - Pas d’indicateur de statut visuel : cette page est un hub simple.
   */
 
   const statusTitle = document.getElementById("facturationProStatusTitle");
   const statusText = document.getElementById("facturationProStatusText");
-  const statusDot = document.getElementById("facturationProStatusDot");
   const flowTiles = Array.from(document.querySelectorAll("[data-flow]"));
 
   const STATUS_MESSAGES = {
@@ -39,7 +39,7 @@
     }
   };
 
-  const setStatus = (type, messageKey) => {
+  const setStatus = (messageKey) => {
     const message = STATUS_MESSAGES[messageKey] || STATUS_MESSAGES.idle;
 
     if (statusTitle) {
@@ -49,22 +49,6 @@
     if (statusText) {
       statusText.textContent = message.text;
     }
-
-    if (!statusDot) return;
-
-    statusDot.classList.remove("isIdle", "isOnline", "isWarning");
-
-    if (type === "warning") {
-      statusDot.classList.add("isWarning");
-      return;
-    }
-
-    if (type === "online") {
-      statusDot.classList.add("isOnline");
-      return;
-    }
-
-    statusDot.classList.add("isIdle");
   };
 
   const bindTiles = () => {
@@ -74,25 +58,25 @@
         const flow = tile.dataset.flow || "";
 
         if (ready) {
-          setStatus("online", flow);
+          setStatus(flow);
           return;
         }
 
         event.preventDefault();
 
         if (flow === "reappro") {
-          setStatus("warning", "reappro");
+          setStatus("reappro");
           return;
         }
 
-        setStatus("warning", "unavailable");
+        setStatus("unavailable");
       });
     });
   };
 
   const init = () => {
     bindTiles();
-    setStatus("idle", "idle");
+    setStatus("idle");
   };
 
   if (document.readyState === "loading") {
