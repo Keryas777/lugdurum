@@ -57,10 +57,7 @@
 
 .facturationHero {
   position: relative;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
   padding: 14px 16px;
   border-radius: 26px;
 }
@@ -77,27 +74,6 @@
   color: rgba(31, 27, 22, 0.68);
   font-size: clamp(0.88rem, 3.5vw, 0.98rem);
   line-height: 1.25;
-}
-
-.statusDot {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 auto;
-  margin-top: 8px;
-  border-radius: 50%;
-  background: var(--facturation-kraft);
-  box-shadow: 0 0 0 5px rgba(168, 143, 104, 0.14);
-}
-
-.statusDot.isIdle,
-.statusDot.isOnline {
-  background: var(--facturation-green);
-  box-shadow: 0 0 0 5px rgba(63, 111, 79, 0.15);
-}
-
-.statusDot.isWarning {
-  background: var(--facturation-alert);
-  box-shadow: 0 0 0 5px rgba(179, 92, 58, 0.15);
 }
 
 .flowGrid {
@@ -285,6 +261,47 @@
 
   .facturationNote {
     padding: 8px 11px;
+  }
+}
+
+@media (max-height: 640px) {
+  .facturationProMain {
+    gap: 7px;
+    padding: 7px 14px max(7px, env(safe-area-inset-bottom));
+  }
+
+  .facturationHero {
+    padding: 10px 13px;
+    border-radius: 22px;
+  }
+
+  .facturationHero h2 {
+    margin: 0;
+    font-size: clamp(1.25rem, 5.6vw, 1.65rem);
+  }
+
+  .flowGrid {
+    gap: 7px;
+  }
+
+  .flowTile {
+    grid-template-columns: 40px minmax(0, 1fr);
+    padding: 9px;
+  }
+
+  .flowIcon {
+    width: 40px;
+    height: 40px;
+    border-radius: 15px;
+    font-size: 1.18rem;
+  }
+
+  .flowTitle {
+    font-size: clamp(0.98rem, 4.2vw, 1.16rem);
+  }
+
+  .facturationNote p {
+    font-size: 0.72rem;
   }
 }
 
