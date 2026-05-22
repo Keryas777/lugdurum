@@ -1,16 +1,16 @@
 /* ==============================
-   Page revenus
+   Page saisie historique pro
    ============================== */
 
-.page-revenus .appShell {
+.page-historique-pro .appShell {
   padding-bottom: calc(34px + env(safe-area-inset-bottom));
 }
 
-.revenusShell {
-  max-width: 780px;
+.historiqueProShell {
+  max-width: 860px;
 }
 
-.revenusTopbar {
+.historiqueProTopbar {
   align-items: flex-start;
 }
 
@@ -23,227 +23,126 @@
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text);
-  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,250,241,.68));
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.88),
+      rgba(255, 250, 241, 0.68)
+    );
   box-shadow: var(--shadow-soft);
   font-size: 1.4rem;
   font-weight: 900;
+  text-decoration: none;
 }
 
-.page-revenus .brandLogo {
+.page-historique-pro .brandLogo {
   width: 52px;
   height: 52px;
   border-radius: 14px;
 }
 
-.page-revenus .brandName {
+.page-historique-pro .brandName {
   margin-bottom: 5px;
   font-size: clamp(1rem, 4vw, 1.35rem);
 }
 
-.page-revenus .brandBlock h1 {
+.page-historique-pro .brandBlock h1 {
   max-width: none;
-  font-size: clamp(1.55rem, 6vw, 2.2rem);
+  font-size: clamp(1.18rem, 5.2vw, 2rem);
   white-space: nowrap;
 }
 
-.revenusLayout {
+.historiqueProLayout,
+.historiqueProForm {
   display: grid;
   gap: 14px;
 }
 
-.revenusHero,
-.revenusPanel {
+.historiqueProHero,
+.historiqueProPanel {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: linear-gradient(160deg, rgba(255,250,241,.96), rgba(245,231,208,.72));
+  background:
+    linear-gradient(
+      160deg,
+      rgba(255, 250, 241, 0.96),
+      rgba(245, 231, 208, 0.72)
+    );
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
 
-.revenusHero {
+.historiqueProHero {
   display: grid;
   gap: 16px;
   padding: 18px;
 }
 
-.revenusHero h2,
-.revenusPanel h2 {
+.historiqueProHero h2,
+.historiqueProPanel h2 {
   margin: 0;
   color: var(--text);
-  letter-spacing: -0.045em;
   line-height: 1.03;
+  letter-spacing: -0.045em;
 }
 
-.revenusHero h2 {
-  font-size: clamp(1.45rem, 6vw, 2.4rem);
+.historiqueProHero h2 {
+  font-size: clamp(1.55rem, 6vw, 2.45rem);
 }
 
-.revenusPanel h2 {
+.historiqueProPanel h2 {
   font-size: clamp(1.25rem, 5vw, 1.8rem);
 }
 
-.revenusHeroText {
+.historiqueProHeroText,
+.historiqueProHint {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 1rem;
-  font-weight: 750;
+  font-size: 0.95rem;
+  font-weight: 760;
   line-height: 1.35;
 }
 
-.revenusStats {
+.historiqueProHeroStats {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
 
-.revenusStatCard {
+.historiqueProHeroStats article {
   min-width: 0;
-  border: 1px solid rgba(86,65,42,.16);
+  border: 1px solid rgba(86, 65, 42, 0.16);
   border-radius: var(--radius-md);
   padding: 14px;
-  background: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,250,241,.56));
-  box-shadow: 0 8px 18px rgba(75,48,22,.07);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 250, 241, 0.56)
+    );
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
 }
 
-.revenusStatCard span {
+.historiqueProHeroStats span {
   display: block;
   margin-bottom: 6px;
   color: var(--muted);
-  font-size: .78rem;
+  font-size: 0.78rem;
   font-weight: 850;
 }
 
-.revenusStatCard strong {
+.historiqueProHeroStats strong {
   display: block;
   color: var(--rum);
-  font-size: clamp(1.25rem, 6vw, 2rem);
+  font-size: clamp(1.2rem, 5.8vw, 2rem);
   letter-spacing: -0.05em;
   white-space: nowrap;
 }
 
-.revenusPanel {
+.historiqueProPanel {
+  display: grid;
+  gap: 14px;
   padding: 16px;
-}
-
-.revenusList {
-  display: grid;
-  gap: 10px;
-}
-
-.revenueCard {
-  display: grid;
-  gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  background: linear-gradient(145deg, rgba(255,255,255,.86), rgba(255,250,241,.62));
-}
-
-.revenueCardHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.revenueCardTitle {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.revenueCardTitle strong {
-  color: var(--text);
-  font-size: 1.02rem;
-  line-height: 1.15;
-}
-
-.revenueCardTitle span {
-  color: var(--muted);
-  font-size: .86rem;
-  line-height: 1.3;
-}
-
-.revenueAmount {
-  color: var(--rum);
-  font-size: 1.12rem;
-  font-weight: 950;
-  white-space: nowrap;
-}
-
-.revenusMeta,
-.revenueMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.revenusMeta span,
-.revenusBadge,
-.revenueMeta span,
-.revenueBadge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  border-radius: 999px;
-  padding: 0 10px;
-  color: var(--rum);
-  background: var(--amber-soft);
-  font-size: .78rem;
-  font-weight: 900;
-}
-
-.revenusBadge.isGreen,
-.revenueBadge.isGreen {
-  color: var(--green);
-  background: rgba(63,111,79,.12);
-}
-
-.revenusBadge.isRed,
-.revenueBadge.isRed {
-  color: var(--red);
-  background: rgba(179,92,58,.12);
-}
-
-.revenusNote,
-.revenueNote {
-  margin: 0;
-  color: var(--muted);
-  font-size: .9rem;
-  line-height: 1.35;
-}
-
-.revenusEmpty,
-.revenusEmpty {
-  margin: 0;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  color: var(--muted);
-  text-align: center;
-  background: rgba(255,250,241,.48);
-}
-
-.revenusStatus,
-.revenusStatus {
-  min-height: 1.3em;
-  margin: 14px 0 0;
-  color: var(--muted);
-  font-size: .9rem;
-  line-height: 1.35;
-  text-align: center;
-}
-
-.revenusStatus.isSuccess,
-.revenusStatus.isSuccess {
-  color: var(--green);
-  font-weight: 850;
-}
-
-.revenusStatus.isError,
-.revenusStatus.isError {
-  color: var(--red);
-  font-weight: 850;
 }
 
 .formGrid {
@@ -259,7 +158,7 @@
 
 .fieldBlock span {
   color: var(--muted);
-  font-size: .82rem;
+  font-size: 0.82rem;
   font-weight: 850;
 }
 
@@ -270,9 +169,15 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text);
-  background: linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,250,241,.62));
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.86),
+      rgba(255, 250, 241, 0.62)
+    );
   font: inherit;
-  font-weight: 780;
+  font-size: 16px;
+  font-weight: 820;
   outline: none;
 }
 
@@ -283,53 +188,340 @@
 }
 
 .fieldBlock textarea {
+  min-height: 92px;
   resize: vertical;
-  min-height: 94px;
   padding: 12px 14px;
   line-height: 1.35;
 }
 
-.revenusForm {
-  display: grid;
+.historiqueProToolbar {
+  display: flex;
+  justify-content: flex-end;
   gap: 14px;
-}
-
-.revenusActions,
-.revenueCardActions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.revenueSmallBtn {
-  min-height: 40px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 12px;
-  color: var(--rum);
-  background: rgba(255,250,241,.72);
-  font: inherit;
-  font-weight: 900;
-}
-
-.revenueSmallBtn.danger {
-  color: var(--red);
+  flex-wrap: wrap;
 }
 
 .smallTextBtn {
   border: 0;
   color: var(--rum);
   background: transparent;
+  font: inherit;
   font-weight: 900;
 }
 
+.historiqueProTotalLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  color: var(--muted);
+  background: rgba(255, 250, 241, 0.52);
+  font-weight: 850;
+}
+
+.historiqueProTotalLine strong {
+  color: var(--rum);
+  font-size: 1.18rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+/* ==============================
+   Tuiles produits historiques
+   ============================== */
+
+.historiqueProductRows {
+  display: grid;
+  gap: 14px;
+}
+
+.stockVisualCard {
+  position: relative;
+  overflow: hidden;
+  min-height: 230px;
+  border: 1px solid rgba(86, 65, 42, 0.18);
+  border-radius: 26px;
+  background-color: #d8c7aa;
+  box-shadow: var(--shadow);
+  isolation: isolate;
+}
+
+.stockVisualBg,
+.stockVisualShade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stockVisualBg {
+  background-image: var(--stock-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(1.025);
+}
+
+.stockVisualShade {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(26, 18, 10, 0.54) 0%,
+      rgba(26, 18, 10, 0.26) 42%,
+      rgba(26, 18, 10, 0.08) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 250, 241, 0.02) 0%,
+      rgba(0, 0, 0, 0.18) 100%
+    );
+}
+
+.stockVisualCard::after {
+  content: "";
+  position: absolute;
+  right: -52px;
+  bottom: -58px;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: rgba(255, 250, 241, 0.12);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.stockVisualContent {
+  position: relative;
+  z-index: 1;
+  min-height: 230px;
+  display: grid;
+  align-content: space-between;
+  gap: 14px;
+  padding: 18px;
+}
+
+.stockVisualTitle {
+  display: grid;
+  gap: 3px;
+  max-width: 74%;
+  color: #fffaf1;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.34);
+}
+
+.stockVisualTitle strong {
+  font-size: clamp(1.65rem, 7vw, 2.35rem);
+  line-height: 0.94;
+  font-weight: 950;
+  letter-spacing: -0.055em;
+}
+
+.stockVisualTitle span {
+  font-size: clamp(1.02rem, 4.4vw, 1.45rem);
+  line-height: 1.04;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.historiqueProductLabel {
+  width: fit-content;
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: rgba(255, 250, 241, 0.95);
+  background: rgba(31, 27, 22, 0.26);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.stockGlassPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stockGlassFormat {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 22px;
+  padding: 10px;
+  background: rgba(255, 250, 241, 0.22);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  box-shadow:
+    0 10px 22px rgba(36, 22, 8, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.stockGlassFormat.isUnavailable {
+  opacity: 0.62;
+}
+
+.stockGlassFormatHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stockGlassFormatHead span {
+  color: rgba(255, 250, 241, 0.96);
+  font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: -0.035em;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.26);
+}
+
+.historiqueProductBadge {
+  color: rgba(255, 250, 241, 0.92);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.stockGlassQtyControl {
+  display: grid;
+  grid-template-columns: 40px 48px 40px;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+}
+
+.stockGlassQtyControl button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  color: #fffaf1;
+  background: rgba(157, 109, 51, 0.96);
+  box-shadow:
+    0 8px 18px rgba(72, 42, 12, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+.stockGlassQtyControl button:active {
+  transform: scale(0.96);
+}
+
+.stockGlassQtyControl input {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.44);
+  border-radius: 999px;
+  padding: 0;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    inset 0 0 0 1px rgba(86, 65, 42, 0.04),
+    0 6px 14px rgba(36, 22, 8, 0.08);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 950;
+  text-align: center;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.stockGlassQtyControl input::-webkit-outer-spin-button,
+.stockGlassQtyControl input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.stockGlassUnavailable {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border-radius: 999px;
+  color: rgba(255, 250, 241, 0.9);
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 1.25rem;
+  font-weight: 950;
+}
+
+/* ==============================
+   Actions
+   ============================== */
+
+.primaryBtn {
+  width: 100%;
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 999px;
+  padding: 0 18px;
+  color: #fffaf1;
+  background:
+    linear-gradient(
+      135deg,
+      var(--rum),
+      var(--kraft)
+    );
+  box-shadow: 0 12px 26px rgba(75, 48, 22, 0.18);
+  font: inherit;
+  font-weight: 950;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.55;
+}
+
+.finalPanel {
+  gap: 16px;
+}
+
+.historiqueProStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.historiqueProStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.historiqueProStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+.historiqueProEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 250, 241, 0.42);
+}
+
+/* ==============================
+   Responsive
+   ============================== */
+
 @media (min-width: 620px) {
-  .revenusHero {
+  .historiqueProHero {
     grid-template-columns: 1fr auto;
     align-items: center;
   }
 
-  .revenusStats {
+  .historiqueProHeroStats {
     width: 300px;
   }
 
@@ -337,25 +529,97 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .revenusActions {
-    grid-template-columns: 1fr 1.4fr;
+  .fieldBlock.wide {
+    grid-column: 1 / -1;
   }
 
-  .revenueCardActions {
-    grid-template-columns: 1fr 1fr;
+  .historiqueProductRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stockVisualCard,
+  .stockVisualContent {
+    min-height: 250px;
+  }
+}
+
+@media (max-width: 430px) {
+  .historiqueProPanel {
+    padding: 14px;
+  }
+
+  .stockVisualCard {
+    min-height: 230px;
+    border-radius: 26px;
+  }
+
+  .stockVisualContent {
+    min-height: 230px;
+    padding: 16px;
+  }
+
+  .stockVisualTitle {
+    max-width: 78%;
+  }
+
+  .stockGlassPanel {
+    gap: 8px;
+  }
+
+  .stockGlassFormat {
+    border-radius: 20px;
+    padding: 8px;
+  }
+
+  .stockGlassQtyControl {
+    grid-template-columns: 36px 44px 36px;
+    gap: 5px;
+  }
+
+  .stockGlassQtyControl button {
+    width: 36px;
+    height: 36px;
+    font-size: 1.22rem;
+  }
+
+  .stockGlassQtyControl input,
+  .stockGlassUnavailable {
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+    height: 36px;
+    font-size: 1.14rem;
   }
 }
 
 @media (max-width: 370px) {
-  .revenusStats {
+  .historiqueProHeroStats {
     grid-template-columns: 1fr;
   }
 
-  .revenueCardHeader {
-    display: grid;
+  .stockVisualCard,
+  .stockVisualContent {
+    min-height: 300px;
   }
 
-  .revenueAmount {
-    justify-self: start;
+  .stockGlassPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .stockGlassQtyControl {
+    grid-template-columns: 42px 52px 42px;
+  }
+
+  .stockGlassQtyControl button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .stockGlassQtyControl input,
+  .stockGlassUnavailable {
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    height: 42px;
   }
 }
