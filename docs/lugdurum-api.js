@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Lugdurum API V14 DATA STATE FIX + FRONT QUEUE + HOME DATA + JSONP GET + PRO TABLE HELPERS
+    Lugdurum API V15 PRO TABLES FIX + DATA STATE + FRONT QUEUE + HOME DATA + JSONP GET
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
     - Ajout méthode rapide getHomeData() pour l’accueil.
@@ -18,8 +18,13 @@
       après toute lecture JSONP réussie, l’état passe explicitement en ligne.
     - Compatible avec une pastille déjà présente dans le HTML ou créée dynamiquement.
     - Évite les doublons d’écriture ventes_lignes quand Apps Script sauvegarde déjà les lignes dans les bundles.
-    - Ajoute des helpers pro :
-      clients, commandes_pro, commandes_pro_lignes, documents, referentiel.
+    - Helpers pro corrigés :
+      clients, commandes_pro, commandes_lignes, documents, referentiels.
+    - Ajoute alias compatibles :
+      getCommandesLignes() + getCommandesProLignes()
+      saveCommandeLigne() + saveCommandeProLigne()
+      saveCommandeLignes() + saveCommandeProLignes()
+      getReferentiels() + getReferentiel()
   */
 
   const API_URL =
@@ -35,6 +40,63 @@
     activeStockMissionId: "lugdurum_active_stock_mission_id",
     activeJourneeId: "lugdurum_active_journee_id",
     preparationContext: "lugdurum_preparation_context"
+  };
+
+  const SHEET_UPSERT_CONFIG = {
+    ventesLignes: {
+      sheetKey: "ventesLignes",
+      sheetName: "ventes_lignes",
+      keyField: "ligne_id"
+    },
+    clients: {
+      sheetKey: "clients",
+      sheetName: "clients",
+      keyField: "client_id"
+    },
+    commandesPro: {
+      sheetKey: "commandesPro",
+      sheetName: "commandes_pro",
+      keyField: "commande_id"
+    },
+    commandesLignes: {
+      sheetKey: "commandesLignes",
+      sheetName: "commandes_lignes",
+      keyField: "commande_ligne_id"
+    },
+    documents: {
+      sheetKey: "documents",
+      sheetName: "documents",
+      keyField: "document_id"
+    },
+    referentiels: {
+      sheetKey: "referentiels",
+      sheetName: "referentiels",
+      keyField: "referentiel_id"
+    }
+  };
+
+  const CORE_TABLE_KEY_ALIASES = {
+    clients: ["clients"],
+    commandesPro: ["commandesPro", "commandes_pro"],
+    commandesLignes: [
+      "commandesLignes",
+      "commandes_lignes",
+      "commandesProLignes",
+      "commandes_pro_lignes"
+    ],
+    documents: ["documents"],
+    referentiels: ["referentiels", "referentiel"],
+    transactions: ["transactions"],
+    ventesLignes: ["ventesLignes", "ventes_lignes"],
+    catalogue: ["catalogue"],
+    offresVente: ["offresVente", "offres_vente"],
+    inscriptions: ["inscriptions", "inscriptions_evenements"],
+    missions: ["missions", "missions_vente"],
+    missionsStock: ["missionsStock", "missions_stock"],
+    journees: ["journees", "journees_vente"],
+    mouvementsStock: ["mouvementsStock", "mouvements_stock"],
+    frais: ["frais"],
+    clotures: ["clotures", "clotures_journees"]
   };
 
   const FLUSH_BATCH_SIZE = 20;
@@ -90,6 +152,87 @@
     const day = String(date.getDate()).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
+  };
+
+  const resolveCoreTableKey = (tableName) => {
+    const key = String(tableName || "").trim();
+
+    if (!key) return "";
+
+    const normalized = key.toLowerCase();
+
+    for (const [canonicalKey, aliases] of Object.entries(CORE_TABLE_KEY_ALIASES)) {
+      if (
+        canonicalKey.toLowerCase() === normalized ||
+        aliases.some((alias) => String(alias).toLowerCase() === normalized)
+      ) {
+        return canonicalKey;
+      }
+    }
+
+    return key;
+  };
+
+  const normalizeCoreTablesParam = (tables = []) => {
+    const list = Array.isArray(tables)
+      ? tables
+      : String(tables || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+    return [...new Set(list.map(resolveCoreTableKey).filter(Boolean))];
+  };
+
+  const getCoreArrayFromResult = (result, tableName) => {
+    const canonicalKey = resolveCoreTableKey(tableName);
+    const aliases = CORE_TABLE_KEY_ALIASES[canonicalKey] || [canonicalKey];
+
+    for (const key of [canonicalKey, ...aliases]) {
+      const value = result?.[key];
+
+      if (Array.isArray(value)) return value;
+
+      if (value && typeof value === "object" && value.ok === false) {
+        throw new Error(value.error || `Table getCoreData invalide : ${key}`);
+      }
+    }
+
+    return [];
+  };
+
+  const buildSheetUpsertOperation = ({ sheetKey, sheetName, keyField, data }) => ({
+    action: "upsert",
+    type: "upsert",
+
+    sheetKey,
+    sheet_key: sheetKey,
+
+    sheet: sheetName,
+    sheetName,
+    sheet_name: sheetName,
+
+    key: keyField,
+    keyField,
+    key_field: keyField,
+
+    data,
+    row: data
+  });
+
+  const buildConfiguredUpsertOperation = (configKey, data) => {
+    const config = SHEET_UPSERT_CONFIG[configKey];
+
+    if (!config) {
+      throw new Error(`Configuration batchUpsert inconnue : ${configKey}`);
+    }
+
+    return buildSheetUpsertOperation({
+      sheetKey: config.sheetKey,
+      sheetName: config.sheetName,
+      keyField: config.keyField,
+      data
+    });
   };
 
   const ensureDataStateStyle = () => {
@@ -1062,10 +1205,7 @@
   const buildVenteLigneOperations = (lines = []) =>
     toArray(lines)
       .filter((line) => String(line.ligne_id || "").trim())
-      .map((line) => ({
-        sheetKey: "ventesLignes",
-        data: line
-      }));
+      .map((line) => buildConfiguredUpsertOperation("ventesLignes", line));
 
   const getSavedLinesCount = (result) => {
     if (!result || typeof result !== "object") return 0;
@@ -1246,10 +1386,7 @@
   const saveVenteLigne = (line) =>
     requestQueuedPost("batchUpsert", {
       operations: [
-        {
-          sheetKey: "ventesLignes",
-          data: line
-        }
+        buildConfiguredUpsertOperation("ventesLignes", line)
       ]
     });
 
@@ -1384,82 +1521,83 @@
     });
 
   const getCoreTable = async (tableName) => {
-    const key = String(tableName || "").trim();
+    const key = resolveCoreTableKey(tableName);
 
     if (!key) return [];
 
     const result = await requestGet("getCoreData", {
-      tables: key
+      tables: [key]
     });
 
-    return Array.isArray(result?.[key]) ? result[key] : [];
+    return getCoreArrayFromResult(result, key);
   };
 
   const getClients = () =>
     getCoreTable("clients");
 
   const getCommandesPro = () =>
-    getCoreTable("commandes_pro");
+    getCoreTable("commandesPro");
+
+  const getCommandesLignes = () =>
+    getCoreTable("commandesLignes");
 
   const getCommandesProLignes = () =>
-    getCoreTable("commandes_pro_lignes");
+    getCommandesLignes();
 
   const getDocuments = () =>
     getCoreTable("documents");
 
+  const getReferentiels = () =>
+    getCoreTable("referentiels");
+
   const getReferentiel = () =>
-    getCoreTable("referentiel");
+    getReferentiels();
 
   const saveClient = (client) =>
     requestQueuedPost("batchUpsert", {
       operations: [
-        {
-          sheetName: "clients",
-          keyField: "client_id",
-          data: client
-        }
+        buildConfiguredUpsertOperation("clients", client)
       ]
     });
 
   const saveCommandePro = (commande) =>
     requestQueuedPost("batchUpsert", {
       operations: [
-        {
-          sheetName: "commandes_pro",
-          keyField: "commande_id",
-          data: commande
-        }
+        buildConfiguredUpsertOperation("commandesPro", commande)
+      ]
+    });
+
+  const saveCommandeLigne = (ligne) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        buildConfiguredUpsertOperation("commandesLignes", ligne)
       ]
     });
 
   const saveCommandeProLigne = (ligne) =>
+    saveCommandeLigne(ligne);
+
+  const saveCommandeLignes = (lignes = []) =>
     requestQueuedPost("batchUpsert", {
-      operations: [
-        {
-          sheetName: "commandes_pro_lignes",
-          keyField: "commande_ligne_id",
-          data: ligne
-        }
-      ]
+      operations: toArray(lignes).map((ligne) =>
+        buildConfiguredUpsertOperation("commandesLignes", ligne)
+      )
     });
 
   const saveCommandeProLignes = (lignes = []) =>
-    requestQueuedPost("batchUpsert", {
-      operations: toArray(lignes).map((ligne) => ({
-        sheetName: "commandes_pro_lignes",
-        keyField: "commande_ligne_id",
-        data: ligne
-      }))
-    });
+    saveCommandeLignes(lignes);
 
   const saveDocument = (documentRow) =>
     requestQueuedPost("batchUpsert", {
       operations: [
-        {
-          sheetName: "documents",
-          keyField: "document_id",
-          data: documentRow
-        }
+        buildConfiguredUpsertOperation("documents", documentRow)
+      ]
+    });
+
+  const saveReferentiel = (referentiel) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        buildConfiguredUpsertOperation("referentiels", referentiel)
       ]
     });
 
@@ -1485,22 +1623,28 @@
 
     getCoreData(tables = []) {
       return requestGet("getCoreData", {
-        tables
+        tables: normalizeCoreTablesParam(tables)
       });
     },
 
     getCoreTable,
+
     getClients,
     getCommandesPro,
+    getCommandesLignes,
     getCommandesProLignes,
     getDocuments,
+    getReferentiels,
     getReferentiel,
 
     saveClient,
     saveCommandePro,
+    saveCommandeLigne,
     saveCommandeProLigne,
+    saveCommandeLignes,
     saveCommandeProLignes,
     saveDocument,
+    saveReferentiel,
 
     getCatalogue() {
       return requestGet("getCatalogue");
