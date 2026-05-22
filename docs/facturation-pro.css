@@ -11,6 +11,22 @@
   --facturation-shadow: 0 14px 34px rgba(31, 27, 22, 0.1);
 }
 
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(168, 143, 104, 0.18), transparent 30%),
+    linear-gradient(180deg, #fffaf1 0%, #f6f1e8 58%, #efe4d2 100%);
+  background-color: #f6f1e8;
+}
+
+body {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(168, 143, 104, 0.18), transparent 30%),
+    linear-gradient(180deg, #fffaf1 0%, #f6f1e8 58%, #efe4d2 100%);
+  background-color: #f6f1e8;
+}
+
 .facturationProPage {
   min-height: 100dvh;
   max-height: 100dvh;
@@ -19,6 +35,7 @@
   background:
     radial-gradient(circle at 8% 0%, rgba(168, 143, 104, 0.18), transparent 30%),
     linear-gradient(180deg, #fffaf1 0%, var(--facturation-bg) 58%, #efe4d2 100%);
+  background-color: var(--facturation-bg);
 }
 
 .facturationProShell {
