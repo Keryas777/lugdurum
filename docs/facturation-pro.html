@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Clients & facturation pro</title>
+
+    <link rel="stylesheet" href="./style.css?v=11" />
+    <link rel="stylesheet" href="./facturation-pro.css?v=1" />
+
+    <script src="./facturation-pro.js?v=1" defer></script>
+  </head>
+
+  <body class="facturationProPage">
+    <div class="appShell facturationProShell">
+      <header class="topbar facturationProTopbar">
+        <a class="backLink" href="./index.html" aria-label="Retour au tableau de bord">
+          <span aria-hidden="true">←</span>
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandMark" aria-hidden="true">
+            <img src="./assets/logo-lugdurum.png" alt="" onerror="this.style.display='none'" />
+          </div>
+          <div>
+            <p class="eyebrow">Lugdurum</p>
+            <h1>Clients & facturation pro</h1>
+          </div>
+        </div>
+
+        <div class="userPill" id="currentUserName">Jérôme</div>
+      </header>
+
+      <main class="facturationProMain">
+        <section class="facturationHero" aria-live="polite">
+          <div>
+            <p class="eyebrow">Parcours pro</p>
+            <h2 id="facturationProStatusTitle">Choisis le type d’opération</h2>
+            <p id="facturationProStatusText">
+              Prépare un dépôt/réassort ou une commande ferme, puis génère une facture uniquement au bon moment.
+            </p>
+          </div>
+          <span class="statusDot isIdle" id="facturationProStatusDot" aria-hidden="true"></span>
+        </section>
+
+        <section class="flowGrid" aria-label="Choix du parcours de facturation">
+          <a
+            class="flowTile flowTileReappro isSoon"
+            href="./reapprovisionnement-facture.html"
+            data-flow="reappro"
+            data-ready="false"
+          >
+            <span class="flowBadge">Dépôt-vente</span>
+            <span class="flowIcon" aria-hidden="true">↻</span>
+            <span class="flowTitle">Réapprovisionnement + facture</span>
+            <span class="flowText">
+              Créer un bon de réapprovisionnement, suivre les quantités vendues, puis facturer uniquement le vendu.
+            </span>
+            <span class="flowMeta">Page à créer ensuite</span>
+          </a>
+
+          <a
+            class="flowTile flowTileCommande"
+            href="./facturation.html"
+            data-flow="commande-ferme"
+            data-ready="true"
+          >
+            <span class="flowBadge">Commande directe</span>
+            <span class="flowIcon" aria-hidden="true">✓</span>
+            <span class="flowTitle">Commande ferme + facture</span>
+            <span class="flowText">
+              Saisir un client pro, ajouter les produits, enregistrer le brouillon, puis créer la facture VosFactures.
+            </span>
+            <span class="flowMeta">Aller à facturation.html</span>
+          </a>
+        </section>
+
+        <section class="facturationNote">
+          <p>
+            Cet écran ne crée aucune facture. Il sert seulement à choisir le bon parcours avant d’aller plus loin.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,272 @@
+:root {
+  --facturation-bg: #f6f1e8;
+  --facturation-paper: #fffaf1;
+  --facturation-kraft: #a88f68;
+  --facturation-text: #1f1b16;
+  --facturation-rum: #8a5a2b;
+  --facturation-green: #3f6f4f;
+  --facturation-alert: #b35c3a;
+  --facturation-line: rgba(31, 27, 22, 0.12);
+  --facturation-shadow: 0 18px 48px rgba(31, 27, 22, 0.12);
+}
+
+.facturationProPage {
+  min-height: 100vh;
+  color: var(--facturation-text);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(168, 143, 104, 0.18), transparent 30%),
+    linear-gradient(180deg, #fffaf1 0%, var(--facturation-bg) 52%, #efe4d2 100%);
+}
+
+.facturationProShell {
+  width: min(100%, 820px);
+  margin: 0 auto;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+
+.facturationProTopbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(246, 241, 232, 0.88);
+  border-bottom: 1px solid rgba(31, 27, 22, 0.08);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.facturationProTopbar .brandBlock h1 {
+  line-height: 1.05;
+}
+
+.facturationProMain {
+  display: grid;
+  gap: 18px;
+  padding: 16px;
+}
+
+.facturationHero,
+.facturationNote {
+  border: 1px solid var(--facturation-line);
+  border-radius: 26px;
+  background:
+    linear-gradient(135deg, rgba(255, 250, 241, 0.98), rgba(255, 250, 241, 0.82)),
+    radial-gradient(circle at 100% 0%, rgba(138, 90, 43, 0.16), transparent 42%);
+  box-shadow: var(--facturation-shadow);
+}
+
+.facturationHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+}
+
+.facturationHero h2 {
+  margin: 4px 0 6px;
+  font-size: clamp(1.45rem, 7vw, 2.15rem);
+  letter-spacing: -0.04em;
+}
+
+.facturationHero p {
+  margin: 0;
+  max-width: 58ch;
+  color: rgba(31, 27, 22, 0.72);
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+.statusDot {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--facturation-kraft);
+  box-shadow: 0 0 0 6px rgba(168, 143, 104, 0.15);
+}
+
+.statusDot.isIdle,
+.statusDot.isOnline {
+  background: var(--facturation-green);
+  box-shadow: 0 0 0 6px rgba(63, 111, 79, 0.16);
+}
+
+.statusDot.isWarning {
+  background: var(--facturation-alert);
+  box-shadow: 0 0 0 6px rgba(179, 92, 58, 0.16);
+}
+
+.flowGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.flowTile {
+  position: relative;
+  display: grid;
+  min-height: 220px;
+  align-content: end;
+  gap: 9px;
+  padding: 20px;
+  overflow: hidden;
+  color: var(--facturation-text);
+  text-decoration: none;
+  border: 1px solid rgba(31, 27, 22, 0.12);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(216, 160, 79, 0.35), transparent 38%),
+    linear-gradient(145deg, rgba(255, 250, 241, 0.96), rgba(246, 241, 232, 0.94));
+  box-shadow: var(--facturation-shadow);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.flowTile::before {
+  content: "";
+  position: absolute;
+  inset: auto -20% -42% 36%;
+  height: 170px;
+  border-radius: 999px;
+  background: rgba(138, 90, 43, 0.11);
+  transform: rotate(-10deg);
+}
+
+.flowTile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.34), transparent 35%),
+    radial-gradient(circle at 18% 20%, rgba(255, 250, 241, 0.5), transparent 28%);
+}
+
+.flowTile:active {
+  transform: scale(0.985);
+}
+
+.flowTile:focus-visible {
+  outline: 3px solid rgba(138, 90, 43, 0.28);
+  outline-offset: 4px;
+}
+
+.flowTileCommande {
+  border-color: rgba(63, 111, 79, 0.25);
+}
+
+.flowTileReappro {
+  border-color: rgba(179, 92, 58, 0.18);
+}
+
+.flowTile.isSoon {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(179, 92, 58, 0.18), transparent 40%),
+    linear-gradient(145deg, rgba(255, 250, 241, 0.94), rgba(246, 241, 232, 0.96));
+}
+
+.flowBadge,
+.flowIcon,
+.flowTitle,
+.flowText,
+.flowMeta {
+  position: relative;
+  z-index: 2;
+}
+
+.flowBadge {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: var(--facturation-rum);
+  background: rgba(168, 143, 104, 0.14);
+  border: 1px solid rgba(168, 143, 104, 0.22);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.flowIcon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 20px;
+  color: #fffaf1;
+  background: var(--facturation-rum);
+  box-shadow: 0 14px 32px rgba(138, 90, 43, 0.25);
+  font-size: 1.7rem;
+  font-weight: 900;
+}
+
+.flowTileReappro .flowIcon {
+  background: var(--facturation-alert);
+}
+
+.flowTileCommande .flowIcon {
+  background: var(--facturation-green);
+}
+
+.flowTitle {
+  max-width: 12ch;
+  margin-top: 48px;
+  font-size: clamp(1.65rem, 9vw, 2.45rem);
+  font-weight: 900;
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+}
+
+.flowText {
+  max-width: 34ch;
+  color: rgba(31, 27, 22, 0.72);
+  font-size: 0.98rem;
+  line-height: 1.42;
+}
+
+.flowMeta {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 8px 11px;
+  border-radius: 999px;
+  color: rgba(31, 27, 22, 0.78);
+  background: rgba(31, 27, 22, 0.055);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.facturationNote {
+  padding: 14px 16px;
+}
+
+.facturationNote p {
+  margin: 0;
+  color: rgba(31, 27, 22, 0.68);
+  font-size: 0.92rem;
+  line-height: 1.42;
+}
+
+@media (min-width: 720px) {
+  .facturationProMain {
+    padding: 20px;
+  }
+
+  .flowGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .flowTile {
+    min-height: 330px;
+  }
+}
