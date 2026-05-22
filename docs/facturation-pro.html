@@ -12,79 +12,89 @@
 
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Lugdurum" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
     <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
 
     <title>Lugdurum — Facturation pro</title>
 
     <link rel="stylesheet" href="./style.css?v=20" />
-    <link rel="stylesheet" href="./facturation-pro.css?v=1" />
+    <link rel="stylesheet" href="./facturation-pro.css?v=2" />
 
-    <script src="./facturation-pro.js?v=1" defer></script>
+    <script src="./facturation-pro.js?v=2" defer></script>
   </head>
 
   <body class="facturationProPage">
     <div class="appShell facturationProShell">
       <header class="topbar facturationProTopbar">
-        <a class="backLink" href="./index.html" aria-label="Retour au tableau de bord">
-          <span aria-hidden="true">←</span>
-        </a>
+        <a class="backBtn" href="./index.html" aria-label="Retour au tableau de bord">←</a>
 
         <div class="brandBlock">
-          <div class="brandMark" aria-hidden="true">
-            <img src="./assets/logo-lugdurum.png" alt="" onerror="this.style.display='none'" />
-          </div>
-          <div>
-            <p class="eyebrow">Lugdurum</p>
-            <h1>Facturation pro</h1>
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Facturation pro</h1>
+            </div>
           </div>
         </div>
-
-        <div class="userPill" id="currentUserName">Jérôme</div>
       </header>
 
       <main class="facturationProMain">
         <section class="facturationHero" aria-live="polite">
           <div>
-            <p class="eyebrow">Parcours pro</p>
-            <h2 id="facturationProStatusTitle">Choisis le type d’opération</h2>
+            <p class="sectionKicker">Parcours pro</p>
+            <h2 id="facturationProStatusTitle">Choisir une opération</h2>
             <p id="facturationProStatusText">
-              Prépare un dépôt/réassort, une commande ferme ou une saisie historique déjà facturée.
+              Commande ferme, dépôt-vente ou rattrapage d’anciennes factures.
             </p>
           </div>
-          <span class="statusDot isIdle" id="facturationProStatusDot" aria-hidden="true"></span>
+
+          <span
+            class="statusDot isIdle"
+            id="facturationProStatusDot"
+            aria-hidden="true"
+          ></span>
         </section>
 
         <section class="flowGrid" aria-label="Choix du parcours de facturation pro">
-          <a
-            class="flowTile flowTileReappro isSoon"
-            href="./reapprovisionnement-facture.html"
-            data-flow="reappro"
-            data-ready="false"
-          >
-            <span class="flowBadge">Dépôt-vente</span>
-            <span class="flowIcon" aria-hidden="true">↻</span>
-            <span class="flowTitle">Réapprovisionnement + facture</span>
-            <span class="flowText">
-              Créer un bon de réapprovisionnement, suivre les quantités vendues, puis facturer uniquement le vendu.
-            </span>
-            <span class="flowMeta">Page à créer ensuite</span>
-          </a>
-
           <a
             class="flowTile flowTileCommande"
             href="./facturation.html"
             data-flow="commande-ferme"
             data-ready="true"
           >
-            <span class="flowBadge">Commande directe</span>
-            <span class="flowIcon" aria-hidden="true">✓</span>
-            <span class="flowTitle">Commande ferme + facture</span>
-            <span class="flowText">
-              Saisir un client pro, ajouter les produits, enregistrer le brouillon, puis créer la facture VosFactures.
+            <span class="flowIcon" aria-hidden="true">🧾</span>
+
+            <span class="flowContent">
+              <span class="flowBadge">Commande directe</span>
+              <strong class="flowTitle">Commande ferme + facture</strong>
+              <small class="flowText">
+                Créer une commande pro puis générer la facture VosFactures.
+              </small>
             </span>
-            <span class="flowMeta">Aller à facturation.html</span>
+          </a>
+
+          <a
+            class="flowTile flowTileReappro isSoon"
+            href="./reapprovisionnement-facture.html"
+            data-flow="reappro"
+            data-ready="false"
+          >
+            <span class="flowIcon" aria-hidden="true">↻</span>
+
+            <span class="flowContent">
+              <span class="flowBadge">Dépôt-vente</span>
+              <strong class="flowTitle">Réapprovisionnement + facture</strong>
+              <small class="flowText">
+                Suivre le réassort puis facturer uniquement le vendu.
+              </small>
+            </span>
           </a>
 
           <a
@@ -93,19 +103,21 @@
             data-flow="historique-pro"
             data-ready="true"
           >
-            <span class="flowBadge">Rattrapage</span>
             <span class="flowIcon" aria-hidden="true">↺</span>
-            <span class="flowTitle">Saisie historique pro</span>
-            <span class="flowText">
-              Ajouter d’anciennes commandes pro déjà livrées et facturées pour compléter les statistiques.
+
+            <span class="flowContent">
+              <span class="flowBadge">Rattrapage</span>
+              <strong class="flowTitle">Saisie historique pro</strong>
+              <small class="flowText">
+                Ajouter d’anciennes commandes déjà livrées et facturées.
+              </small>
             </span>
-            <span class="flowMeta">Aller à revenus.html</span>
           </a>
         </section>
 
         <section class="facturationNote">
           <p>
-            Cet écran ne crée aucune facture. Il sert seulement à choisir le bon parcours avant d’aller plus loin.
+            Aucun document n’est créé depuis cette page. Elle sert uniquement à choisir le bon parcours.
           </p>
         </section>
       </main>
