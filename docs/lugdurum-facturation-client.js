@@ -2,70 +2,41 @@
   "use strict";
 
   /*
-    Lugdurum Facturation Client V1
+    Lugdurum Facturation Client V2 SESSION ONLY
     - Communication Webapp Lugdurum → Cloudflare Worker facturation.
     - Ne communique jamais directement avec VosFactures.
     - Ne stocke jamais le token API VosFactures.
+    - Ne stocke plus la clé interne facturation en localStorage.
+    - La clé interne est gardée uniquement en mémoire tant que la page reste ouverte.
     - Pas de file d’attente offline pour éviter les doublons de factures.
     - Utilise commande_id comme oid externe pour limiter les doublons côté VosFactures.
     - Expose window.LugdurumFacturation.
   */
 
-  const DEFAULT_WORKER_URL = "";
-  const DEFAULT_ALLOWED_ORIGIN = "https://keryas777.github.io";
+  const DEFAULT_WORKER_URL =
+    "https://lugdurum-facturation-worker.deliriousfan7.workers.dev";
 
-  const STORAGE_KEYS = {
-    workerUrl: "lugdurum_facturation_worker_url",
-    accessKey: "lugdurum_facturation_access_key",
-    lastState: "lugdurum_facturation_state"
-  };
+  const DEFAULT_ALLOWED_ORIGIN = "https://keryas777.github.io";
 
   const STATUS_LABELS = {
     idle: "Facturation prête",
+    locked: "Facturation verrouillée",
     loading: "Facturation en cours",
     online: "Facturation OK",
     error: "Erreur facturation",
     offline: "Hors ligne"
   };
 
+  let workerUrlOverride = "";
+  let sessionAccessKey = "";
+  let lastState = {
+    status: "locked",
+    label: STATUS_LABELS.locked,
+    message: "Code facturation requis.",
+    updated_at: ""
+  };
+
   const nowIso = () => new Date().toISOString();
-
-  const safeLocalGet = (key) => {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  };
-
-  const safeLocalSet = (key, value) => {
-    try {
-      localStorage.setItem(key, value);
-    } catch {
-      // localStorage peut être indisponible.
-    }
-  };
-
-  const safeLocalRemove = (key) => {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // localStorage peut être indisponible.
-    }
-  };
-
-  const readJson = (key, fallback) => {
-    try {
-      const raw = safeLocalGet(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch {
-      return fallback;
-    }
-  };
-
-  const writeJson = (key, value) => {
-    safeLocalSet(key, JSON.stringify(value));
-  };
 
   const toArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -74,11 +45,11 @@
   const cleanString = (value) => String(value ?? "").trim();
 
   const getWorkerUrl = () =>
-    cleanString(safeLocalGet(STORAGE_KEYS.workerUrl) || DEFAULT_WORKER_URL)
-      .replace(/\/+$/, "");
+    cleanString(workerUrlOverride || DEFAULT_WORKER_URL).replace(/\/+$/, "");
 
-  const getAccessKey = () =>
-    cleanString(safeLocalGet(STORAGE_KEYS.accessKey));
+  const getAccessKey = () => cleanString(sessionAccessKey);
+
+  const hasAccessKey = () => Boolean(getAccessKey());
 
   const setState = (status, details = {}) => {
     const safeStatus = STATUS_LABELS[status] ? status : "idle";
@@ -88,10 +59,11 @@
       status: safeStatus,
       label: details.label || STATUS_LABELS[safeStatus],
       message: cleanString(details.message),
-      updated_at: nowIso()
+      updated_at: nowIso(),
+      unlocked: hasAccessKey()
     };
 
-    writeJson(STORAGE_KEYS.lastState, state);
+    lastState = state;
 
     window.dispatchEvent(
       new CustomEvent("lugdurum:facturation-status", {
@@ -102,37 +74,62 @@
     return state;
   };
 
-  const getState = () =>
-    readJson(STORAGE_KEYS.lastState, {
-      status: "idle",
-      label: STATUS_LABELS.idle,
-      message: "",
-      updated_at: ""
+  const getState = () => ({
+    ...lastState,
+    unlocked: hasAccessKey()
+  });
+
+  const unlock = (accessKey) => {
+    const key = cleanString(accessKey);
+
+    if (!key) {
+      sessionAccessKey = "";
+
+      setState("locked", {
+        message: "Code facturation manquant."
+      });
+
+      throw new Error("Code facturation manquant.");
+    }
+
+    sessionAccessKey = key;
+
+    setState("idle", {
+      message: "Facturation déverrouillée pour cette session."
     });
+
+    return getConfig();
+  };
+
+  const lock = () => {
+    sessionAccessKey = "";
+
+    setState("locked", {
+      message: "Facturation verrouillée."
+    });
+
+    return getConfig();
+  };
 
   const configure = ({ workerUrl, accessKey } = {}) => {
     if (workerUrl !== undefined) {
-      const url = cleanString(workerUrl);
-
-      if (url) {
-        safeLocalSet(STORAGE_KEYS.workerUrl, url);
-      } else {
-        safeLocalRemove(STORAGE_KEYS.workerUrl);
-      }
+      workerUrlOverride = cleanString(workerUrl);
     }
 
     if (accessKey !== undefined) {
       const key = cleanString(accessKey);
 
       if (key) {
-        safeLocalSet(STORAGE_KEYS.accessKey, key);
+        sessionAccessKey = key;
       } else {
-        safeLocalRemove(STORAGE_KEYS.accessKey);
+        sessionAccessKey = "";
       }
     }
 
-    setState("idle", {
-      message: "Configuration facturation mise à jour."
+    setState(hasAccessKey() ? "idle" : "locked", {
+      message: hasAccessKey()
+        ? "Configuration facturation mise à jour pour cette session."
+        : "Configuration facturation mise à jour. Code requis."
     });
 
     return getConfig();
@@ -140,7 +137,8 @@
 
   const getConfig = () => ({
     worker_url: getWorkerUrl(),
-    has_access_key: Boolean(getAccessKey()),
+    has_access_key: hasAccessKey(),
+    access_key_storage: "memory_only",
     allowed_origin: DEFAULT_ALLOWED_ORIGIN
   });
 
@@ -184,25 +182,37 @@
       : result;
   };
 
+  const requireAccessKey = () => {
+    const accessKey = getAccessKey();
+
+    if (!accessKey) {
+      setState("locked", {
+        message: "Code facturation requis."
+      });
+
+      throw new Error("Code facturation requis pour cette action.");
+    }
+
+    return accessKey;
+  };
+
   const requestJson = async (path, options = {}) => {
     const action = options.action || path;
 
     if (!isOnline()) {
       setState("offline", {
-        message: "Connexion indisponible."
+        message: "Connexion indisponible.",
+        last_action: action
       });
 
       throw new Error("Impossible de contacter la facturation hors ligne.");
     }
 
-    const accessKey = getAccessKey();
-
-    if (!accessKey) {
-      throw new Error("Clé interne facturation manquante.");
-    }
+    const accessKey = requireAccessKey();
 
     setState("loading", {
-      message: action
+      message: action,
+      last_action: action
     });
 
     let response;
@@ -212,7 +222,7 @@
         method: options.method || "GET",
         cache: "no-store",
         headers: {
-          "Accept": "application/json",
+          Accept: "application/json",
           "Content-Type": "application/json",
           "X-Lugdurum-Key": accessKey
         },
@@ -251,29 +261,38 @@
 
     if (!isOnline()) {
       setState("offline", {
-        message: "Connexion indisponible."
+        message: "Connexion indisponible.",
+        last_action: action
       });
 
       throw new Error("Impossible de télécharger un PDF hors ligne.");
     }
 
-    const accessKey = getAccessKey();
-
-    if (!accessKey) {
-      throw new Error("Clé interne facturation manquante.");
-    }
+    const accessKey = requireAccessKey();
 
     setState("loading", {
-      message: action
+      message: action,
+      last_action: action
     });
 
-    const response = await fetch(buildUrl(path), {
-      method: options.method || "GET",
-      cache: "no-store",
-      headers: {
-        "X-Lugdurum-Key": accessKey
-      }
-    });
+    let response;
+
+    try {
+      response = await fetch(buildUrl(path), {
+        method: options.method || "GET",
+        cache: "no-store",
+        headers: {
+          "X-Lugdurum-Key": accessKey
+        }
+      });
+    } catch (error) {
+      setState("error", {
+        message: error.message,
+        last_action: action
+      });
+
+      throw new Error(`Worker facturation inaccessible : ${error.message}`);
+    }
 
     if (!response.ok) {
       let message = `Erreur HTTP ${response.status} sur ${action}.`;
@@ -330,6 +349,18 @@
       }
     };
   };
+
+  const testConnection = () =>
+    requestJson("/invoices", {
+      method: "GET",
+      action: "testConnection"
+    });
+
+  const listInvoices = () =>
+    requestJson("/invoices", {
+      method: "GET",
+      action: "listInvoices"
+    });
 
   const createInvoice = (payload = {}) =>
     requestJson("/invoices", {
@@ -417,17 +448,17 @@
     const positions = safeLignes.map((line) => ({
       name: cleanString(
         line.nom_produit ||
-        line.produit_nom ||
-        line.libelle ||
-        line.name
+          line.produit_nom ||
+          line.libelle ||
+          line.name
       ),
       quantity: Number(line.quantite || line.quantity || 1),
       tax: Number(line.taux_tva ?? line.tax ?? 0),
       total_price_gross: Number(
         line.total_ligne_ttc ??
-        line.total_ttc ??
-        line.total_price_gross ??
-        0
+          line.total_ttc ??
+          line.total_price_gross ??
+          0
       )
     }));
 
@@ -444,18 +475,20 @@
 
         buyer_name: cleanString(
           safeClient.raison_sociale ||
-          safeClient.nom_commercial ||
-          safeClient.nom ||
-          safeClient.buyer_name
+            safeClient.nom_commercial ||
+            safeClient.nom ||
+            safeClient.buyer_name
         ),
         buyer_tax_no: cleanString(
           safeClient.siret ||
-          safeClient.siren ||
-          safeClient.buyer_tax_no
+            safeClient.siren ||
+            safeClient.buyer_tax_no
         ),
         buyer_email: cleanString(safeClient.email),
         buyer_street: cleanString(safeClient.adresse || safeClient.buyer_street),
-        buyer_post_code: cleanString(safeClient.code_postal || safeClient.buyer_post_code),
+        buyer_post_code: cleanString(
+          safeClient.code_postal || safeClient.buyer_post_code
+        ),
         buyer_city: cleanString(safeClient.ville || safeClient.buyer_city),
 
         positions,
@@ -473,6 +506,13 @@
     getState,
     setState,
 
+    unlock,
+    lock,
+    isUnlocked: hasAccessKey,
+
+    testConnection,
+    listInvoices,
+
     createInvoice,
     getInvoice,
     sendInvoiceByEmail,
@@ -485,8 +525,10 @@
   };
 
   window.addEventListener("online", () => {
-    setState("idle", {
-      message: "Connexion retrouvée."
+    setState(hasAccessKey() ? "idle" : "locked", {
+      message: hasAccessKey()
+        ? "Connexion retrouvée."
+        : "Connexion retrouvée. Code facturation requis."
     });
   });
 
@@ -496,8 +538,7 @@
     });
   });
 
-  setState(getState().status || "idle", {
-    ...getState(),
-    message: getState().message || ""
+  setState("locked", {
+    message: "Code facturation requis."
   });
 })();
