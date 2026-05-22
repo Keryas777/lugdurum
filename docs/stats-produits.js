@@ -2,13 +2,25 @@
   "use strict";
 
   /*
-    Stats produits V8 :
+    Stats produits V9 :
     - API Google Sheets prioritaire.
     - Chargement via getCoreData() si disponible, sinon getters séparés.
     - Cache/localStorage uniquement si l’API est indisponible.
-    - Analyse ventes_lignes.
+    - Analyse ventes_lignes pour les ventes marchés.
     - Fallback depuis detail_ticket pour les transactions sans lignes.
-    - Année statistique via journees_vente.date.
+    - Analyse commandes_lignes + commandes_pro pour les ventes cavistes / pro.
+    - Fusionne toutes les lignes dans une source normalisée commune.
+    - Filtre par année.
+    - Filtre lieu de vente :
+      - ALL = marchés + cavistes
+      - MARCHES = ventes terrain
+      - CAVISTES = commandes pro / cavistes
+    - Filtre format en chips :
+      - ALL
+      - 50
+      - 20
+    - Année statistique marchés via journees_vente.date.
+    - Année statistique cavistes via date_livraison_prevue || date_commande || created_at.
     - Sépare :
       50 cL = bouteilles vendues
       20 cL = compositions / coffrets
@@ -24,7 +36,9 @@
     transactions: "lugdurum_transactions_cache",
     ventesLignes: "lugdurum_ventes_lignes_cache",
     catalogue: "lugdurum_catalogue_cache",
-    journees: "lugdurum_journees_cache"
+    journees: "lugdurum_journees_cache",
+    commandesPro: "lugdurum_commandes_pro_cache",
+    commandesLignes: "lugdurum_commandes_lignes_cache"
   };
 
   const LEGACY_KEYS = {
@@ -44,10 +58,32 @@
     journees: [
       "lugdurum_journees_cache",
       "lugdurum_journees"
+    ],
+    commandesPro: [
+      "lugdurum_commandes_pro_cache",
+      "lugdurum_commandes_pro"
+    ],
+    commandesLignes: [
+      "lugdurum_commandes_lignes_cache",
+      "lugdurum_commandes_lignes"
     ]
   };
 
-  const CORE_TABLES = ["transactions", "ventesLignes", "catalogue", "journees"];
+  const CORE_TABLES = [
+    "transactions",
+    "ventesLignes",
+    "catalogue",
+    "journees",
+    "commandesPro",
+    "commandesLignes"
+  ];
+
+  const SALES_CHANNELS = {
+    ALL: "ALL",
+    MARCHES: "MARCHES",
+    CAVISTES: "CAVISTES"
+  };
+
   const CURRENT_YEAR = String(new Date().getFullYear());
 
   const state = {
@@ -58,8 +94,11 @@
     lignes: [],
     catalogue: [],
     journees: [],
+    commandesPro: [],
+    commandesLignes: [],
     filters: {
       year: "AUTO",
+      salesChannel: SALES_CHANNELS.ALL,
       format: "ALL",
       search: ""
     }
@@ -67,7 +106,8 @@
 
   const els = {
     year: document.getElementById("productYearSelect"),
-    format: document.getElementById("productFormatSelect"),
+    salesChannelChips: Array.from(document.querySelectorAll("[data-sales-channel-filter]")),
+    formatChips: Array.from(document.querySelectorAll("[data-format-filter]")),
     search: document.getElementById("productSearchInput"),
 
     bottles: document.getElementById("productTotalQty"),
@@ -206,15 +246,27 @@
     return [
       "annule",
       "annulee",
+      "annulé",
+      "annulée",
       "refuse",
       "refusee",
+      "refusé",
+      "refusée",
       "rembourse",
-      "remboursee"
+      "remboursee",
+      "remboursé",
+      "remboursée"
     ].includes(status);
   };
 
   const isValidStatus = (item) => {
-    const status = item?.statut ?? item?.paiement_statut ?? "validee";
+    const status =
+      item?.statut ??
+      item?.statut_commande ??
+      item?.commande_statut ??
+      item?.paiement_statut ??
+      "validee";
+
     return !isInvalidStatus(status);
   };
 
@@ -223,6 +275,22 @@
 
   const getJourneeId = (journee) =>
     String(journee?.journee_id || "").trim();
+
+  const getCommandeId = (commande) =>
+    String(
+      commande?.commande_id ||
+      commande?.commande_pro_id ||
+      commande?.id ||
+      ""
+    ).trim();
+
+  const getCommandeIdFromLine = (line) =>
+    String(
+      line?.commande_id ||
+      line?.commande_pro_id ||
+      line?.order_id ||
+      ""
+    ).trim();
 
   const getTransactionAmount = (transaction) =>
     toNumber(
@@ -285,13 +353,14 @@
       item.asset_url ||
       item.photo_url ||
       item.photo ||
+      item.image_src ||
       ""
     ).trim();
   };
 
   const getProductImageUrl = (product, catalogueItem = null) =>
     getProductImageFromCatalogue(catalogueItem) ||
-    String(product?.image_url || "").trim() ||
+    String(product?.image_url || product?.image_src || "").trim() ||
     getParfumImageUrl(product);
 
   const getCatalogueBySku = () =>
@@ -333,6 +402,17 @@
       return map;
     }, new Map());
 
+  const getCommandeById = () =>
+    state.commandesPro.reduce((map, commande) => {
+      const id = getCommandeId(commande);
+
+      if (id && isValidStatus(commande)) {
+        map.set(id, commande);
+      }
+
+      return map;
+    }, new Map());
+
   const getBusinessDate = (rawLine, transaction, journeeMap) => {
     const lineJourneeId = String(rawLine?.journee_id || "").trim();
     const transactionJourneeId = String(transaction?.journee_id || "").trim();
@@ -357,6 +437,19 @@
       ""
     );
   };
+
+  const getCommandeBusinessDate = (rawLine, commande) =>
+    rawLine?.date_livraison_prevue ||
+    commande?.date_livraison_prevue ||
+    rawLine?.date_commande ||
+    commande?.date_commande ||
+    rawLine?.date ||
+    commande?.date ||
+    rawLine?.date_heure ||
+    commande?.date_heure ||
+    rawLine?.created_at ||
+    commande?.created_at ||
+    "";
 
   const normalizeLine = (rawLine, transactionMap, catalogueMap, journeeMap) => {
     const transactionId = String(rawLine?.transaction_id || rawLine?.transactionId || "").trim();
@@ -383,10 +476,13 @@
     const normalized = {
       ligne_id: String(rawLine?.ligne_id || "").trim(),
       transaction_id: transactionId,
+      commande_id: "",
       mission_id: rawLine?.mission_id || transaction?.mission_id || "",
       journee_id: rawLine?.journee_id || transaction?.journee_id || "",
       business_date: businessDate,
       business_year: businessYear,
+      sales_channel: SALES_CHANNELS.MARCHES,
+      sales_channel_label: "Marchés",
       sku_id: skuId,
       parfum_code: String(
         rawLine?.parfum_code ||
@@ -410,6 +506,79 @@
       image_url: "",
       source: rawLine?.source || transaction?.source || "",
       statut: rawLine?.statut || transaction?.statut || "valide"
+    };
+
+    normalized.image_url = getProductImageUrl(normalized, catalogueItem);
+
+    return normalized;
+  };
+
+  const normalizeCommandeLine = (rawLine, commandeMap, catalogueMap) => {
+    const commandeId = getCommandeIdFromLine(rawLine);
+    const commande = commandeMap.get(commandeId) || null;
+
+    if (commandeId && commandeMap.size > 0 && !commande) return null;
+    if (commande && !isValidStatus(commande)) return null;
+
+    const skuId = String(rawLine?.sku_id || rawLine?.sku || "").trim();
+    const catalogueItem = catalogueMap.get(skuId) || null;
+    const parsedSku = parseSku(skuId);
+
+    const quantity = toNumber(rawLine?.quantite ?? rawLine?.qty ?? rawLine?.quantity, 0);
+    const unitPrice = toNumber(
+      rawLine?.prix_unitaire_ttc ??
+      rawLine?.prix_unitaire ??
+      rawLine?.unit_price ??
+      rawLine?.prix,
+      0
+    );
+
+    const lineTotal = toNumber(
+      rawLine?.total_ligne_ttc ??
+      rawLine?.total_catalogue_ligne_ttc ??
+      rawLine?.montant_ligne_ttc ??
+      rawLine?.total_ttc ??
+      rawLine?.ca,
+      quantity * unitPrice
+    );
+
+    const businessDate = getCommandeBusinessDate(rawLine, commande);
+    const businessYear = getYearFromDate(businessDate);
+
+    const normalized = {
+      ligne_id: String(rawLine?.ligne_id || rawLine?.commande_ligne_id || "").trim(),
+      transaction_id: "",
+      commande_id: commandeId,
+      mission_id: "",
+      journee_id: "",
+      business_date: businessDate,
+      business_year: businessYear,
+      sales_channel: SALES_CHANNELS.CAVISTES,
+      sales_channel_label: "Cavistes",
+      sku_id: skuId,
+      parfum_code: String(
+        rawLine?.parfum_code ||
+        catalogueItem?.parfum_code ||
+        parsedSku.parfum_code ||
+        "?"
+      ).toUpperCase(),
+      parfum_nom: String(
+        rawLine?.parfum_nom ||
+        catalogueItem?.parfum_nom ||
+        rawLine?.nom ||
+        rawLine?.libelle ||
+        parsedSku.parfum_code ||
+        "Produit"
+      ).trim(),
+      format_cl: toNumber(
+        rawLine?.format_cl,
+        toNumber(catalogueItem?.format_cl, parsedSku.format_cl)
+      ),
+      quantite: quantity,
+      total_ttc: lineTotal,
+      image_url: "",
+      source: rawLine?.source || commande?.source || "COMMANDE_PRO",
+      statut: rawLine?.statut || commande?.statut || "valide"
     };
 
     normalized.image_url = getProductImageUrl(normalized, catalogueItem);
@@ -528,7 +697,7 @@
     const withoutId = [];
 
     lines.forEach((line) => {
-      const id = String(line?.ligne_id || "").trim();
+      const id = String(line?.ligne_id || line?.commande_ligne_id || "").trim();
 
       if (!id) {
         withoutId.push(line);
@@ -568,7 +737,7 @@
     ];
   };
 
-  const getNormalizedLines = () => {
+  const getNormalizedMarketLines = () => {
     const transactionMap = getTransactionById();
     const catalogueMap = getCatalogueBySku();
     const journeeMap = getJourneeById();
@@ -586,6 +755,22 @@
         return !transaction || isValidStatus(transaction);
       });
   };
+
+  const getNormalizedCommandeLines = () => {
+    const commandeMap = getCommandeById();
+    const catalogueMap = getCatalogueBySku();
+
+    return dedupeSheetLines(state.commandesLignes.filter(isValidStatus))
+      .map((line) => normalizeCommandeLine(line, commandeMap, catalogueMap))
+      .filter(Boolean)
+      .filter((line) => line.quantite > 0)
+      .filter((line) => line.sku_id || line.parfum_code);
+  };
+
+  const getNormalizedLines = () => [
+    ...getNormalizedMarketLines(),
+    ...getNormalizedCommandeLines()
+  ];
 
   const getAvailableYears = () => {
     const years = new Set();
@@ -628,6 +813,7 @@
 
     return getNormalizedLines()
       .filter((line) => state.filters.year === "ALL" || line.business_year === state.filters.year)
+      .filter((line) => state.filters.salesChannel === SALES_CHANNELS.ALL || line.sales_channel === state.filters.salesChannel)
       .filter((line) => state.filters.format === "ALL" || String(line.format_cl) === String(state.filters.format))
       .filter((line) => {
         if (!query) return true;
@@ -724,6 +910,12 @@
     return ` style="--product-image: url('${escapeAttr(url)}');"`;
   };
 
+  const getSalesChannelLabel = () => {
+    if (state.filters.salesChannel === SALES_CHANNELS.MARCHES) return "Marchés";
+    if (state.filters.salesChannel === SALES_CHANNELS.CAVISTES) return "Cavistes";
+    return "Marchés + cavistes";
+  };
+
   const renderLoading = () => {
     if (els.year) {
       els.year.innerHTML = `<option value="ALL">Chargement…</option>`;
@@ -745,6 +937,20 @@
     setStatus("Chargement…");
   };
 
+  const renderChipState = () => {
+    els.salesChannelChips.forEach((button) => {
+      const isActive = button.dataset.salesChannelFilter === state.filters.salesChannel;
+      button.classList.toggle("isActive", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+
+    els.formatChips.forEach((button) => {
+      const isActive = button.dataset.formatFilter === state.filters.format;
+      button.classList.toggle("isActive", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+  };
+
   const renderFormatSummary = (formats) => {
     if (!els.formatList) return;
 
@@ -755,7 +961,7 @@
             format === 50
               ? "Bouteilles"
               : format === 20
-                ? "Compositions coffrets"
+                ? "20 cL / coffrets"
                 : "Autres formats";
 
           return `
@@ -846,17 +1052,18 @@
     if (!els.list) return;
 
     const groups = splitProducts();
+    const channelLabel = getSalesChannelLabel();
 
     const html = [
       renderProductGroup({
         title: "Bouteilles 50 cL",
-        subtitle: "Ventes directes",
+        subtitle: channelLabel,
         products: groups.bottles50,
         empty: "Aucune bouteille 50 cL vendue sur cette période."
       }),
       renderProductGroup({
-        title: "Compositions 20 cL",
-        subtitle: "Coffrets",
+        title: "20 cL / coffrets",
+        subtitle: channelLabel,
         products: groups.boxes20,
         empty: "Aucune composition 20 cL vendue sur cette période."
       })
@@ -878,6 +1085,7 @@
 
   const render = () => {
     syncYearFilter();
+    renderChipState();
 
     const normalizedLines = getNormalizedLines();
     const products = computeByProduct();
@@ -897,7 +1105,7 @@
 
     if (state.source === "api" && normalizedLines.length === 0) {
       setStatus(
-        `Données chargées, mais aucune ligne produit exploitable. Transactions : ${state.transactions.length} · ventes_lignes : ${state.lignes.length}`,
+        `Données chargées, mais aucune ligne produit exploitable. Transactions : ${state.transactions.length} · ventes_lignes : ${state.lignes.length} · commandes_pro : ${state.commandesPro.length} · commandes_lignes : ${state.commandesLignes.length}`,
         "isError"
       );
       return;
@@ -914,13 +1122,17 @@
     setStatus("");
   };
 
-  const normalizeCoreArray = (coreData, key) => {
-    const value = coreData?.[key];
+  const normalizeCoreArray = (coreData, keys) => {
+    const keyList = Array.isArray(keys) ? keys : [keys];
 
-    if (Array.isArray(value)) return value;
+    for (const key of keyList) {
+      const value = coreData?.[key];
 
-    if (value && typeof value === "object" && value.ok === false) {
-      throw new Error(value.error || `Table coreData invalide : ${key}`);
+      if (Array.isArray(value)) return value;
+
+      if (value && typeof value === "object" && value.ok === false) {
+        throw new Error(value.error || `Table coreData invalide : ${key}`);
+      }
     }
 
     return [];
@@ -933,6 +1145,17 @@
 
     const result = await api()[fnName]();
     return Array.isArray(result) ? result : [];
+  };
+
+  const optionalCallArray = async (fnName) => {
+    if (!hasApi() || typeof api()[fnName] !== "function") return [];
+
+    try {
+      const result = await api()[fnName]();
+      return Array.isArray(result) ? result : [];
+    } catch {
+      return [];
+    }
   };
 
   const loadRemoteWithCoreData = async () => {
@@ -948,25 +1171,38 @@
 
     return {
       transactions: normalizeCoreArray(coreData, "transactions"),
-      lignes: normalizeCoreArray(coreData, "ventesLignes"),
+      lignes: normalizeCoreArray(coreData, ["ventesLignes", "ventes_lignes"]),
       catalogue: normalizeCoreArray(coreData, "catalogue"),
-      journees: normalizeCoreArray(coreData, "journees")
+      journees: normalizeCoreArray(coreData, ["journees", "journees_vente"]),
+      commandesPro: normalizeCoreArray(coreData, ["commandesPro", "commandes_pro"]),
+      commandesLignes: normalizeCoreArray(coreData, ["commandesLignes", "commandes_lignes"])
     };
   };
 
   const loadRemoteWithSeparateCalls = async () => {
-    const [transactions, lignes, catalogue, journees] = await Promise.all([
+    const [
+      transactions,
+      lignes,
+      catalogue,
+      journees,
+      commandesPro,
+      commandesLignes
+    ] = await Promise.all([
       callArray("getTransactions"),
       callArray("getVentesLignes"),
       callArray("getCatalogue"),
-      callArray("getJournees")
+      callArray("getJournees"),
+      optionalCallArray("getCommandesPro"),
+      optionalCallArray("getCommandesLignes")
     ]);
 
     return {
       transactions,
       lignes,
       catalogue,
-      journees
+      journees,
+      commandesPro,
+      commandesLignes
     };
   };
 
@@ -997,6 +1233,8 @@
     state.lignes = data.lignes;
     state.catalogue = data.catalogue;
     state.journees = data.journees;
+    state.commandesPro = data.commandesPro;
+    state.commandesLignes = data.commandesLignes;
     state.source = "api";
     state.loadError = "";
 
@@ -1004,6 +1242,8 @@
     writeJson(CACHE_KEYS.ventesLignes, state.lignes);
     writeJson(CACHE_KEYS.catalogue, state.catalogue);
     writeJson(CACHE_KEYS.journees, state.journees);
+    writeJson(CACHE_KEYS.commandesPro, state.commandesPro);
+    writeJson(CACHE_KEYS.commandesLignes, state.commandesLignes);
   };
 
   const loadLocalFallback = (error) => {
@@ -1011,6 +1251,8 @@
     state.lignes = readFirstArray(LEGACY_KEYS.ventesLignes);
     state.catalogue = readFirstArray(LEGACY_KEYS.catalogue);
     state.journees = readFirstArray(LEGACY_KEYS.journees);
+    state.commandesPro = readFirstArray(LEGACY_KEYS.commandesPro);
+    state.commandesLignes = readFirstArray(LEGACY_KEYS.commandesLignes);
     state.source = "local";
     state.apiMode = "cache";
     state.loadError = error?.message || "Lecture données impossible.";
@@ -1024,12 +1266,19 @@
       });
     }
 
-    if (els.format) {
-      els.format.addEventListener("change", () => {
-        state.filters.format = els.format.value || "ALL";
+    els.salesChannelChips.forEach((button) => {
+      button.addEventListener("click", () => {
+        state.filters.salesChannel = button.dataset.salesChannelFilter || SALES_CHANNELS.ALL;
         render();
       });
-    }
+    });
+
+    els.formatChips.forEach((button) => {
+      button.addEventListener("click", () => {
+        state.filters.format = button.dataset.formatFilter || "ALL";
+        render();
+      });
+    });
 
     if (els.search) {
       els.search.addEventListener("input", () => {
