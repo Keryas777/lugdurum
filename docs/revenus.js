@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Revenus devient Saisie historique pro V1
+    Revenus devient Saisie historique pro V2
     - Saisie d’anciennes commandes pro déjà livrées et déjà facturées.
     - Aucun appel VosFactures.
     - Enregistre dans Google Sheets via LugdurumAPI.batchUpsert().
@@ -10,8 +10,11 @@
       clients
       commandes_pro
       commandes_pro_lignes
+      documents
+    - Respect strict des colonnes existantes dans Google Sheets.
     - Le montant officiel est le montant facturé saisi.
     - Les tuiles produits servent aux quantités par parfum / format pour les statistiques.
+    - Les montants de lignes sont répartis au prorata du catalogue estimé pour retomber sur le montant facturé.
   */
 
   const CURRENT_USER = {
@@ -179,7 +182,10 @@
       .toUpperCase()
       .replace(/[^A-Z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "")
-      .slice(0, 40) || fallback;
+      .slice(0, 42) || fallback;
+
+  const centsKey = (value) =>
+    String(Math.round(formatAmount(value) * 100));
 
   const setStatus = (message, type = "") => {
     if (!els.historiqueProStatus) return;
@@ -241,20 +247,22 @@
 
     return {
       client_id: cleanString(raw.client_id || raw.id || `CL_TMP_${index}`),
-      client_type: cleanString(raw.client_type || raw.type || "caviste"),
-      client_statut: cleanString(raw.client_statut || raw.statut || "client_actif"),
+      type_client: cleanString(raw.type_client || raw.client_type || raw.type || "caviste"),
       nom_commercial: commercialName,
       raison_sociale: legalName,
-      siret,
       siren,
+      siret,
       email: cleanString(raw.email || raw.buyer_email),
+      telephone: cleanString(raw.telephone || raw.phone),
       adresse: cleanString(raw.adresse || raw.buyer_street),
       code_postal: cleanString(raw.code_postal || raw.buyer_post_code),
       ville: cleanString(raw.ville || raw.buyer_city),
-      telephone: cleanString(raw.telephone || raw.phone),
       contact_nom: cleanString(raw.contact_nom || raw.contact),
+      statut: cleanString(raw.statut || raw.client_statut || "client_actif"),
+      conditions_paiement: cleanString(raw.conditions_paiement),
+      remise_habituelle: cleanString(raw.remise_habituelle),
+      source_contact: cleanString(raw.source_contact || raw.source),
       note: cleanString(raw.note),
-      source: cleanString(raw.source),
       created_at: cleanString(raw.created_at),
       updated_at: cleanString(raw.updated_at)
     };
@@ -424,13 +432,12 @@
     null
   );
 
-  const getUnitPriceForProduct = (product) => {
+  const getEstimatedUnitPriceForProduct = (product) => {
     if (!product) {
       return {
         ttc: 0,
         ht: 0,
-        offer: null,
-        typeVente: "HISTORIQUE_PRO"
+        offer: null
       };
     }
 
@@ -440,8 +447,7 @@
       return {
         ttc: offer ? offer.prix_ttc : 0,
         ht: offer ? offer.prix_ht : 0,
-        offer,
-        typeVente: "BOUTEILLE"
+        offer
       };
     }
 
@@ -452,8 +458,7 @@
         return {
           ttc: 0,
           ht: 0,
-          offer: null,
-          typeVente: "COFFRET"
+          offer: null
         };
       }
 
@@ -467,16 +472,14 @@
       return {
         ttc: baseUnitTtc + supplement,
         ht: baseUnitHt + supplement,
-        offer,
-        typeVente: "COFFRET"
+        offer
       };
     }
 
     return {
       ttc: 0,
       ht: 0,
-      offer: null,
-      typeVente: "HISTORIQUE_PRO"
+      offer: null
     };
   };
 
@@ -490,19 +493,16 @@
 
       if (!product) return;
 
-      const pricing = getUnitPriceForProduct(product);
+      const pricing = getEstimatedUnitPriceForProduct(product);
 
       lines.push({
         product,
         quantity,
-        unit_ttc: pricing.ttc,
-        unit_ht: pricing.ht,
-        offer: pricing.offer,
-        type_vente: pricing.typeVente,
-        conditionnement:
-          product.format_cl === 50
-            ? "BOTTLE_50"
-            : "HISTORIQUE_20CL"
+        estimated_unit_ttc: pricing.ttc,
+        estimated_unit_ht: pricing.ht,
+        estimated_total_ttc: formatAmount(quantity * pricing.ttc),
+        estimated_total_ht: formatAmount(quantity * pricing.ht),
+        offer: pricing.offer
       });
     });
 
@@ -516,7 +516,7 @@
 
   const getCatalogueTotal = () =>
     getProductLinesDraft().reduce((sum, line) => (
-      sum + line.quantity * line.unit_ttc
+      sum + line.estimated_total_ttc
     ), 0);
 
   const getBottleTotal = () =>
@@ -524,6 +524,51 @@
 
   const getInvoiceAmount = () =>
     formatAmount(toNumber(els.invoiceAmountInput?.value, 0));
+
+  const distributeInvoiceAmountOnLines = (lines, invoiceAmount) => {
+    const safeLines = toArray(lines);
+    const officialTotal = formatAmount(invoiceAmount);
+
+    if (safeLines.length === 0) return [];
+
+    const catalogueTotal = formatAmount(
+      safeLines.reduce((sum, line) => sum + line.estimated_total_ttc, 0)
+    );
+
+    const bottleTotal = safeLines.reduce((sum, line) => sum + line.quantity, 0);
+
+    let alreadyDistributed = 0;
+
+    return safeLines.map((line, index) => {
+      const isLast = index === safeLines.length - 1;
+
+      let totalTtc;
+
+      if (isLast) {
+        totalTtc = formatAmount(officialTotal - alreadyDistributed);
+      } else if (catalogueTotal > 0) {
+        totalTtc = formatAmount(officialTotal * (line.estimated_total_ttc / catalogueTotal));
+      } else if (bottleTotal > 0) {
+        totalTtc = formatAmount(officialTotal * (line.quantity / bottleTotal));
+      } else {
+        totalTtc = 0;
+      }
+
+      alreadyDistributed = formatAmount(alreadyDistributed + totalTtc);
+
+      const unitTtc = line.quantity > 0
+        ? formatAmount(totalTtc / line.quantity)
+        : 0;
+
+      return {
+        ...line,
+        official_total_ttc: totalTtc,
+        official_total_ht: totalTtc,
+        official_unit_ttc: unitTtc,
+        official_unit_ht: unitTtc
+      };
+    });
+  };
 
   const renderFormatControl = (product, label) => {
     if (!product) {
@@ -676,15 +721,15 @@
   const fillClientFields = (client) => {
     if (!client) return;
 
-    els.clientTypeInput.value = client.client_type || "caviste";
-    els.clientStatusInput.value = client.client_statut || "client_actif";
-    els.clientCommercialNameInput.value = client.nom_commercial || "";
-    els.clientLegalNameInput.value = client.raison_sociale || "";
-    els.clientSiretInput.value = client.siret || "";
-    els.clientEmailInput.value = client.email || "";
-    els.clientAddressInput.value = client.adresse || "";
-    els.clientZipInput.value = client.code_postal || "";
-    els.clientCityInput.value = client.ville || "";
+    if (els.clientTypeInput) els.clientTypeInput.value = client.type_client || "caviste";
+    if (els.clientStatusInput) els.clientStatusInput.value = client.statut || "client_actif";
+    if (els.clientCommercialNameInput) els.clientCommercialNameInput.value = client.nom_commercial || "";
+    if (els.clientLegalNameInput) els.clientLegalNameInput.value = client.raison_sociale || "";
+    if (els.clientSiretInput) els.clientSiretInput.value = client.siret || "";
+    if (els.clientEmailInput) els.clientEmailInput.value = client.email || "";
+    if (els.clientAddressInput) els.clientAddressInput.value = client.adresse || "";
+    if (els.clientZipInput) els.clientZipInput.value = client.code_postal || "";
+    if (els.clientCityInput) els.clientCityInput.value = client.ville || "";
   };
 
   const selectQuantityInput = (input) => {
@@ -712,7 +757,11 @@
   const callCoreData = async (tables) => {
     if (!hasApi() || typeof api().getCoreData !== "function") return {};
 
-    const result = await api().getCoreData(tables);
+    const tableParam = Array.isArray(tables)
+      ? tables.join(",")
+      : String(tables || "");
+
+    const result = await api().getCoreData(tableParam);
 
     return result && typeof result === "object" ? result : {};
   };
@@ -799,12 +848,12 @@
       return false;
     }
 
-    if (!cleanString(els.clientCommercialNameInput.value)) {
+    if (!cleanString(els.clientCommercialNameInput?.value)) {
       setStatus("Indique au moins le nom commercial du client.", "isError");
       return false;
     }
 
-    if (!els.invoiceDateInput.value) {
+    if (!els.invoiceDateInput?.value) {
       setStatus("Indique la date de facture.", "isError");
       return false;
     }
@@ -829,55 +878,68 @@
       return selected.client_id;
     }
 
-    const siret = cleanString(els.clientSiretInput.value).replace(/\D/g, "");
+    const siret = cleanString(els.clientSiretInput?.value).replace(/\D/g, "");
 
     if (siret) {
       return `CL_${siret}`;
     }
 
-    return `CL_${slugify(els.clientCommercialNameInput.value, "CLIENT")}`;
+    return `CL_${slugify(els.clientCommercialNameInput?.value, "CLIENT")}`;
   };
 
-  const buildCommandeId = (clientId) => {
-    const datePart = cleanString(els.invoiceDateInput.value).replaceAll("-", "") || "00000000";
-    const invoiceNumber = cleanString(els.invoiceNumberInput.value);
+  const buildCommandeId = (clientId, invoiceAmount) => {
+    const datePart = cleanString(els.invoiceDateInput?.value).replaceAll("-", "") || "00000000";
+    const invoiceNumber = cleanString(els.invoiceNumberInput?.value);
 
     if (invoiceNumber) {
       return `CP_HIST_${datePart}_${slugify(invoiceNumber, "FACTURE")}`;
     }
 
-    return `CP_HIST_${datePart}_${slugify(clientId, "CLIENT")}_${Date.now()}`;
+    return `CP_HIST_${datePart}_${slugify(clientId, "CLIENT")}_${centsKey(invoiceAmount)}`;
   };
 
   const buildRows = () => {
     const existingClient = getSelectedClient();
     const timestamp = nowIso();
     const clientId = buildClientId();
-    const commandeId = buildCommandeId(clientId);
     const invoiceAmount = getInvoiceAmount();
-    const catalogueTotal = formatAmount(getCatalogueTotal());
-    const bottleTotal = getBottleTotal();
-    const siret = cleanString(els.clientSiretInput.value);
-    const siren = deriveSirenFromSiret(siret);
+    const commandeId = buildCommandeId(clientId, invoiceAmount);
+
+    const productDraftLines = getProductLinesDraft();
+    const officialLines = distributeInvoiceAmountOnLines(productDraftLines, invoiceAmount);
+
+    const invoiceDate = cleanString(els.invoiceDateInput?.value);
+    const deliveryDate = cleanString(els.deliveryDateInput?.value || invoiceDate);
+    const invoiceNumber = cleanString(els.invoiceNumberInput?.value);
+    const paymentStatus = cleanString(els.paymentStatusInput?.value || "paye");
+    const paymentMode = cleanString(els.paymentModeInput?.value || "VIR");
+    const operationType = cleanString(els.operationTypeInput?.value || "commande_ferme");
+    const orderNote = cleanString(els.orderNoteInput?.value);
+    const siret = cleanString(els.clientSiretInput?.value);
+    const siren = cleanString(deriveSirenFromSiret(siret));
     const clientName = cleanString(
-      els.clientCommercialNameInput.value ||
-      els.clientLegalNameInput.value
+      els.clientCommercialNameInput?.value ||
+      els.clientLegalNameInput?.value
     );
 
     const client = {
-      ...existingClient,
       client_id: clientId,
-      client_type: cleanString(els.clientTypeInput.value || "caviste"),
-      client_statut: cleanString(els.clientStatusInput.value || "client_actif"),
+      type_client: cleanString(els.clientTypeInput?.value || "caviste"),
       nom_commercial: clientName,
-      raison_sociale: cleanString(els.clientLegalNameInput.value),
-      siret,
+      raison_sociale: cleanString(els.clientLegalNameInput?.value),
       siren,
-      email: cleanString(els.clientEmailInput.value),
-      adresse: cleanString(els.clientAddressInput.value),
-      code_postal: cleanString(els.clientZipInput.value),
-      ville: cleanString(els.clientCityInput.value),
-      source: existingClient?.source || SOURCE,
+      siret,
+      email: cleanString(els.clientEmailInput?.value),
+      telephone: existingClient?.telephone || "",
+      adresse: cleanString(els.clientAddressInput?.value),
+      code_postal: cleanString(els.clientZipInput?.value),
+      ville: cleanString(els.clientCityInput?.value),
+      contact_nom: existingClient?.contact_nom || "",
+      statut: cleanString(els.clientStatusInput?.value || "client_actif"),
+      conditions_paiement: existingClient?.conditions_paiement || "",
+      remise_habituelle: existingClient?.remise_habituelle || "",
+      source_contact: existingClient?.source_contact || SOURCE,
+      note: existingClient?.note || "",
       created_at: existingClient?.created_at || timestamp,
       updated_at: timestamp
     };
@@ -885,74 +947,85 @@
     const commande = {
       commande_id: commandeId,
       client_id: clientId,
-      client_nom: clientName,
-      client_siret: siret,
-      commande_type_operation: cleanString(els.operationTypeInput.value || "commande_ferme"),
-      commande_statut: "facturee",
-      paiement_statut: cleanString(els.paymentStatusInput.value || "paye"),
-      document_type: "facture",
-      document_statut: "facture_creee",
-      date_commande: cleanString(els.invoiceDateInput.value),
-      date_livraison: cleanString(els.deliveryDateInput.value || els.invoiceDateInput.value),
-      date_facture: cleanString(els.invoiceDateInput.value),
-      numero_facture: cleanString(els.invoiceNumberInput.value),
-      montant_facture_ttc: invoiceAmount,
-      montant_catalogue_estime_ttc: catalogueTotal,
-      ecart_facture_catalogue_ttc: formatAmount(invoiceAmount - catalogueTotal),
-      nb_bouteilles: bottleTotal,
-      mode_paiement: cleanString(els.paymentModeInput.value || "VIR"),
-      regime_tva: "franchise_base",
+      type_operation: operationType,
+      date_commande: invoiceDate,
+      date_livraison_prevue: deliveryDate,
+      statut: "facturee",
+      montant_total_ttc: invoiceAmount,
+      montant_total_ht: invoiceAmount,
       taux_tva: 0,
       montant_tva: 0,
-      source: SOURCE,
-      note: cleanString(els.orderNoteInput.value),
+      mode_paiement: paymentMode,
+      paiement_statut: paymentStatus,
+      note: [
+        orderNote,
+        invoiceNumber ? `Facture historique : ${invoiceNumber}` : "",
+        `Source : ${SOURCE}`
+      ].filter(Boolean).join(" · "),
       created_at: timestamp,
       updated_at: timestamp
     };
 
-    const lignes = getProductLinesDraft().map((line) => {
-      const totalTtc = formatAmount(line.quantity * line.unit_ttc);
-      const totalHt = formatAmount(line.quantity * line.unit_ht);
+    const lignes = officialLines.map((line) => {
       const lineId = `${commandeId}_${slugify(line.product.sku_id, "SKU")}`;
 
       return {
         commande_ligne_id: lineId,
         commande_id: commandeId,
-        client_id: clientId,
-        client_nom: clientName,
-        date_facture: cleanString(els.invoiceDateInput.value),
         sku_id: line.product.sku_id,
-        parfum_code: line.product.parfum_code,
-        parfum_nom: line.product.parfum_nom,
-        format_cl: line.product.format_cl,
         quantite: line.quantity,
-        type_vente: line.type_vente,
-        conditionnement: line.conditionnement,
-        offre_id: line.offer?.offre_id || "",
-        offre_libelle: line.offer?.libelle || "Saisie historique pro",
-        prix_unitaire_ttc: formatAmount(line.unit_ttc),
-        prix_unitaire_ht: formatAmount(line.unit_ht),
-        total_ligne_ttc: totalTtc,
-        total_ligne_ht: totalHt,
-        total_ligne_ttc_estime: totalTtc,
-        taux_tva: line.offer?.taux_tva || 0,
-        montant_tva_ligne: 0,
-        cout_unitaire: line.product.cout_revient || 0,
-        marge_brute_ligne: line.product.cout_revient
-          ? formatAmount(totalTtc - line.product.cout_revient * line.quantity)
-          : 0,
-        statut: "valide",
-        source: SOURCE,
-        note: "Saisie historique pro",
+        quantite_deposee: "",
+        quantite_vendue: "",
+        quantite_reprise: "",
+        quantite_facturee: line.quantity,
+        prix_unitaire_ttc: line.official_unit_ttc,
+        prix_unitaire_ht: line.official_unit_ht,
+        taux_tva: 0,
+        total_ligne_ttc: line.official_total_ttc,
+        total_ligne_ht: line.official_total_ht,
+        note: [
+          `${line.product.parfum_code} ${line.product.parfum_nom} ${line.product.format_cl} cL`,
+          line.estimated_total_ttc
+            ? `Catalogue estimé : ${formatCurrency(line.estimated_total_ttc)}`
+            : "",
+          "Montant ligne proratisé sur le montant facturé"
+        ].filter(Boolean).join(" · "),
         created_at: timestamp,
         updated_at: timestamp
       };
     });
 
+    const document = {
+      document_id: `DOC_${commandeId}`,
+      type_document: "facture",
+      client_id: clientId,
+      commande_id: commandeId,
+      numero_document: invoiceNumber,
+      date_document: invoiceDate,
+      date_echeance: deliveryDate || invoiceDate,
+      statut: paymentStatus === "paye" ? "payee" : "facture_creee",
+      prestataire: "historique",
+      prestataire_document_id: "",
+      pdf_url: "",
+      montant_ttc: invoiceAmount,
+      montant_ht: invoiceAmount,
+      taux_tva: 0,
+      montant_tva: 0,
+      email_envoye_at: "",
+      prestataire_payload_json: JSON.stringify({
+        source: SOURCE,
+        saisie: "revenus.html"
+      }),
+      note: orderNote,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+
     return {
       client,
       commande,
-      lignes
+      lignes,
+      document
     };
   };
 
@@ -972,6 +1045,11 @@
         sheetName: "commandes_pro",
         keyField: "commande_id",
         data: rows.commande
+      },
+      {
+        sheetName: "documents",
+        keyField: "document_id",
+        data: rows.document
       },
       ...rows.lignes.map((line) => ({
         sheetName: "commandes_pro_lignes",
@@ -1009,17 +1087,19 @@
   };
 
   const resetFormAfterSave = () => {
-    const previousDate = els.invoiceDateInput.value || todayIso();
+    const previousDate = els.invoiceDateInput?.value || todayIso();
 
-    els.form.reset();
+    if (els.form) {
+      els.form.reset();
+    }
 
-    els.invoiceDateInput.value = previousDate;
-    els.deliveryDateInput.value = previousDate;
-    els.paymentStatusInput.value = "paye";
-    els.paymentModeInput.value = "VIR";
-    els.operationTypeInput.value = "commande_ferme";
-    els.clientTypeInput.value = "caviste";
-    els.clientStatusInput.value = "client_actif";
+    if (els.invoiceDateInput) els.invoiceDateInput.value = previousDate;
+    if (els.deliveryDateInput) els.deliveryDateInput.value = previousDate;
+    if (els.paymentStatusInput) els.paymentStatusInput.value = "paye";
+    if (els.paymentModeInput) els.paymentModeInput.value = "VIR";
+    if (els.operationTypeInput) els.operationTypeInput.value = "commande_ferme";
+    if (els.clientTypeInput) els.clientTypeInput.value = "caviste";
+    if (els.clientStatusInput) els.clientStatusInput.value = "client_actif";
 
     state.quantities = new Map();
 
@@ -1041,7 +1121,6 @@
         updateQuantityInput(skuId);
         setStatus("");
         renderTotals();
-        return;
       }
     });
 
