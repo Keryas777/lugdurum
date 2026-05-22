@@ -122,12 +122,14 @@
   gap: 10px;
 }
 
-.statsProductsFilters label {
+.statsProductsFilters label,
+.statsFilterBlock {
   display: grid;
   gap: 7px;
 }
 
-.statsProductsFilters span {
+.statsProductsFilters span,
+.statsFilterBlock > span {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 900;
@@ -151,6 +153,53 @@
   font-size: 16px;
   font-weight: 850;
   outline: none;
+}
+
+/* ==============================
+   Filtres chips
+   ============================== */
+
+.statsChipGroup {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.statsChip {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--muted);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.78),
+      rgba(255, 250, 241, 0.54)
+    );
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.055);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.statsChip.isActive {
+  border-color: rgba(138, 90, 43, 0.34);
+  color: #fffaf1;
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+  box-shadow: 0 12px 24px rgba(138, 90, 43, 0.18);
+}
+
+.statsChip:active {
+  transform: scale(0.985);
 }
 
 .productKpis {
@@ -624,6 +673,12 @@
 }
 
 @media (max-width: 430px) {
+  .statsChip {
+    min-height: 42px;
+    padding-inline: 8px;
+    font-size: 0.8rem;
+  }
+
   .productVisualGroup {
     padding: 13px;
   }
@@ -681,6 +736,14 @@
 
   .productCardHeader {
     display: grid;
+  }
+
+  .statsChipGroup {
+    gap: 6px;
+  }
+
+  .statsChip {
+    font-size: 0.75rem;
   }
 
   .productVisualRow {
