@@ -16,9 +16,9 @@
 
     <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
 
-    <title>Lugdurum — Clients & facturation pro</title>
+    <title>Lugdurum — Facturation pro</title>
 
-    <link rel="stylesheet" href="./style.css?v=11" />
+    <link rel="stylesheet" href="./style.css?v=20" />
     <link rel="stylesheet" href="./facturation-pro.css?v=1" />
 
     <script src="./facturation-pro.js?v=1" defer></script>
@@ -37,7 +37,7 @@
           </div>
           <div>
             <p class="eyebrow">Lugdurum</p>
-            <h1>Clients & facturation pro</h1>
+            <h1>Facturation pro</h1>
           </div>
         </div>
 
@@ -50,13 +50,13 @@
             <p class="eyebrow">Parcours pro</p>
             <h2 id="facturationProStatusTitle">Choisis le type d’opération</h2>
             <p id="facturationProStatusText">
-              Prépare un dépôt/réassort ou une commande ferme, puis génère une facture uniquement au bon moment.
+              Prépare un dépôt/réassort, une commande ferme ou une saisie historique déjà facturée.
             </p>
           </div>
           <span class="statusDot isIdle" id="facturationProStatusDot" aria-hidden="true"></span>
         </section>
 
-        <section class="flowGrid" aria-label="Choix du parcours de facturation">
+        <section class="flowGrid" aria-label="Choix du parcours de facturation pro">
           <a
             class="flowTile flowTileReappro isSoon"
             href="./reapprovisionnement-facture.html"
@@ -85,6 +85,21 @@
               Saisir un client pro, ajouter les produits, enregistrer le brouillon, puis créer la facture VosFactures.
             </span>
             <span class="flowMeta">Aller à facturation.html</span>
+          </a>
+
+          <a
+            class="flowTile flowTileHistorique"
+            href="./revenus.html"
+            data-flow="historique-pro"
+            data-ready="true"
+          >
+            <span class="flowBadge">Rattrapage</span>
+            <span class="flowIcon" aria-hidden="true">↺</span>
+            <span class="flowTitle">Saisie historique pro</span>
+            <span class="flowText">
+              Ajouter d’anciennes commandes pro déjà livrées et facturées pour compléter les statistiques.
+            </span>
+            <span class="flowMeta">Aller à revenus.html</span>
           </a>
         </section>
 
