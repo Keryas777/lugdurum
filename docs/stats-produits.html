@@ -19,10 +19,10 @@
     <title>Lugdurum — Stats produits</title>
 
     <link rel="stylesheet" href="./style.css?v=15" />
-    <link rel="stylesheet" href="./stats-produits.css?v=6" />
+    <link rel="stylesheet" href="./stats-produits.css?v=7" />
 
     <script src="./lugdurum-api.js?v=8" defer></script>
-    <script src="./stats-produits.js?v=4" defer></script>
+    <script src="./stats-produits.js?v=5" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -71,14 +71,79 @@
               </select>
             </label>
 
-            <label>
+            <div class="statsFilterBlock">
+              <span>Lieu de vente</span>
+
+              <div
+                class="statsChipGroup"
+                role="group"
+                aria-label="Filtrer par lieu de vente"
+              >
+                <button
+                  class="statsChip isActive"
+                  type="button"
+                  data-sales-channel-filter="ALL"
+                  aria-pressed="true"
+                >
+                  Total
+                </button>
+
+                <button
+                  class="statsChip"
+                  type="button"
+                  data-sales-channel-filter="MARCHES"
+                  aria-pressed="false"
+                >
+                  Marchés
+                </button>
+
+                <button
+                  class="statsChip"
+                  type="button"
+                  data-sales-channel-filter="CAVISTES"
+                  aria-pressed="false"
+                >
+                  Cavistes
+                </button>
+              </div>
+            </div>
+
+            <div class="statsFilterBlock">
               <span>Format</span>
-              <select id="productFormatSelect">
-                <option value="ALL">Tous</option>
-                <option value="50">50 cL</option>
-                <option value="20">20 cL / coffrets</option>
-              </select>
-            </label>
+
+              <div
+                class="statsChipGroup"
+                role="group"
+                aria-label="Filtrer par format produit"
+              >
+                <button
+                  class="statsChip isActive"
+                  type="button"
+                  data-format-filter="ALL"
+                  aria-pressed="true"
+                >
+                  Total
+                </button>
+
+                <button
+                  class="statsChip"
+                  type="button"
+                  data-format-filter="50"
+                  aria-pressed="false"
+                >
+                  50 cL
+                </button>
+
+                <button
+                  class="statsChip"
+                  type="button"
+                  data-format-filter="20"
+                  aria-pressed="false"
+                >
+                  20 cL / coffrets
+                </button>
+              </div>
+            </div>
 
             <label class="searchField">
               <span>Recherche</span>
