@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Lugdurum API V13 DATA STATE FIX + FRONT QUEUE + HOME DATA + JSONP GET
+    Lugdurum API V14 DATA STATE FIX + FRONT QUEUE + HOME DATA + JSONP GET + PRO TABLE HELPERS
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
     - Ajout méthode rapide getHomeData() pour l’accueil.
@@ -18,6 +18,8 @@
       après toute lecture JSONP réussie, l’état passe explicitement en ligne.
     - Compatible avec une pastille déjà présente dans le HTML ou créée dynamiquement.
     - Évite les doublons d’écriture ventes_lignes quand Apps Script sauvegarde déjà les lignes dans les bundles.
+    - Ajoute des helpers pro :
+      clients, commandes_pro, commandes_pro_lignes, documents, referentiel.
   */
 
   const API_URL =
@@ -1381,6 +1383,86 @@
       operations
     });
 
+  const getCoreTable = async (tableName) => {
+    const key = String(tableName || "").trim();
+
+    if (!key) return [];
+
+    const result = await requestGet("getCoreData", {
+      tables: key
+    });
+
+    return Array.isArray(result?.[key]) ? result[key] : [];
+  };
+
+  const getClients = () =>
+    getCoreTable("clients");
+
+  const getCommandesPro = () =>
+    getCoreTable("commandes_pro");
+
+  const getCommandesProLignes = () =>
+    getCoreTable("commandes_pro_lignes");
+
+  const getDocuments = () =>
+    getCoreTable("documents");
+
+  const getReferentiel = () =>
+    getCoreTable("referentiel");
+
+  const saveClient = (client) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        {
+          sheetName: "clients",
+          keyField: "client_id",
+          data: client
+        }
+      ]
+    });
+
+  const saveCommandePro = (commande) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        {
+          sheetName: "commandes_pro",
+          keyField: "commande_id",
+          data: commande
+        }
+      ]
+    });
+
+  const saveCommandeProLigne = (ligne) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        {
+          sheetName: "commandes_pro_lignes",
+          keyField: "commande_ligne_id",
+          data: ligne
+        }
+      ]
+    });
+
+  const saveCommandeProLignes = (lignes = []) =>
+    requestQueuedPost("batchUpsert", {
+      operations: toArray(lignes).map((ligne) => ({
+        sheetName: "commandes_pro_lignes",
+        keyField: "commande_ligne_id",
+        data: ligne
+      }))
+    });
+
+  const saveDocument = (documentRow) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        {
+          sheetName: "documents",
+          keyField: "document_id",
+          data: documentRow
+        }
+      ]
+    });
+
   window.LugdurumDataState = {
     set: setDataState,
     get: getDataState
@@ -1406,6 +1488,19 @@
         tables
       });
     },
+
+    getCoreTable,
+    getClients,
+    getCommandesPro,
+    getCommandesProLignes,
+    getDocuments,
+    getReferentiel,
+
+    saveClient,
+    saveCommandePro,
+    saveCommandeProLigne,
+    saveCommandeProLignes,
+    saveDocument,
 
     getCatalogue() {
       return requestGet("getCatalogue");
