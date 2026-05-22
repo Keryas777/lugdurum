@@ -17,11 +17,6 @@
     - Les montants de lignes sont répartis au prorata du catalogue estimé pour retomber sur le montant facturé.
   */
 
-  const CURRENT_USER = {
-    user_id: "U_JEROME",
-    nom: "Jérôme"
-  };
-
   const SOURCE = "SAISIE_HISTORIQUE_PRO";
 
   const STORAGE_KEYS = {
@@ -898,6 +893,26 @@
     return `CP_HIST_${datePart}_${slugify(clientId, "CLIENT")}_${centsKey(invoiceAmount)}`;
   };
 
+  const mergeSavedClientInState = (client) => {
+    const safeClient = normalizeClient(client);
+    const clientId = cleanString(safeClient.client_id);
+
+    if (!clientId) return;
+
+    const existingIndex = state.clients.findIndex((item) => item.client_id === clientId);
+
+    if (existingIndex >= 0) {
+      state.clients[existingIndex] = {
+        ...state.clients[existingIndex],
+        ...safeClient
+      };
+    } else {
+      state.clients.push(safeClient);
+    }
+
+    writeJson(STORAGE_KEYS.clientsCache, state.clients);
+  };
+
   const buildRows = () => {
     const existingClient = getSelectedClient();
     const timestamp = nowIso();
@@ -949,7 +964,7 @@
       client_id: clientId,
       type_operation: operationType,
       date_commande: invoiceDate,
-      date_livraison_prevue: deliveryDate,
+      "date_livraison_prevue": deliveryDate,
       statut: "facturee",
       montant_total_ttc: invoiceAmount,
       montant_total_ht: invoiceAmount,
@@ -1068,6 +1083,8 @@
         typeof api().getPendingWritesCount === "function"
           ? api().getPendingWritesCount()
           : 0;
+
+      mergeSavedClientInState(rows.client);
 
       setStatus(
         pendingCount > 0
