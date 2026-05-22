@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Facturation pro</title>
+
+    <link rel="stylesheet" href="./style.css?v=11" />
+    <link rel="stylesheet" href="./facturation.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=13" defer></script>
+    <script src="./lugdurum-facturation-client.js?v=1" defer></script>
+    <script src="./facturation.js?v=1" defer></script>
+  </head>
+
+  <body class="facturationPage">
+    <div class="appShell facturationShell">
+      <header class="topbar facturationTopbar">
+        <a class="backLink" href="./index.html" aria-label="Retour au tableau de bord">
+          <span aria-hidden="true">←</span>
+        </a>
+
+        <div class="brandBlock">
+          <div class="brandMark" aria-hidden="true">
+            <img src="./assets/logo-lugdurum.png" alt="" onerror="this.style.display='none'" />
+          </div>
+          <div>
+            <p class="eyebrow">Lugdurum</p>
+            <h1>Facturation pro</h1>
+          </div>
+        </div>
+
+        <div class="userPill" id="currentUserName">Jérôme</div>
+      </header>
+
+      <main class="facturationMain">
+        <section class="statusCard" aria-live="polite">
+          <div>
+            <p class="eyebrow">Module client / facture</p>
+            <h2 id="facturationStatusTitle">Brouillon local</h2>
+            <p id="facturationStatusText">Prépare une commande pro puis génère la facture via le Worker sécurisé.</p>
+          </div>
+          <span class="statusDot isIdle" id="facturationStatusDot" aria-hidden="true"></span>
+        </section>
+
+        <section class="panel connectionPanel" id="connectionPanel">
+          <button class="panelToggle" type="button" id="connectionToggle" aria-expanded="false" aria-controls="connectionBody">
+            <span>
+              <span class="stepBadge">⚙</span>
+              Connexion facturation
+            </span>
+            <span class="chevron" aria-hidden="true">⌄</span>
+          </button>
+
+          <div class="panelBody isCollapsed" id="connectionBody">
+            <p class="helperText">
+              Le token VosFactures reste dans Cloudflare. Ici, on indique seulement l’URL du Worker et la clé interne Lugdurum.
+            </p>
+
+            <label class="field fullField">
+              <span>URL du Worker</span>
+              <input id="workerUrlInput" type="url" inputmode="url" placeholder="https://lugdurum-facturation.xxx.workers.dev" autocomplete="off" />
+            </label>
+
+            <label class="field fullField">
+              <span>Clé interne</span>
+              <input id="accessKeyInput" type="password" placeholder="Clé interne Cloudflare" autocomplete="off" />
+            </label>
+
+            <div class="inlineActions">
+              <button class="secondaryButton" type="button" id="saveConnectionButton">Enregistrer la connexion</button>
+              <button class="ghostButton" type="button" id="clearConnectionButton">Effacer</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="sectionHeader">
+            <span class="stepBadge">1</span>
+            <div>
+              <p class="eyebrow">Client pro</p>
+              <h2>Qui facturer ?</h2>
+            </div>
+          </div>
+
+          <div class="fieldGrid">
+            <label class="field fullField">
+              <span>Client existant</span>
+              <select id="clientSelect">
+                <option value="">Nouveau client ou sélection manuelle</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Type</span>
+              <select id="clientTypeInput">
+                <option value="caviste">Caviste</option>
+                <option value="epicerie_fine">Épicerie fine</option>
+                <option value="restaurant">Restaurant</option>
+                <option value="gite">Gîte / boutique locale</option>
+                <option value="revendeur">Revendeur</option>
+                <option value="autre">Autre</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Statut</span>
+              <select id="clientStatusInput">
+                <option value="client_actif">Client actif</option>
+                <option value="prospect">Prospect</option>
+                <option value="interesse">Intéressé</option>
+                <option value="a_relancer">À relancer</option>
+              </select>
+            </label>
+
+            <label class="field fullField">
+              <span>Nom commercial</span>
+              <input id="clientCommercialNameInput" type="text" placeholder="Ex. Cave des Monts d’Or" autocomplete="organization" />
+            </label>
+
+            <label class="field fullField">
+              <span>Raison sociale</span>
+              <input id="clientLegalNameInput" type="text" placeholder="Ex. Cave Exemple SARL" autocomplete="organization" />
+            </label>
+
+            <label class="field">
+              <span>SIRET</span>
+              <input id="clientSiretInput" type="text" inputmode="numeric" placeholder="14 chiffres" />
+            </label>
+
+            <label class="field">
+              <span>SIREN</span>
+              <input id="clientSirenInput" type="text" inputmode="numeric" placeholder="9 chiffres" />
+            </label>
+
+            <label class="field fullField">
+              <span>Email facture</span>
+              <input id="clientEmailInput" type="email" placeholder="contact@exemple.fr" autocomplete="email" />
+            </label>
+
+            <label class="field fullField">
+              <span>Adresse</span>
+              <input id="clientAddressInput" type="text" placeholder="Rue, numéro, complément" autocomplete="street-address" />
+            </label>
+
+            <label class="field">
+              <span>Code postal</span>
+              <input id="clientZipInput" type="text" inputmode="numeric" placeholder="69000" autocomplete="postal-code" />
+            </label>
+
+            <label class="field">
+              <span>Ville</span>
+              <input id="clientCityInput" type="text" placeholder="Lyon" autocomplete="address-level2" />
+            </label>
+
+            <label class="field">
+              <span>Téléphone</span>
+              <input id="clientPhoneInput" type="tel" placeholder="06…" autocomplete="tel" />
+            </label>
+
+            <label class="field">
+              <span>Contact</span>
+              <input id="clientContactInput" type="text" placeholder="Prénom / nom" autocomplete="name" />
+            </label>
+
+            <label class="field fullField">
+              <span>Note client</span>
+              <textarea id="clientNoteInput" rows="2" placeholder="Infos utiles : contact salon, conditions habituelles, relance…"></textarea>
+            </label>
+          </div>
+
+          <div class="inlineActions">
+            <button class="secondaryButton" type="button" id="saveClientButton">Enregistrer client</button>
+            <button class="ghostButton" type="button" id="resetClientButton">Nouveau client</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="sectionHeader">
+            <span class="stepBadge">2</span>
+            <div>
+              <p class="eyebrow">Document</p>
+              <h2>Détails de la facture</h2>
+            </div>
+          </div>
+
+          <div class="fieldGrid">
+            <label class="field">
+              <span>Date de facture</span>
+              <input id="issueDateInput" type="date" />
+            </label>
+
+            <label class="field">
+              <span>Date d’échéance</span>
+              <input id="paymentToInput" type="date" />
+            </label>
+
+            <label class="field">
+              <span>Statut commande</span>
+              <select id="orderStatusInput">
+                <option value="brouillon">Brouillon</option>
+                <option value="confirmee">Confirmée</option>
+                <option value="preparee">Préparée</option>
+                <option value="livree">Livrée</option>
+                <option value="facturee">Facturée</option>
+                <option value="payee">Payée</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Paiement</span>
+              <select id="paymentStatusInput">
+                <option value="non_paye">Non payé</option>
+                <option value="partiel">Partiel</option>
+                <option value="paye">Payé</option>
+              </select>
+            </label>
+
+            <label class="field fullField">
+              <span>Objet / note interne</span>
+              <input id="orderNoteInput" type="text" placeholder="Ex. Commande salon / référencement boutique" />
+            </label>
+
+            <label class="field fullField">
+              <span>Mention facture</span>
+              <textarea id="invoiceDescriptionInput" rows="2">TVA non applicable, art. 293 B du CGI</textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel productPanel">
+          <div class="sectionHeader">
+            <span class="stepBadge">3</span>
+            <div>
+              <p class="eyebrow">Produits</p>
+              <h2>Ajouter les lignes</h2>
+            </div>
+          </div>
+
+          <div class="productToolbar">
+            <label class="field searchField">
+              <span>Rechercher</span>
+              <input id="productSearchInput" type="search" placeholder="Parfum, format, SKU…" />
+            </label>
+            <button class="secondaryButton compactButton" type="button" id="reloadProductsButton">Recharger</button>
+          </div>
+
+          <div class="productGrid" id="productGrid" aria-live="polite"></div>
+
+          <details class="manualLineBox">
+            <summary>Ajouter une ligne manuelle</summary>
+            <div class="manualLineGrid">
+              <label class="field fullField">
+                <span>Libellé</span>
+                <input id="manualLineNameInput" type="text" placeholder="Ex. Coffret dégustation x6" />
+              </label>
+              <label class="field">
+                <span>Quantité</span>
+                <input id="manualLineQtyInput" type="number" min="1" step="1" value="1" />
+              </label>
+              <label class="field">
+                <span>Prix unitaire TTC</span>
+                <input id="manualLinePriceInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" />
+              </label>
+              <button class="secondaryButton fullButton" type="button" id="addManualLineButton">Ajouter la ligne</button>
+            </div>
+          </details>
+
+          <div class="invoiceLinesBlock">
+            <h3>Lignes de facture</h3>
+            <div class="invoiceLines" id="invoiceLines"></div>
+          </div>
+        </section>
+
+        <section class="summaryCard" id="summaryCard">
+          <div>
+            <p class="eyebrow">Résumé</p>
+            <h2 id="summaryTotal">0,00 €</h2>
+            <p id="summaryMeta">0 ligne · TVA 0 € · Franchise en base</p>
+          </div>
+
+          <div class="summaryActions">
+            <button class="secondaryButton" type="button" id="saveDraftButton">Enregistrer brouillon</button>
+            <button class="primaryButton" type="button" id="createInvoiceButton">Créer facture VosFactures</button>
+            <button class="ghostButton" type="button" id="openPdfButton" disabled>Voir PDF</button>
+            <button class="ghostButton" type="button" id="sendEmailButton" disabled>Envoyer email</button>
+          </div>
+        </section>
+
+        <section class="panel resultPanel" id="resultPanel" hidden>
+          <div class="sectionHeader">
+            <span class="stepBadge">✓</span>
+            <div>
+              <p class="eyebrow">Retour prestataire</p>
+              <h2>Facture créée</h2>
+            </div>
+          </div>
+
+          <dl class="resultList">
+            <div>
+              <dt>Numéro</dt>
+              <dd id="resultNumber">—</dd>
+            </div>
+            <div>
+              <dt>ID VosFactures</dt>
+              <dd id="resultProviderId">—</dd>
+            </div>
+            <div>
+              <dt>Montant</dt>
+              <dd id="resultAmount">—</dd>
+            </div>
+          </dl>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
