@@ -34,42 +34,106 @@ body{margin:0;overflow-x:hidden;background:var(--bg)}
 
 a{color:inherit}
 
+/* ==============================
+   Header module recettes
+   ============================== */
+
 .topbar{
   width:100%;
   display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
+  align-items:center;
+  justify-content:flex-start;
   gap:12px;
   margin-bottom:14px;
 }
-.brandBlock{display:flex;align-items:center;gap:12px;min-width:0}
+
+.topbar .backBtn,
+.topbar .backLink{
+  flex:0 0 46px;
+  width:46px;
+  height:46px;
+  min-width:46px;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  border:1px solid var(--line);
+  border-radius:999px;
+  color:var(--text);
+  background:rgba(255,250,241,.84);
+  box-shadow:0 8px 20px rgba(31,27,22,.08);
+
+  font-size:1.55rem;
+  font-weight:900;
+  line-height:1;
+  text-decoration:none;
+}
+
+.topbar .backBtn:active,
+.topbar .backLink:active{
+  transform:scale(.96);
+}
+
+.brandBlock{
+  flex:1 1 auto;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+}
+
 .brandMark{
-  flex:0 0 auto;
-  width:42px;
-  height:42px;
+  flex:0 0 52px;
+  width:52px;
+  height:52px;
   border-radius:15px;
   display:grid;
   place-items:center;
+  overflow:hidden;
   background:linear-gradient(135deg,var(--kraft),var(--rum));
   color:var(--paper);
   font-weight:900;
   box-shadow:0 10px 22px rgba(138,90,43,.18);
 }
+
+.brandMark img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+.brandBlock > div:not(.brandMark){
+  min-width:0;
+}
+
 .eyebrow{
-  margin:0 0 4px;
+  margin:0 0 5px;
   color:var(--rum);
-  font-size:.74rem;
-  font-weight:850;
+  font-family:Algerian,Copperplate,Georgia,"Times New Roman",serif;
+  font-size:clamp(1rem,4vw,1.35rem);
+  font-weight:900;
   letter-spacing:.12em;
+  line-height:1;
   text-transform:uppercase;
+  white-space:nowrap;
 }
+
 .title{
+  max-width:100%;
   margin:0;
-  font-size:clamp(1.85rem,8vw,3.15rem);
-  line-height:.95;
+  overflow:hidden;
+  color:var(--text);
+  font-size:clamp(1.35rem,5.7vw,2rem);
+  line-height:1.02;
   letter-spacing:-.055em;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
+
 .subtitle{margin:8px 0 0;color:var(--muted);line-height:1.35;font-size:1rem}
+
 .syncPill{
   flex:0 0 auto;
   max-width:42vw;
@@ -258,7 +322,36 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
 @media (max-width:390px){
   .appShell{padding-inline:12px}
-  .brandMark{width:38px;height:38px;border-radius:14px}
+
+  .topbar{
+    gap:8px;
+  }
+
+  .topbar .backBtn,
+  .topbar .backLink{
+    flex-basis:38px;
+    width:38px;
+    height:38px;
+    min-width:38px;
+    font-size:1.35rem;
+  }
+
+  .brandMark{
+    flex-basis:46px;
+    width:46px;
+    height:46px;
+    border-radius:13px;
+  }
+
+  .eyebrow{
+    font-size:clamp(.92rem,4.1vw,1.2rem);
+    letter-spacing:.1em;
+  }
+
+  .title{
+    font-size:clamp(1.18rem,5.6vw,1.7rem);
+  }
+
   .syncPill{display:none}
   .hero,.card,.panel,.formCard,.step{padding:16px;border-radius:23px}
   .stat{padding:11px 10px}
