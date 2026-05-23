@@ -2,11 +2,12 @@
   "use strict";
 
   /*
-    Facturation Pro Hub V3
+    Facturation Pro Hub V4
     - Page d’orientation vers les parcours pro :
       1) Commande ferme + facture
       2) Réapprovisionnement + facture
       3) Saisie historique pro
+      4) Liste des factures pro
     - Aucun appel API.
     - Aucune création de facture.
     - Pas d’indicateur de statut visuel : cette page est un hub simple.
@@ -19,7 +20,7 @@
   const STATUS_MESSAGES = {
     idle: {
       title: "Choisir une opération",
-      text: "Commande ferme, dépôt-vente ou rattrapage d’anciennes factures."
+      text: "Commande ferme, dépôt-vente, historique ou consultation des factures."
     },
     "commande-ferme": {
       title: "Commande ferme",
@@ -28,6 +29,10 @@
     "historique-pro": {
       title: "Saisie historique pro",
       text: "Ouverture du rattrapage des anciennes commandes déjà facturées."
+    },
+    "factures-pro": {
+      title: "Liste des factures",
+      text: "Ouverture du tableau des factures pro et de leurs détails."
     },
     reappro: {
       title: "Réapprovisionnement à créer",
