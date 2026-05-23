@@ -39,7 +39,7 @@
   --tap: 48px;
 
   --shell-inline: 14px;
-  --topbar-space: 140px;
+  --topbar-space: 128px;
 }
 
 *,
@@ -205,6 +205,65 @@ video {
 .appShell > .topbar > * {
   position: relative;
   z-index: 1;
+}
+
+/* ===== Header compact avec bouton retour intégré ===== */
+
+.appShell > .topbar.missionsTopbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 10px 2px 14px;
+}
+
+.backBtn {
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  flex: 0 0 50px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: 999px;
+
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 250, 241, 0.72));
+  box-shadow: 0 10px 24px rgba(75, 48, 22, 0.11);
+
+  font-size: 1.9rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.backBtn:active {
+  transform: scale(0.96);
+}
+
+.missionsTopbar .brandBlock {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.missionsTopbar .brandHeader {
+  align-items: center;
+  min-width: 0;
+}
+
+.missionsTopbar .brandText {
+  min-width: 0;
+}
+
+.missionsTopbar .brandBlock h1 {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .topbarMain {
@@ -845,15 +904,27 @@ video {
 
 @media (max-width: 640px) {
   :root {
-    --topbar-space: 124px;
+    --topbar-space: 116px;
   }
 
   .appShell > .topbar {
     gap: 8px;
   }
 
+  .appShell > .topbar.missionsTopbar {
+    gap: 10px;
+  }
+
   .topbarMain {
     gap: 10px;
+  }
+
+  .backBtn {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    flex-basis: 46px;
+    font-size: 1.7rem;
   }
 
   .brandHeader {
@@ -877,6 +948,10 @@ video {
     line-height: 0.98;
   }
 
+  .missionsTopbar .brandBlock h1 {
+    font-size: clamp(1.45rem, 6.2vw, 2.35rem);
+  }
+
   .userPill {
     min-height: 44px;
     padding: 0 12px;
@@ -886,7 +961,7 @@ video {
 
 @media (max-width: 430px) {
   :root {
-    --topbar-space: 120px;
+    --topbar-space: 108px;
   }
 
   .appShell {
@@ -896,6 +971,19 @@ video {
   .appShell > .topbar {
     padding-top: 6px;
     padding-bottom: 12px;
+  }
+
+  .appShell > .topbar.missionsTopbar {
+    padding-top: 8px;
+    padding-bottom: 12px;
+  }
+
+  .backBtn {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    flex-basis: 42px;
+    font-size: 1.55rem;
   }
 
   .brandLogo {
@@ -915,6 +1003,10 @@ video {
     white-space: nowrap;
   }
 
+  .missionsTopbar .brandBlock h1 {
+    font-size: clamp(1.35rem, 5.7vw, 2rem);
+  }
+
   .userPill {
     margin-top: 4px;
     font-size: 0.95rem;
@@ -927,7 +1019,7 @@ video {
 
 @media (max-width: 370px) {
   :root {
-    --topbar-space: 114px;
+    --topbar-space: 104px;
   }
 
   .heroStats {
@@ -950,6 +1042,18 @@ video {
     font-size: clamp(1rem, 5vw, 1.45rem);
   }
 
+  .appShell > .topbar.missionsTopbar {
+    gap: 8px;
+  }
+
+  .backBtn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    flex-basis: 38px;
+    font-size: 1.4rem;
+  }
+
   .brandHeader {
     gap: 10px;
   }
@@ -969,6 +1073,10 @@ video {
     font-size: clamp(1.6rem, 9vw, 2.4rem);
   }
 
+  .missionsTopbar .brandBlock h1 {
+    font-size: clamp(1.18rem, 5.6vw, 1.7rem);
+  }
+
   .userPill {
     padding: 0 10px;
   }
@@ -983,7 +1091,7 @@ video {
 @media (min-width: 620px) {
   :root {
     --shell-inline: 22px;
-    --topbar-space: 148px;
+    --topbar-space: 136px;
   }
 
   .appShell {
@@ -1049,6 +1157,10 @@ video {
 @media (display-mode: standalone) {
   .appShell > .topbar {
     top: env(safe-area-inset-top);
+    padding-top: 0;
+  }
+
+  .appShell > .topbar.missionsTopbar {
     padding-top: 0;
   }
 }
