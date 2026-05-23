@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Dépôt-vente</title>
+
+    <link rel="stylesheet" href="./style.css?v=20" />
+    <link rel="stylesheet" href="./reapprovisionnement-facture.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=14" defer></script>
+    <script src="./reapprovisionnement-facture.js?v=1" defer></script>
+    <script src="./pwa.js?v=15" defer></script>
+  </head>
+
+  <body class="reapproPage">
+    <div class="appShell reapproShell">
+      <header class="topbar reapproTopbar">
+        <a class="backBtn" href="./facturation-pro.html" aria-label="Retour à la facturation pro">←</a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img
+              class="brandLogo"
+              src="./assets/icons/icon-180.png"
+              alt="Logo Lugdurum"
+            />
+
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Dépôt-vente</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="reapproLayout">
+        <section class="reapproHero">
+          <div>
+            <p class="sectionKicker">Réassort pro</p>
+            <h2>Relevé stock + facture</h2>
+            <p class="reapproHeroText">
+              Compte le stock restant chez le revendeur, facture le vendu, puis ajoute le réassort si besoin.
+            </p>
+          </div>
+
+          <div class="reapproHeroStats">
+            <article>
+              <span>À facturer</span>
+              <strong id="heroInvoiceAmount">0 €</strong>
+            </article>
+
+            <article>
+              <span>Vendues</span>
+              <strong id="heroSoldBottles">0</strong>
+            </article>
+
+            <article>
+              <span>Réassort</span>
+              <strong id="heroReapproBottles">0</strong>
+            </article>
+          </div>
+        </section>
+
+        <form class="reapproForm" id="reapproForm">
+          <section class="reapproPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 1</p>
+                <h2>Client pro</h2>
+              </div>
+
+              <button class="smallTextBtn" id="reloadDataBtn" type="button">
+                Actualiser
+              </button>
+            </div>
+
+            <label class="fieldBlock wide">
+              <span>Client existant</span>
+              <select id="clientSelect">
+                <option value="">Nouveau client ou saisie manuelle</option>
+              </select>
+            </label>
+
+            <div class="formGrid">
+              <label class="fieldBlock">
+                <span>Type</span>
+                <select id="clientTypeInput">
+                  <option value="caviste">Caviste</option>
+                  <option value="epicerie_fine">Épicerie fine</option>
+                  <option value="restaurant">Restaurant</option>
+                  <option value="gite">Gîte / hébergement</option>
+                  <option value="autre_pro">Autre pro</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Statut</span>
+                <select id="clientStatusInput">
+                  <option value="client_actif">Client actif</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="inactif">Inactif</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Nom commercial</span>
+                <input
+                  id="clientCommercialNameInput"
+                  type="text"
+                  autocomplete="organization"
+                  placeholder="Ex : Cave des Lumières"
+                  required
+                />
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Raison sociale</span>
+                <input
+                  id="clientLegalNameInput"
+                  type="text"
+                  autocomplete="organization"
+                  placeholder="Nom juridique si différent"
+                />
+              </label>
+
+              <label class="fieldBlock">
+                <span>SIRET</span>
+                <input
+                  id="clientSiretInput"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="14 chiffres"
+                />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Email</span>
+                <input
+                  id="clientEmailInput"
+                  type="email"
+                  autocomplete="email"
+                  placeholder="contact@..."
+                />
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Adresse</span>
+                <input
+                  id="clientAddressInput"
+                  type="text"
+                  autocomplete="street-address"
+                  placeholder="Rue, route, lieu-dit…"
+                />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Code postal</span>
+                <input
+                  id="clientZipInput"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="postal-code"
+                  placeholder="Ex : 01120"
+                />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Ville</span>
+                <input
+                  id="clientCityInput"
+                  type="text"
+                  autocomplete="address-level2"
+                  placeholder="Ville"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section class="reapproPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 2</p>
+                <h2>Type d’opération</h2>
+              </div>
+            </div>
+
+            <div class="operationGrid">
+              <label class="choiceCard">
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="depot_vente_complet"
+                  checked
+                />
+                <span>
+                  <strong>Passage complet</strong>
+                  <small>Stock compté, facture à préparer, réassort déposé.</small>
+                </span>
+              </label>
+
+              <label class="choiceCard">
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="depot_vente_releve"
+                />
+                <span>
+                  <strong>Relevé à distance</strong>
+                  <small>Stock transmis par téléphone/mail, réassort livré plus tard.</small>
+                </span>
+              </label>
+
+              <label class="choiceCard">
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="depot_vente_reappro"
+                />
+                <span>
+                  <strong>Livraison réassort seule</strong>
+                  <small>Aucune vente facturée, seulement du stock ajouté.</small>
+                </span>
+              </label>
+            </div>
+
+            <div class="formGrid">
+              <label class="fieldBlock">
+                <span>Date du relevé</span>
+                <input id="operationDateInput" type="date" required />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Date livraison / réassort</span>
+                <input id="deliveryDateInput" type="date" />
+              </label>
+
+              <label class="fieldBlock">
+                <span>Paiement prévu</span>
+                <select id="paymentModeInput">
+                  <option value="VIR">Virement</option>
+                  <option value="CB">CB</option>
+                  <option value="ESP">Espèces</option>
+                  <option value="CHQ">Chèque</option>
+                  <option value="AUTRE">Autre</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock">
+                <span>Statut paiement</span>
+                <select id="paymentStatusInput">
+                  <option value="a_regler">À régler</option>
+                  <option value="paye">Payé</option>
+                  <option value="attente">En attente</option>
+                </select>
+              </label>
+
+              <label class="fieldBlock wide">
+                <span>Note</span>
+                <textarea
+                  id="operationNoteInput"
+                  rows="3"
+                  placeholder="Ex : relevé transmis par mail, réassort à livrer semaine prochaine…"
+                ></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="reapproPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 3</p>
+                <h2>Stock 50 cL</h2>
+              </div>
+
+              <button class="smallTextBtn" id="resetStock50Btn" type="button">
+                Réinitialiser
+              </button>
+            </div>
+
+            <p class="reapproHint">
+              Le stock attendu est repris depuis l’historique du client. Corrige-le si le terrain ne correspond pas.
+            </p>
+
+            <div class="reapproProductRows" id="productRows50">
+              <p class="reapproEmpty">Chargement du catalogue…</p>
+            </div>
+          </section>
+
+          <section class="reapproPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Étape 4</p>
+                <h2>Petites bouteilles 20 cL</h2>
+              </div>
+            </div>
+
+            <div class="modeToggle" role="group" aria-label="Mode de saisie des 20 cL">
+              <button
+                class="modeBtn isActive"
+                id="mode20GlobalBtn"
+                type="button"
+                data-mode-20="global"
+              >
+                Mode global
+              </button>
+
+              <button
+                class="modeBtn"
+                id="mode20DetailBtn"
+                type="button"
+                data-mode-20="detail"
+              >
+                Mode détaillé
+              </button>
+            </div>
+
+            <p class="reapproHint" id="mode20Hint">
+              Si le caviste donne seulement le nombre de 20 cL vendues, elles seront enregistrées en “20 cL mixte”.
+            </p>
+
+            <div class="global20Panel" id="global20Panel">
+              <div class="global20Grid">
+                <label class="fieldBlock">
+                  <span>Stock attendu 20 cL</span>
+                  <input id="global20ExpectedInput" type="number" inputmode="numeric" min="0" step="1" placeholder="0" />
+                </label>
+
+                <label class="fieldBlock">
+                  <span>Stock restant 20 cL</span>
+                  <input id="global20RemainingInput" type="number" inputmode="numeric" min="0" step="1" placeholder="0" />
+                </label>
+
+                <label class="fieldBlock">
+                  <span>Reprise 20 cL</span>
+                  <input id="global20ReturnInput" type="number" inputmode="numeric" min="0" step="1" placeholder="0" />
+                </label>
+
+                <article class="computedCard">
+                  <span>20 cL vendues</span>
+                  <strong id="global20SoldValue">0</strong>
+                </article>
+              </div>
+
+              <div class="sectionHeader compact innerHeader">
+                <div>
+                  <p class="sectionKicker">Réassort 20 cL</p>
+                  <h3>Quantités déposées par parfum</h3>
+                </div>
+              </div>
+
+              <div class="reapproMiniRows" id="reapproRows20Global">
+                <p class="reapproEmpty">Chargement des 20 cL…</p>
+              </div>
+            </div>
+
+            <div class="detail20Panel" id="detail20Panel" hidden>
+              <div class="reapproProductRows" id="productRows20">
+                <p class="reapproEmpty">Chargement des 20 cL…</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="reapproPanel finalPanel">
+            <div class="sectionHeader compact">
+              <div>
+                <p class="sectionKicker">Validation</p>
+                <h2>Résumé facturation</h2>
+              </div>
+            </div>
+
+            <div class="summaryGrid">
+              <article>
+                <span>Catalogue estimé</span>
+                <strong id="catalogueTotal">0 €</strong>
+              </article>
+
+              <article>
+                <span>Montant à facturer</span>
+                <input
+                  id="invoiceAmountInput"
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                />
+              </article>
+
+              <article>
+                <span>Vendus</span>
+                <strong id="summarySold">0 bouteille</strong>
+              </article>
+
+              <article>
+                <span>Réassort</span>
+                <strong id="summaryReappro">0 bouteille</strong>
+              </article>
+            </div>
+
+            <p class="reapproHint">
+              Une ligne “document à créer” sera ajoutée si un montant est à facturer. La facture pourra être créée plus tard depuis le détail.
+            </p>
+
+            <button class="primaryBtn" id="saveReapproBtn" type="submit">
+              Enregistrer le dépôt-vente
+            </button>
+
+            <p class="reapproStatus" id="reapproStatus" role="status"></p>
+          </section>
+        </form>
+      </main>
+    </div>
+  </body>
+</html>
