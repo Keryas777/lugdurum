@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Détail facture</title>
+
+    <link rel="stylesheet" href="./style.css?v=20" />
+    <link rel="stylesheet" href="./facture-detail.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=14" defer></script>
+    <script src="./facture-detail.js?v=1" defer></script>
+    <script src="./pwa.js?v=15" defer></script>
+  </head>
+
+  <body class="page-facture-detail">
+    <div class="appShell factureDetailShell">
+      <header class="topbar factureDetailTopbar">
+        <a class="backBtn" href="./factures-pro.html" aria-label="Retour à la liste des factures">←</a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Détail facture</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="factureDetailLayout">
+        <section class="factureDetailHero" aria-labelledby="detailClientTitle">
+          <div>
+            <p class="sectionKicker" id="detailSourceLabel">Facture pro</p>
+            <h2 id="detailClientTitle">Chargement…</h2>
+            <p class="factureDetailHeroText" id="detailInvoiceMeta">Lecture des données.</p>
+          </div>
+
+          <div class="factureDetailHeroStats" aria-label="Résumé facture">
+            <article>
+              <span>Montant</span>
+              <strong id="detailAmount">—</strong>
+            </article>
+            <article>
+              <span>Statut</span>
+              <strong id="detailPaymentStatus">—</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="factureDetailPanel" aria-labelledby="documentTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Document</p>
+              <h2 id="documentTitle">Facture</h2>
+            </div>
+          </div>
+
+          <div class="detailGrid" id="documentDetails">
+            <p class="factureDetailEmpty">Chargement du document…</p>
+          </div>
+
+          <div class="documentActions" id="documentActions"></div>
+        </section>
+
+        <section class="factureDetailPanel" aria-labelledby="clientTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Client</p>
+              <h2 id="clientTitle">Informations client</h2>
+            </div>
+          </div>
+
+          <div class="detailGrid" id="clientDetails">
+            <p class="factureDetailEmpty">Chargement du client…</p>
+          </div>
+        </section>
+
+        <section class="factureDetailPanel" aria-labelledby="productsTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Produits</p>
+              <h2 id="productsTitle">Lignes facturées</h2>
+            </div>
+          </div>
+
+          <div class="invoiceLinesList" id="invoiceLinesList">
+            <p class="factureDetailEmpty">Chargement des lignes…</p>
+          </div>
+        </section>
+
+        <section class="factureDetailPanel" aria-labelledby="technicalTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Technique</p>
+              <h2 id="technicalTitle">Références</h2>
+            </div>
+          </div>
+
+          <div class="detailGrid" id="technicalDetails">
+            <p class="factureDetailEmpty">Chargement des références…</p>
+          </div>
+
+          <p class="factureDetailStatus" id="factureDetailStatus" role="status"></p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

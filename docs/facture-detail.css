@@ -1,0 +1,338 @@
+/* ==============================
+   Page détail facture pro
+   Le header reste géré par style.css
+   ============================== */
+
+.page-facture-detail .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.factureDetailShell {
+  max-width: 920px;
+}
+
+.factureDetailLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.factureDetailHero,
+.factureDetailPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(
+      160deg,
+      rgba(255, 250, 241, 0.96),
+      rgba(245, 231, 208, 0.72)
+    );
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.factureDetailHero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.factureDetailHero h2,
+.factureDetailPanel h2 {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.factureDetailHero h2 {
+  font-size: clamp(1.55rem, 6vw, 2.45rem);
+}
+
+.factureDetailPanel h2 {
+  font-size: clamp(1.2rem, 5vw, 1.72rem);
+}
+
+.factureDetailHeroText,
+.factureDetailHint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.factureDetailHeroStats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.factureDetailHeroStats article {
+  min-width: 0;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 250, 241, 0.56)
+    );
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+}
+
+.factureDetailHeroStats span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.factureDetailHeroStats strong {
+  display: block;
+  color: var(--rum);
+  font-size: clamp(1.04rem, 5vw, 1.55rem);
+  letter-spacing: -0.045em;
+  white-space: nowrap;
+}
+
+.factureDetailPanel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.detailItem {
+  min-width: 0;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: rgba(255, 250, 241, 0.52);
+}
+
+.detailItem span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.detailItem strong,
+.detailItem a {
+  color: var(--text);
+  font-size: 0.96rem;
+  font-weight: 900;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.detailItem a {
+  color: var(--rum);
+}
+
+.documentActions {
+  display: grid;
+  gap: 10px;
+}
+
+.documentButton,
+.documentMutedButton {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 18px;
+  font: inherit;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.documentButton {
+  color: #fffaf1;
+  background:
+    linear-gradient(
+      135deg,
+      var(--rum),
+      var(--kraft)
+    );
+  box-shadow: 0 12px 26px rgba(75, 48, 22, 0.18);
+}
+
+.documentMutedButton {
+  color: var(--muted);
+  background: rgba(31, 27, 22, 0.06);
+  border: 1px solid rgba(31, 27, 22, 0.08);
+}
+
+.invoiceLinesList {
+  display: grid;
+  gap: 10px;
+}
+
+.invoiceLineCard {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: rgba(255, 250, 241, 0.56);
+}
+
+.invoiceLineMain {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.invoiceLineName {
+  min-width: 0;
+}
+
+.invoiceLineName strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 950;
+  line-height: 1.12;
+}
+
+.invoiceLineName span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 780;
+  line-height: 1.18;
+}
+
+.invoiceLineAmount {
+  color: var(--rum);
+  font-size: 1rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.invoiceLineMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.invoiceLineMeta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--muted);
+  background: rgba(31, 27, 22, 0.055);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--rum);
+  background: rgba(168, 143, 104, 0.14);
+  border: 1px solid rgba(168, 143, 104, 0.22);
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.statusChip.isPaid {
+  color: var(--green);
+  background: rgba(63, 111, 79, 0.12);
+  border-color: rgba(63, 111, 79, 0.2);
+}
+
+.statusChip.isPending {
+  color: var(--rum);
+  background: rgba(216, 160, 79, 0.16);
+  border-color: rgba(216, 160, 79, 0.28);
+}
+
+.statusChip.isCancelled {
+  color: var(--red);
+  background: rgba(179, 92, 58, 0.12);
+  border-color: rgba(179, 92, 58, 0.2);
+}
+
+.factureDetailEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 250, 241, 0.42);
+}
+
+.factureDetailStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.factureDetailStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.factureDetailStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+@media (min-width: 680px) {
+  .factureDetailHero {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .factureDetailHeroStats {
+    width: 340px;
+  }
+
+  .detailGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailItem.isWide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 430px) {
+  .factureDetailPanel {
+    padding: 14px;
+  }
+
+  .invoiceLineMain {
+    align-items: flex-start;
+  }
+
+  .invoiceLineName strong,
+  .invoiceLineAmount {
+    font-size: 0.92rem;
+  }
+}

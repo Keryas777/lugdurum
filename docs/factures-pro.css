@@ -1,0 +1,354 @@
+/* ==============================
+   Page factures pro
+   Le header reste géré par style.css
+   ============================== */
+
+.page-factures-pro .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.facturesShell {
+  max-width: 920px;
+}
+
+.facturesLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.facturesHero,
+.facturesPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(
+      160deg,
+      rgba(255, 250, 241, 0.96),
+      rgba(245, 231, 208, 0.72)
+    );
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.facturesHero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.facturesHero h2,
+.facturesPanel h2 {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.facturesHero h2 {
+  font-size: clamp(1.55rem, 6vw, 2.45rem);
+}
+
+.facturesPanel h2 {
+  font-size: clamp(1.2rem, 5vw, 1.72rem);
+}
+
+.facturesHeroText {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.facturesHeroStats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.facturesHeroStats article {
+  min-width: 0;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 250, 241, 0.56)
+    );
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+}
+
+.facturesHeroStats span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.facturesHeroStats strong {
+  display: block;
+  color: var(--rum);
+  font-size: clamp(1.2rem, 5.8vw, 2rem);
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.facturesPanel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.facturesSearchBlock {
+  display: grid;
+  gap: 7px;
+}
+
+.facturesSearchBlock span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.facturesSearchBlock input {
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  color: var(--text);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.86),
+      rgba(255, 250, 241, 0.62)
+    );
+  font: inherit;
+  font-size: 16px;
+  font-weight: 820;
+  outline: none;
+}
+
+.facturesTableWrap {
+  overflow-x: auto;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  background: rgba(255, 250, 241, 0.52);
+  -webkit-overflow-scrolling: touch;
+}
+
+.facturesTable {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+}
+
+.facturesTable th,
+.facturesTable td {
+  border-bottom: 1px solid rgba(86, 65, 42, 0.12);
+  padding: 11px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.facturesTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(255, 250, 241, 0.96);
+}
+
+.facturesTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.sortBtn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+
+.sortBtn span {
+  color: var(--rum);
+  font-size: 0.82rem;
+}
+
+.facturesTable .isAmount,
+.facturesTable td.isAmount {
+  text-align: right;
+}
+
+.facturesTable .isAmount .sortBtn {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.invoiceRow {
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.invoiceRow:hover,
+.invoiceRow:focus-within {
+  background: rgba(168, 143, 104, 0.1);
+}
+
+.invoiceRow:active {
+  transform: scale(0.995);
+}
+
+.invoiceDate {
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.invoiceClientCell {
+  min-width: 0;
+}
+
+.invoiceClientName {
+  display: block;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 950;
+  line-height: 1.08;
+}
+
+.invoiceNumber {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 780;
+  line-height: 1.15;
+}
+
+.invoiceAmount {
+  color: var(--rum);
+  font-size: 0.92rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--rum);
+  background: rgba(168, 143, 104, 0.14);
+  border: 1px solid rgba(168, 143, 104, 0.22);
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.statusChip.isPaid {
+  color: var(--green);
+  background: rgba(63, 111, 79, 0.12);
+  border-color: rgba(63, 111, 79, 0.2);
+}
+
+.statusChip.isPending {
+  color: var(--rum);
+  background: rgba(216, 160, 79, 0.16);
+  border-color: rgba(216, 160, 79, 0.28);
+}
+
+.statusChip.isCancelled {
+  color: var(--red);
+  background: rgba(179, 92, 58, 0.12);
+  border-color: rgba(179, 92, 58, 0.2);
+}
+
+.facturesEmptyCell {
+  padding: 18px 14px;
+  color: var(--muted);
+  font-weight: 850;
+  text-align: center;
+}
+
+.facturesStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.facturesStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.facturesStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+@media (min-width: 680px) {
+  .facturesHero {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .facturesHeroStats {
+    width: 320px;
+  }
+
+  .facturesTable {
+    min-width: 0;
+  }
+
+  .facturesTable th,
+  .facturesTable td {
+    padding: 13px 14px;
+  }
+}
+
+@media (max-width: 430px) {
+  .facturesPanel {
+    padding: 14px;
+  }
+
+  .facturesTable {
+    min-width: 500px;
+  }
+
+  .facturesTable th,
+  .facturesTable td {
+    padding: 10px 8px;
+  }
+
+  .invoiceDate,
+  .invoiceAmount {
+    font-size: 0.82rem;
+  }
+
+  .invoiceClientName {
+    font-size: 0.88rem;
+  }
+
+  .statusChip {
+    font-size: 0.68rem;
+  }
+}

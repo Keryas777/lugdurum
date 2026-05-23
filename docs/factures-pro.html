@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#a88f68" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lugdurum" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+
+    <title>Lugdurum — Factures pro</title>
+
+    <link rel="stylesheet" href="./style.css?v=20" />
+    <link rel="stylesheet" href="./factures-pro.css?v=1" />
+
+    <script src="./lugdurum-api.js?v=14" defer></script>
+    <script src="./factures-pro.js?v=1" defer></script>
+    <script src="./pwa.js?v=15" defer></script>
+  </head>
+
+  <body class="page-factures-pro">
+    <div class="appShell facturesShell">
+      <header class="topbar facturesTopbar">
+        <a class="backBtn" href="./facturation-pro.html" aria-label="Retour à la facturation pro">←</a>
+
+        <div class="brandBlock">
+          <div class="brandHeader">
+            <img class="brandLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
+            <div class="brandText">
+              <p class="brandName">LUGDURUM</p>
+              <h1>Factures pro</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="facturesLayout">
+        <section class="facturesHero" aria-labelledby="facturesTitle">
+          <div>
+            <p class="sectionKicker">Historique pro</p>
+            <h2 id="facturesTitle">Liste des factures</h2>
+            <p class="facturesHeroText">
+              Tableau allégé : trie, cherche, puis ouvre le détail avant de visualiser un PDF si disponible.
+            </p>
+          </div>
+
+          <div class="facturesHeroStats" aria-label="Résumé factures pro">
+            <article>
+              <span>Total</span>
+              <strong id="heroTotalAmount">0 €</strong>
+            </article>
+            <article>
+              <span>Factures</span>
+              <strong id="heroInvoiceCount">0</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="facturesPanel" aria-labelledby="filtersTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Recherche</p>
+              <h2 id="filtersTitle">Filtrer la liste</h2>
+            </div>
+            <button class="smallTextBtn" type="button" id="reloadInvoicesBtn">Recharger</button>
+          </div>
+
+          <label class="facturesSearchBlock">
+            <span>Client, numéro, commande, statut…</span>
+            <input
+              id="invoiceSearchInput"
+              type="search"
+              autocomplete="off"
+              placeholder="Ex : caviste, FAC-2026, payée…"
+            />
+          </label>
+        </section>
+
+        <section class="facturesPanel" aria-labelledby="tableTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker">Tableau</p>
+              <h2 id="tableTitle">Factures enregistrées</h2>
+            </div>
+          </div>
+
+          <div class="facturesTableWrap">
+            <table class="facturesTable">
+              <thead>
+                <tr>
+                  <th scope="col">
+                    <button type="button" class="sortBtn" data-sort="date">Date <span aria-hidden="true">⇅</span></button>
+                  </th>
+                  <th scope="col">
+                    <button type="button" class="sortBtn" data-sort="client">Client <span aria-hidden="true">⇅</span></button>
+                  </th>
+                  <th scope="col" class="isAmount">
+                    <button type="button" class="sortBtn" data-sort="amount">Montant <span aria-hidden="true">⇅</span></button>
+                  </th>
+                  <th scope="col">
+                    <button type="button" class="sortBtn" data-sort="status">Statut <span aria-hidden="true">⇅</span></button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="invoicesTableBody">
+                <tr>
+                  <td colspan="4" class="facturesEmptyCell">Chargement des factures…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="facturesStatus" id="facturesStatus" role="status"></p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
