@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="fr"><head>  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f6f1e8" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+  <title>Recettes & coûts — Lugdurum</title>
+  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./recettes-dashboard.css" />
+</head><body><main class="appShell">
+  <header class="topbar"><div class="brandBlock"><div class="brandMark">L</div><div><p class="eyebrow">Atelier Lugdurum</p><h1 class="title">Recettes & coûts</h1><p class="subtitle">Historique, cuvées, production et matières premières.</p></div></div><div id="syncStatus" class="syncPill">Chargement…</div></header>
+      <nav class="moduleNav" aria-label="Navigation recettes">
+        <a href="./index.html">← Accueil</a>
+        <a href="./recettes-dashboard.html" aria-current="page">Hub</a>
+        <a href="./recettes-historique.html">Historique</a>
+        <a href="./recettes-production.html">Nouvelle cuvée</a>
+        <a href="./matieres-premieres.html">Matières</a>
+      </nav>
+  <section class="hero"><div class="heroHeader"><div><h2>Où en est l’atelier ?</h2><p id="dashboardIntro">Vue rapide des recettes, dernières cuvées et lots à surveiller.</p></div><span class="badge success">Module recettes</span></div><div class="stats"><div class="stat"><strong id="statRecipes">—</strong><span>recettes suivies</span></div><div class="stat"><strong id="statBatches">—</strong><span>cuvées archivées/en cours</span></div><div class="stat"><strong id="statAvgCost">—</strong><span>coût moyen 50 cL</span></div><div class="stat"><strong id="statAlerts">—</strong><span>matières à surveiller</span></div></div><div class="actions"><a class="button" href="./recettes-production.html">Créer une cuvée</a><a class="button secondary" href="./matieres-premieres.html">Ajouter un achat</a></div></section>
+  <section class="tileGrid"><a class="tile" href="./recettes-historique.html"><div><div class="tileIcon">📖</div><h3>Historique des recettes</h3><p>Consulter, comparer et repartir d’une ancienne version.</p></div><span class="badge">Voir l’historique</span></a><a class="tile" href="./recettes-production.html"><div><div class="tileIcon">⚗️</div><h3>Nouvelle cuvée</h3><p>Calculer les doses par litre de rhum, saisir les coûts réels et archiver.</p></div><span class="badge">Produire</span></a><a class="tile" href="./matieres-premieres.html"><div><div class="tileIcon">📦</div><h3>Matières premières</h3><p>Rhum, bouteilles, étiquettes, bouchons et achats en gros.</p></div><span class="badge">Gérer les lots</span></a></section>
+  <section class="grid two"><div class="panel"><h2>Dernières cuvées</h2><div id="latestBatches" class="list"></div></div><div class="panel"><h2>Matières à surveiller</h2><div id="matterAlerts" class="list"></div></div></section><p class="footerNote">Les coûts affichés sont des estimations internes de pilotage. Ils ne constituent pas une validation comptable ou fiscale.</p>
+</main><script src="./recettes-dashboard.js" defer></script></body></html>
