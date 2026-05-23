@@ -207,9 +207,11 @@ video {
   z-index: 1;
 }
 
-/* ===== Header compact avec bouton retour intégré ===== */
+/* ===== Header avec bouton retour intégré ===== */
+/* Si le header contient .backBtn, il passe automatiquement en ligne compacte. */
+/* Plus besoin de missionsTopbar, closeTopbar, recipeTopbar, etc. */
 
-.appShell > .topbar.missionsTopbar {
+.appShell > .topbar:has(.backBtn) {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -245,21 +247,21 @@ video {
   transform: scale(0.96);
 }
 
-.missionsTopbar .brandBlock {
+.appShell > .topbar:has(.backBtn) .brandBlock {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.missionsTopbar .brandHeader {
+.appShell > .topbar:has(.backBtn) .brandHeader {
   align-items: center;
   min-width: 0;
 }
 
-.missionsTopbar .brandText {
+.appShell > .topbar:has(.backBtn) .brandText {
   min-width: 0;
 }
 
-.missionsTopbar .brandBlock h1 {
+.appShell > .topbar:has(.backBtn) .brandBlock h1 {
   max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
@@ -911,7 +913,7 @@ video {
     gap: 8px;
   }
 
-  .appShell > .topbar.missionsTopbar {
+  .appShell > .topbar:has(.backBtn) {
     gap: 10px;
   }
 
@@ -948,7 +950,7 @@ video {
     line-height: 0.98;
   }
 
-  .missionsTopbar .brandBlock h1 {
+  .appShell > .topbar:has(.backBtn) .brandBlock h1 {
     font-size: clamp(1.45rem, 6.2vw, 2.35rem);
   }
 
@@ -973,7 +975,7 @@ video {
     padding-bottom: 12px;
   }
 
-  .appShell > .topbar.missionsTopbar {
+  .appShell > .topbar:has(.backBtn) {
     padding-top: 8px;
     padding-bottom: 12px;
   }
@@ -1003,7 +1005,7 @@ video {
     white-space: nowrap;
   }
 
-  .missionsTopbar .brandBlock h1 {
+  .appShell > .topbar:has(.backBtn) .brandBlock h1 {
     font-size: clamp(1.35rem, 5.7vw, 2rem);
   }
 
@@ -1042,7 +1044,7 @@ video {
     font-size: clamp(1rem, 5vw, 1.45rem);
   }
 
-  .appShell > .topbar.missionsTopbar {
+  .appShell > .topbar:has(.backBtn) {
     gap: 8px;
   }
 
@@ -1073,7 +1075,7 @@ video {
     font-size: clamp(1.6rem, 9vw, 2.4rem);
   }
 
-  .missionsTopbar .brandBlock h1 {
+  .appShell > .topbar:has(.backBtn) .brandBlock h1 {
     font-size: clamp(1.18rem, 5.6vw, 1.7rem);
   }
 
@@ -1160,7 +1162,7 @@ video {
     padding-top: 0;
   }
 
-  .appShell > .topbar.missionsTopbar {
+  .appShell > .topbar:has(.backBtn) {
     padding-top: 0;
   }
 }
