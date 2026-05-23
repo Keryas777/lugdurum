@@ -1,0 +1,604 @@
+/* ==============================
+   Dépôt-vente / réapprovisionnement
+   Header géré par style.css
+   ============================== */
+
+.reapproPage .appShell {
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.reapproShell {
+  max-width: 900px;
+}
+
+.reapproLayout,
+.reapproForm {
+  display: grid;
+  gap: 14px;
+}
+
+.reapproHero,
+.reapproPanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(
+      160deg,
+      rgba(255, 250, 241, 0.96),
+      rgba(245, 231, 208, 0.72)
+    );
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.reapproHero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.reapproHero h2,
+.reapproPanel h2,
+.reapproPanel h3 {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.reapproHero h2 {
+  font-size: clamp(1.55rem, 6vw, 2.45rem);
+}
+
+.reapproPanel h2 {
+  font-size: clamp(1.25rem, 5vw, 1.8rem);
+}
+
+.reapproPanel h3 {
+  font-size: clamp(1.05rem, 4.4vw, 1.35rem);
+}
+
+.reapproHeroText,
+.reapproHint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.reapproHeroStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.reapproHeroStats article,
+.summaryGrid article,
+.computedCard {
+  min-width: 0;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 250, 241, 0.56)
+    );
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+}
+
+.reapproHeroStats span,
+.summaryGrid span,
+.computedCard span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.reapproHeroStats strong,
+.summaryGrid strong,
+.computedCard strong {
+  display: block;
+  color: var(--rum);
+  font-size: clamp(1.05rem, 5vw, 1.75rem);
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.reapproPanel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.formGrid,
+.operationGrid,
+.global20Grid,
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.fieldBlock {
+  display: grid;
+  gap: 7px;
+}
+
+.fieldBlock span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.fieldBlock input,
+.fieldBlock select,
+.fieldBlock textarea,
+.summaryGrid input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.86),
+      rgba(255, 250, 241, 0.62)
+    );
+  font: inherit;
+  font-size: 16px;
+  font-weight: 820;
+  outline: none;
+}
+
+.fieldBlock input,
+.fieldBlock select,
+.summaryGrid input {
+  min-height: var(--tap);
+  padding: 0 14px;
+}
+
+.fieldBlock textarea {
+  min-height: 92px;
+  resize: vertical;
+  padding: 12px 14px;
+  line-height: 1.35;
+}
+
+.summaryGrid input {
+  color: var(--rum);
+  font-size: 1.2rem;
+  font-weight: 950;
+}
+
+.smallTextBtn {
+  border: 0;
+  color: var(--rum);
+  background: transparent;
+  font: inherit;
+  font-weight: 900;
+}
+
+.choiceCard {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: rgba(255, 250, 241, 0.55);
+}
+
+.choiceCard input {
+  margin-top: 4px;
+  accent-color: var(--rum);
+}
+
+.choiceCard strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 950;
+}
+
+.choiceCard small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 740;
+  line-height: 1.25;
+}
+
+.modeToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: 999px;
+  padding: 5px;
+  background: rgba(255, 250, 241, 0.56);
+}
+
+.modeBtn {
+  min-height: 42px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.modeBtn.isActive {
+  color: #fffaf1;
+  background:
+    linear-gradient(
+      135deg,
+      var(--rum),
+      var(--kraft)
+    );
+  box-shadow: 0 10px 22px rgba(75, 48, 22, 0.14);
+}
+
+.innerHeader {
+  margin-top: 4px;
+}
+
+.reapproProductRows,
+.reapproMiniRows {
+  display: grid;
+  gap: 14px;
+}
+
+.reapproEmpty {
+  margin: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 250, 241, 0.42);
+}
+
+/* ==============================
+   Cartes produits
+   ============================== */
+
+.reapproStockCard {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(86, 65, 42, 0.18);
+  border-radius: 26px;
+  background:
+    linear-gradient(
+      150deg,
+      rgba(255, 250, 241, 0.95),
+      rgba(245, 231, 208, 0.76)
+    );
+  box-shadow: var(--shadow);
+}
+
+.reapproStockCard::after {
+  content: "";
+  position: absolute;
+  right: -54px;
+  bottom: -68px;
+  width: 190px;
+  height: 150px;
+  border-radius: 999px;
+  background: rgba(138, 90, 43, 0.08);
+  pointer-events: none;
+}
+
+.reapproStockHead {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+}
+
+.reapproStockThumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background-image: var(--product-bg);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 10px 20px rgba(75, 48, 22, 0.13);
+}
+
+.reapproStockTitle {
+  min-width: 0;
+}
+
+.reapproStockTitle strong {
+  display: block;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 950;
+  letter-spacing: -0.035em;
+}
+
+.reapproStockTitle span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 780;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.formatBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--rum);
+  background: var(--amber-soft);
+  font-size: 0.76rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.reapproStockGrid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.stockField {
+  display: grid;
+  gap: 5px;
+}
+
+.stockField span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.stockField input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: 16px;
+  padding: 0 10px;
+  color: var(--text);
+  background: rgba(255, 250, 241, 0.76);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 950;
+  text-align: center;
+  outline: none;
+}
+
+.stockComputedLine {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.stockComputedLine article {
+  border-radius: 18px;
+  padding: 10px;
+  background: rgba(255, 250, 241, 0.58);
+  border: 1px solid rgba(86, 65, 42, 0.12);
+}
+
+.stockComputedLine span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.stockComputedLine strong {
+  color: var(--rum);
+  font-size: 1.08rem;
+  font-weight: 950;
+}
+
+.reapproMiniCard {
+  display: grid;
+  grid-template-columns: 52px 1fr 92px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: rgba(255, 250, 241, 0.56);
+}
+
+.reapproMiniThumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 17px;
+  background-image: var(--product-bg);
+  background-size: cover;
+  background-position: center;
+}
+
+.reapproMiniTitle {
+  min-width: 0;
+}
+
+.reapproMiniTitle strong {
+  display: block;
+  color: var(--text);
+  font-weight: 950;
+}
+
+.reapproMiniTitle span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 780;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reapproMiniCard input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: 999px;
+  padding: 0 8px;
+  color: var(--rum);
+  background: rgba(255, 250, 241, 0.82);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 950;
+  text-align: center;
+  outline: none;
+}
+
+/* ==============================
+   Validation
+   ============================== */
+
+.primaryBtn {
+  width: 100%;
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 999px;
+  padding: 0 18px;
+  color: #fffaf1;
+  background:
+    linear-gradient(
+      135deg,
+      var(--rum),
+      var(--kraft)
+    );
+  box-shadow: 0 12px 26px rgba(75, 48, 22, 0.18);
+  font: inherit;
+  font-weight: 950;
+}
+
+.primaryBtn:disabled,
+.smallTextBtn:disabled,
+.modeBtn:disabled {
+  opacity: 0.55;
+}
+
+.reapproStatus {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.reapproStatus.isSuccess {
+  color: var(--green);
+  font-weight: 850;
+}
+
+.reapproStatus.isError {
+  color: var(--red);
+  font-weight: 850;
+}
+
+/* ==============================
+   Responsive
+   ============================== */
+
+@media (min-width: 620px) {
+  .reapproHero {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .reapproHeroStats {
+    width: 420px;
+  }
+
+  .formGrid,
+  .operationGrid,
+  .global20Grid,
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fieldBlock.wide {
+    grid-column: 1 / -1;
+  }
+
+  .reapproProductRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reapproMiniRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 430px) {
+  .reapproPanel {
+    padding: 14px;
+  }
+
+  .reapproHeroStats {
+    grid-template-columns: 1fr;
+  }
+
+  .reapproStockHead {
+    grid-template-columns: 50px 1fr auto;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .reapproStockThumb {
+    width: 50px;
+    height: 50px;
+    border-radius: 16px;
+  }
+
+  .reapproStockGrid {
+    padding: 0 12px 12px;
+  }
+
+  .stockComputedLine {
+    padding: 0 12px 12px;
+  }
+
+  .reapproMiniCard {
+    grid-template-columns: 48px 1fr 82px;
+  }
+
+  .reapproMiniThumb {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 370px) {
+  .reapproStockGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stockComputedLine {
+    grid-template-columns: 1fr;
+  }
+}
