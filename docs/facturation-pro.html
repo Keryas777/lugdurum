@@ -19,9 +19,9 @@
     <title>Lugdurum — Facturation pro</title>
 
     <link rel="stylesheet" href="./style.css?v=20" />
-    <link rel="stylesheet" href="./facturation-pro.css?v=5" />
+    <link rel="stylesheet" href="./facturation-pro.css?v=6" />
 
-    <script src="./facturation-pro.js?v=3" defer></script>
+    <script src="./facturation-pro.js?v=4" defer></script>
   </head>
 
   <body class="facturationProPage">
@@ -51,7 +51,7 @@
             <p class="sectionKicker">Parcours pro</p>
             <h2 id="facturationProStatusTitle">Choisir une opération</h2>
             <p id="facturationProStatusText">
-              Commande ferme, dépôt-vente ou rattrapage d’anciennes factures.
+              Commande ferme, dépôt-vente, historique ou consultation des factures.
             </p>
           </div>
         </section>
@@ -104,6 +104,23 @@
               <strong class="flowTitle">Saisie historique pro</strong>
               <small class="flowText">
                 Ajouter d’anciennes commandes déjà livrées et facturées.
+              </small>
+            </span>
+          </a>
+
+          <a
+            class="flowTile flowTileFactures"
+            href="./factures-pro.html"
+            data-flow="factures-pro"
+            data-ready="true"
+          >
+            <span class="flowIcon" aria-hidden="true">📄</span>
+
+            <span class="flowContent">
+              <span class="flowBadge">Suivi</span>
+              <strong class="flowTitle">Liste des factures</strong>
+              <small class="flowText">
+                Trier les factures pro puis ouvrir le détail.
               </small>
             </span>
           </a>
