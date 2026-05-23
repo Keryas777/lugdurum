@@ -29,8 +29,6 @@ body {
 
 .facturationProPage {
   min-height: 100dvh;
-  max-height: 100dvh;
-  overflow: hidden;
   color: var(--facturation-text);
   background:
     radial-gradient(circle at 8% 0%, rgba(168, 143, 104, 0.18), transparent 30%),
@@ -40,12 +38,10 @@ body {
 
 .facturationProShell {
   min-height: 100dvh;
-  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   width: min(100%, 820px);
   margin: 0 auto;
-  overflow: hidden;
 }
 
 /* Header : le style global vient de style.css, ici on corrige juste l’alignement */
@@ -123,9 +119,8 @@ body {
   min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 9px;
-  padding: 9px 16px max(9px, env(safe-area-inset-bottom));
-  overflow: hidden;
+  gap: 10px;
+  padding: 10px 16px max(14px, env(safe-area-inset-bottom));
 }
 
 .facturationHero,
@@ -162,22 +157,22 @@ body {
 .flowGrid {
   min-height: 0;
   display: grid;
-  grid-template-rows: repeat(4, minmax(0, 1fr));
-  gap: 9px;
+  grid-template-rows: repeat(4, minmax(112px, 1fr));
+  gap: 10px;
 }
 
 .flowTile {
   position: relative;
-  min-height: 0;
+  min-height: 112px;
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  padding: 11px 12px;
+  padding: 14px 12px;
   overflow: hidden;
   color: var(--facturation-text);
   text-decoration: none;
-  border-radius: 23px;
+  border-radius: 24px;
   -webkit-tap-highlight-color: transparent;
   transition:
     transform 160ms ease,
@@ -227,8 +222,8 @@ body {
   position: relative;
   z-index: 2;
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   place-items: center;
   border-radius: 17px;
   color: #fffaf1;
@@ -293,13 +288,13 @@ body {
   display: block;
   max-width: 42ch;
   color: rgba(31, 27, 22, 0.66);
-  font-size: clamp(0.74rem, 2.9vw, 0.84rem);
+  font-size: clamp(0.72rem, 2.75vw, 0.84rem);
   font-weight: 760;
-  line-height: 1.18;
+  line-height: 1.16;
 }
 
 .facturationNote {
-  padding: 9px 13px;
+  padding: 10px 13px;
   border-radius: 22px;
 }
 
@@ -326,13 +321,15 @@ body {
   }
 
   .flowGrid {
+    grid-template-rows: repeat(4, minmax(104px, 1fr));
     gap: 8px;
   }
 
   .flowTile {
+    min-height: 104px;
     grid-template-columns: 44px minmax(0, 1fr);
     gap: 10px;
-    padding: 10px 11px;
+    padding: 11px;
     border-radius: 22px;
   }
 
@@ -349,8 +346,14 @@ body {
     font-size: 0.6rem;
   }
 
+  .flowTitle {
+    font-size: clamp(0.96rem, 4vw, 1.12rem);
+  }
+
   .flowText {
-    display: none;
+    display: block;
+    font-size: 0.72rem;
+    line-height: 1.12;
   }
 
   .facturationNote {
@@ -375,10 +378,12 @@ body {
   }
 
   .flowGrid {
+    grid-template-rows: repeat(4, minmax(98px, 1fr));
     gap: 7px;
   }
 
   .flowTile {
+    min-height: 98px;
     grid-template-columns: 40px minmax(0, 1fr);
     padding: 9px;
   }
@@ -391,7 +396,13 @@ body {
   }
 
   .flowTitle {
-    font-size: clamp(0.92rem, 4vw, 1.08rem);
+    font-size: clamp(0.9rem, 3.9vw, 1.05rem);
+  }
+
+  .flowText {
+    display: block;
+    font-size: 0.68rem;
+    line-height: 1.1;
   }
 
   .facturationNote p {
@@ -446,7 +457,12 @@ body {
     font-size: clamp(1.16rem, 5.4vw, 1.65rem);
   }
 
+  .flowGrid {
+    grid-template-rows: repeat(4, minmax(94px, 1fr));
+  }
+
   .flowTile {
+    min-height: 94px;
     grid-template-columns: 38px minmax(0, 1fr);
     gap: 9px;
   }
@@ -460,6 +476,10 @@ body {
 
   .flowTitle {
     font-size: clamp(0.86rem, 3.9vw, 1rem);
+  }
+
+  .flowText {
+    font-size: 0.65rem;
   }
 }
 
@@ -475,6 +495,7 @@ body {
   }
 
   .flowTile {
+    min-height: 210px;
     grid-template-columns: 1fr;
     align-content: start;
     align-items: start;
