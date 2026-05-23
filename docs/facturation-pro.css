@@ -48,8 +48,74 @@ body {
   overflow: hidden;
 }
 
+/* Header : bouton retour + logo + titre sur une seule ligne */
 .facturationProTopbar {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.facturationProTopbar .backBtn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  flex: 0 0 44px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid var(--border, var(--facturation-line));
+  border-radius: 999px;
+  color: var(--text, var(--facturation-text));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 250, 241, 0.72));
+  box-shadow: var(--shadow-soft, 0 10px 24px rgba(75, 48, 22, 0.11));
+
+  font-size: 1.55rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.facturationProTopbar .backBtn:active {
+  transform: scale(0.96);
+}
+
+.facturationProTopbar .brandBlock {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.facturationProTopbar .brandHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.facturationProTopbar .brandLogo {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.facturationProTopbar .brandText {
+  min-width: 0;
+}
+
+.facturationProTopbar .brandName {
+  margin-bottom: 5px;
+}
+
+.facturationProTopbar .brandBlock h1 {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .facturationProMain {
@@ -319,6 +385,54 @@ body {
 
   .facturationNote p {
     font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .facturationProTopbar {
+    gap: 10px;
+  }
+
+  .facturationProTopbar .backBtn {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    flex-basis: 42px;
+    font-size: 1.5rem;
+  }
+
+  .facturationProTopbar .brandLogo {
+    width: 50px;
+    height: 50px;
+    flex-basis: 50px;
+  }
+
+  .facturationProTopbar .brandBlock h1 {
+    font-size: clamp(1.35rem, 5.7vw, 2rem);
+  }
+}
+
+@media (max-width: 370px) {
+  .facturationProTopbar {
+    gap: 8px;
+  }
+
+  .facturationProTopbar .backBtn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    flex-basis: 38px;
+    font-size: 1.35rem;
+  }
+
+  .facturationProTopbar .brandLogo {
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+  }
+
+  .facturationProTopbar .brandBlock h1 {
+    font-size: clamp(1.18rem, 5.6vw, 1.7rem);
   }
 }
 
