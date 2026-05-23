@@ -10,29 +10,55 @@
   max-width: 920px;
 }
 
+/* Header : bouton retour + logo + titre sur une seule ligne */
 .eventTrackingTopbar {
-  align-items: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
 }
 
-.backBtn {
+.eventTrackingTopbar .backBtn {
   width: 44px;
   height: 44px;
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
+  min-width: 44px;
+  flex: 0 0 44px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 250, 241, 0.68));
   box-shadow: var(--shadow-soft);
-  font-size: 1.4rem;
+  font-size: 1.55rem;
   font-weight: 900;
+  line-height: 1;
+}
+
+.eventTrackingTopbar .brandBlock {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.eventTrackingTopbar .brandHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.eventTrackingTopbar .brandText {
+  min-width: 0;
 }
 
 .page-event-tracking .brandLogo {
   width: 52px;
   height: 52px;
+  flex: 0 0 52px;
   border-radius: 14px;
 }
 
@@ -42,9 +68,11 @@
 }
 
 .page-event-tracking .brandBlock h1 {
-  max-width: none;
+  max-width: 100%;
+  overflow: hidden;
   font-size: clamp(1.55rem, 6vw, 2.2rem);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .eventTrackingLayout {
@@ -575,10 +603,54 @@
   .trackingStatusBadge {
     justify-self: start;
   }
+
+  .eventTrackingTopbar {
+    gap: 10px;
+  }
+
+  .eventTrackingTopbar .backBtn {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    flex-basis: 42px;
+    font-size: 1.5rem;
+  }
+
+  .page-event-tracking .brandLogo {
+    width: 50px;
+    height: 50px;
+    flex-basis: 50px;
+  }
+
+  .page-event-tracking .brandBlock h1 {
+    font-size: clamp(1.35rem, 5.7vw, 2rem);
+  }
 }
 
 @media (max-width: 370px) {
   .trackingStats {
     grid-template-columns: 1fr;
+  }
+
+  .eventTrackingTopbar {
+    gap: 8px;
+  }
+
+  .eventTrackingTopbar .backBtn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    flex-basis: 38px;
+    font-size: 1.35rem;
+  }
+
+  .page-event-tracking .brandLogo {
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+  }
+
+  .page-event-tracking .brandBlock h1 {
+    font-size: clamp(1.18rem, 5.6vw, 1.7rem);
   }
 }
