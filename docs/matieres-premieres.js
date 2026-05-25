@@ -2,12 +2,17 @@
   "use strict";
 
   /*
-    Matières premières V3 — connecté Google Sheets via LugdurumAPI
+    Matières premières V4 — connecté Google Sheets via LugdurumAPI V16
 
-    - Lecture remote-first via getCoreData :
-      matieresPremieres, matieresLots, mouvementsMatieres, cuveesMatieresConsommees
+    - Lecture remote-first via vue rapide recettes :
+      getRecettesMatieresData()
+      ou getRecettesData("matieres")
 
-    - Cache localStorage utilisé uniquement en secours au démarrage :
+    - Fallback compatibilité :
+      getCoreData("matieresPremieres,matieresLots,mouvementsMatieres,cuveesMatieresConsommees")
+      puis list() si nécessaire.
+
+    - Cache localStorage utilisé uniquement en secours :
       - hors ligne
       - API indisponible
       - erreur Google Sheets
@@ -33,12 +38,13 @@
     "matieresPremieres,matieresLots,mouvementsMatieres,cuveesMatieresConsommees";
 
   const TABLE_ALIASES = {
-    matieresPremieres: ["matieresPremieres", "matieres_premieres"],
-    matieresLots: ["matieresLots", "matieres_lots"],
-    mouvementsMatieres: ["mouvementsMatieres", "mouvements_matieres"],
+    matieresPremieres: ["matieresPremieres", "matieres_premieres", "matters"],
+    matieresLots: ["matieresLots", "matieres_lots", "lots"],
+    mouvementsMatieres: ["mouvementsMatieres", "mouvements_matieres", "movements"],
     cuveesMatieresConsommees: [
       "cuveesMatieresConsommees",
-      "cuvees_matieres_consommees"
+      "cuvees_matieres_consommees",
+      "consumptions"
     ]
   };
 
@@ -205,30 +211,83 @@
     writeLocal(STORAGE_KEYS.consumptions, consumptions);
   }
 
-  function unwrapCoreData(response) {
+  function unwrapRemoteData(response) {
     if (!response) return {};
 
     if (response.data && typeof response.data === "object") {
       if (response.data.data && typeof response.data.data === "object") {
-        return response.data.data;
+        return {
+          ...response.data,
+          ...response.data.data
+        };
       }
 
       return response.data;
     }
 
+    if (response.data === undefined && response.view && response.data !== null) {
+      return response;
+    }
+
     return response;
   }
 
-  function getRowsFromCoreData(core, key) {
+  function getRowsFromRemoteData(remote, key) {
     const aliases = TABLE_ALIASES[key] || [key];
+    const candidates = [
+      remote,
+      remote?.data
+    ].filter(Boolean);
 
-    for (const alias of aliases) {
-      if (Array.isArray(core?.[alias])) {
-        return core[alias];
+    for (const source of candidates) {
+      for (const alias of aliases) {
+        if (Array.isArray(source?.[alias])) {
+          return source[alias];
+        }
       }
     }
 
     return [];
+  }
+
+  async function readRecettesMatieresDataFromApi() {
+    const api = window.LugdurumAPI;
+
+    if (!api) {
+      throw new Error("LugdurumAPI indisponible.");
+    }
+
+    if (typeof api.getRecettesMatieresData === "function") {
+      const response = await api.getRecettesMatieresData({
+        flushBeforeRead: false
+      });
+
+      const remote = unwrapRemoteData(response);
+
+      return {
+        matters: getRowsFromRemoteData(remote, "matieresPremieres"),
+        lots: getRowsFromRemoteData(remote, "matieresLots"),
+        movements: getRowsFromRemoteData(remote, "mouvementsMatieres"),
+        consumptions: getRowsFromRemoteData(remote, "cuveesMatieresConsommees")
+      };
+    }
+
+    if (typeof api.getRecettesData === "function") {
+      const response = await api.getRecettesData("matieres", {
+        flushBeforeRead: false
+      });
+
+      const remote = unwrapRemoteData(response);
+
+      return {
+        matters: getRowsFromRemoteData(remote, "matieresPremieres"),
+        lots: getRowsFromRemoteData(remote, "matieresLots"),
+        movements: getRowsFromRemoteData(remote, "mouvementsMatieres"),
+        consumptions: getRowsFromRemoteData(remote, "cuveesMatieresConsommees")
+      };
+    }
+
+    throw new Error("Vue rapide recettes indisponible.");
   }
 
   async function readCoreDataFromApi() {
@@ -240,13 +299,13 @@
 
     if (typeof api.getCoreData === "function") {
       const response = await api.getCoreData(CORE_TABLES);
-      const core = unwrapCoreData(response);
+      const remote = unwrapRemoteData(response);
 
       return {
-        matters: getRowsFromCoreData(core, "matieresPremieres"),
-        lots: getRowsFromCoreData(core, "matieresLots"),
-        movements: getRowsFromCoreData(core, "mouvementsMatieres"),
-        consumptions: getRowsFromCoreData(core, "cuveesMatieresConsommees")
+        matters: getRowsFromRemoteData(remote, "matieresPremieres"),
+        lots: getRowsFromRemoteData(remote, "matieresLots"),
+        movements: getRowsFromRemoteData(remote, "mouvementsMatieres"),
+        consumptions: getRowsFromRemoteData(remote, "cuveesMatieresConsommees")
       };
     }
 
@@ -272,6 +331,19 @@
     }
 
     throw new Error("Aucune méthode de lecture compatible dans LugdurumAPI.");
+  }
+
+  async function readDataFromApi() {
+    try {
+      return await readRecettesMatieresDataFromApi();
+    } catch (viewErr) {
+      console.warn(
+        "Lecture getRecettesData(matieres) impossible, fallback getCoreData/list.",
+        viewErr
+      );
+
+      return readCoreDataFromApi();
+    }
   }
 
   async function readTableWithListApi(key) {
@@ -699,7 +771,8 @@
     if (!detail) return;
 
     detail.className = "empty";
-    detail.innerHTML = "Sélectionne un lot pour voir le coût unitaire, le restant et les consommations.";
+    detail.innerHTML =
+      "Sélectionne un lot pour voir le coût unitaire, le restant et les consommations.";
   }
 
   function renderLotDetail(id) {
@@ -1005,7 +1078,7 @@
     setStatus("Chargement Google Sheets…", "isRefreshing");
 
     try {
-      const fresh = await readCoreDataFromApi();
+      const fresh = await readDataFromApi();
 
       matters = asArray(fresh.matters);
       lots = asArray(fresh.lots);
@@ -1078,7 +1151,6 @@
   }
 
   function init() {
-    hydrateFromCache();
     bindEvents();
 
     if (navigator.onLine && window.LugdurumAPI) {
@@ -1087,6 +1159,7 @@
       return;
     }
 
+    hydrateFromCache();
     render();
 
     if (!navigator.onLine) {
