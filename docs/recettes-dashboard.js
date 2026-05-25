@@ -413,7 +413,7 @@
     const rows = asArray(alerts).slice(0, 5);
 
     if (rows.length === 0) {
-      el.innerHTML = `<div class="empty">Aucune alerte matière. Le tonneau respire.</div>`;
+      el.innerHTML = `<div class="empty">Aucune alerte matière.</div>`;
       return;
     }
 
