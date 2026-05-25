@@ -1,35 +1,529 @@
+(() => {
+  "use strict";
 
-const STORAGE_KEYS={recipes:"lugdurum_recettes",recipeIngredients:"lugdurum_recettes_ingredients",ingredients:"lugdurum_ingredients",batches:"lugdurum_cuvees",matters:"lugdurum_matieres_premieres",lots:"lugdurum_matieres_lots",consumptions:"lugdurum_cuvees_matieres_consommees",batchIngredientRows:"lugdurum_cuvees_ingredients_reels",draft:"lugdurum_cuvee_brouillon"};
-const DEMO_DATA={
- recipes:[{recette_id:"REC_CITG_2023",nom:"Citron Gingembre",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2023",annee_reference:"2023",statut:"favorite",type_recette:"historique",description:"Version de référence, plus nerveuse et équilibrée que 2024.",volume_reference_l:1,sucre_cible_g_l:80,dilution_cible_pct:28,temps_maceration_jours:42,fabrication_note:"Zestes fins, gingembre frais râpé grossièrement.",degustation_note:"Belle attaque citron, gingembre présent sans brûler."},{recette_id:"REC_CITG_2024",nom:"Citron Gingembre",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2024",annee_reference:"2024",statut:"archivee",type_recette:"production",description:"Version plus douce, moins tranchante.",volume_reference_l:1,sucre_cible_g_l:95,dilution_cible_pct:30,temps_maceration_jours:38,fabrication_note:"Moins de gingembre, plus de sucre.",degustation_note:"Facile mais moins mémorable."},{recette_id:"REC_POMR_2026_V2",nom:"Pomelo Romarin",parfum_code:"POMR",parfum_nom:"Pomelo Romarin",version:"V2",annee_reference:"2026",statut:"active",type_recette:"production",description:"Pomelo en suprêmes, romarin plus maîtrisé.",volume_reference_l:1,sucre_cible_g_l:70,dilution_cible_pct:24,temps_maceration_jours:28,fabrication_note:"Éviter le blanc du pomelo pour limiter l’amertume.",degustation_note:"À valider sur nouvelle cuvée."}],
- recipeIngredients:[{recette_ingredient_id:"RI_CITG_2023_CITRON",recette_id:"REC_CITG_2023",ingredient_id:"ING_CITRON",nom_ingredient:"Citron",categorie:"fruit",quantite_par_litre_rhum:350,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:"Zeste + chair selon rendement"},{recette_ingredient_id:"RI_CITG_2023_GING",recette_id:"REC_CITG_2023",ingredient_id:"ING_GINGEMBRE",nom_ingredient:"Gingembre frais",categorie:"epice",quantite_par_litre_rhum:120,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:"Râpé grossièrement"},{recette_ingredient_id:"RI_CITG_2023_SUCRE",recette_id:"REC_CITG_2023",ingredient_id:"ING_SUCRE",nom_ingredient:"Sucre de canne",categorie:"sucre",quantite_par_litre_rhum:80,unite:"g",ordre_affichage:3,obligatoire:"TRUE",note:"Ajuster après dégustation"},{recette_ingredient_id:"RI_CITG_2024_CITRON",recette_id:"REC_CITG_2024",ingredient_id:"ING_CITRON",nom_ingredient:"Citron",categorie:"fruit",quantite_par_litre_rhum:320,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:""},{recette_ingredient_id:"RI_CITG_2024_GING",recette_id:"REC_CITG_2024",ingredient_id:"ING_GINGEMBRE",nom_ingredient:"Gingembre frais",categorie:"epice",quantite_par_litre_rhum:90,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:""},{recette_ingredient_id:"RI_POMR_POMELO",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_POMELO",nom_ingredient:"Pomelo suprêmes",categorie:"fruit",quantite_par_litre_rhum:420,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:"Sans blanc"},{recette_ingredient_id:"RI_POMR_ROMARIN",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_ROMARIN",nom_ingredient:"Romarin",categorie:"herbe",quantite_par_litre_rhum:4,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:"Goûter régulièrement"},{recette_ingredient_id:"RI_POMR_SUCRE",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_SUCRE",nom_ingredient:"Sucre de canne",categorie:"sucre",quantite_par_litre_rhum:70,unite:"g",ordre_affichage:3,obligatoire:"TRUE",note:""}],
- ingredients:[{ingredient_id:"ING_CITRON",nom:"Citron",categorie:"fruit",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_GINGEMBRE",nom:"Gingembre frais",categorie:"epice",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_SUCRE",nom:"Sucre de canne",categorie:"sucre",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_POMELO",nom:"Pomelo",categorie:"fruit",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_ROMARIN",nom:"Romarin",categorie:"herbe",unite_defaut:"g",actif:"TRUE"}],
- batches:[{cuvee_id:"CUV_2026_POMR_V2_DEMO",recette_id:"REC_POMR_2026_V2",nom:"Pomelo Romarin V2 (2026)",parfum_code:"POMR",parfum_nom:"Pomelo Romarin",version:"V2",annee_production:"2026",type_cuvee:"test",statut:"en_maceration",volume_rhum_l:80,volume_final_estime_l:99.2,nombre_bouteilles_50:198,cout_total:1120,cout_unitaire_50_estime:5.66,note_fabrication:"Démo : suprêmes uniquement.",updated_at:"2026-05-20T10:00:00.000Z"},{cuvee_id:"CUV_2023_CITG_DEMO",recette_id:"REC_CITG_2023",nom:"Citron Gingembre V2023",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2023",annee_production:"2023",type_cuvee:"production",statut:"archivee",volume_rhum_l:60,volume_final_estime_l:76.8,nombre_bouteilles_50:153,cout_total:790,cout_unitaire_50_estime:5.16,note_degustation:"Version à reprendre.",updated_at:"2023-10-10T10:00:00.000Z"}],
- matters:[{matiere_id:"MAT_RHUM_AGRICOLE",nom:"Rhum agricole",categorie:"rhum",unite_stock:"L",actif:"TRUE"},{matiere_id:"MAT_BOUTEILLE_50",nom:"Bouteille 50 cL",categorie:"bouteille",unite_stock:"unité",actif:"TRUE"},{matiere_id:"MAT_BOUCHON",nom:"Bouchon liège",categorie:"bouchon",unite_stock:"unité",actif:"TRUE"}],
- lots:[{lot_id:"LOT_RHUM_2026_450L",matiere_id:"MAT_RHUM_AGRICOLE",nom_lot:"Rhum agricole 450 L — Achat 2026",categorie:"rhum",fournisseur:"Fournisseur rhum",date_achat:"2026-02-15",quantite_initiale:450,quantite_restante:370,unite:"L",cout_total:4500,cout_unitaire:10,statut:"actif",note:"Lot démo"},{lot_id:"LOT_BOUT_2026_2400",matiere_id:"MAT_BOUTEILLE_50",nom_lot:"Bouteilles 50 cL — Palette 2400",categorie:"bouteille",fournisseur:"Verrier",date_achat:"2026-01-20",quantite_initiale:2400,quantite_restante:2210,unite:"unité",cout_total:1440,cout_unitaire:.6,statut:"actif",note:"Lot démo"},{lot_id:"LOT_BOUCH_2026_5000",matiere_id:"MAT_BOUCHON",nom_lot:"Bouchons liège — Carton 5000",categorie:"bouchon",fournisseur:"Fournisseur bouchons",date_achat:"2026-01-20",quantite_initiale:5000,quantite_restante:4300,unite:"unité",cout_total:650,cout_unitaire:.13,statut:"actif",note:"Lot démo"}],
- consumptions:[{conso_id:"CONSO_DEMO_RHUM",cuvee_id:"CUV_2026_POMR_V2_DEMO",lot_id:"LOT_RHUM_2026_450L",matiere_id:"MAT_RHUM_AGRICOLE",nom_matiere:"Rhum agricole",categorie:"rhum",quantite_consommee:80,unite:"L",cout_unitaire_snapshot:10,cout_total_impute:800,created_at:"2026-05-20T10:00:00.000Z"},{conso_id:"CONSO_DEMO_BOUT",cuvee_id:"CUV_2026_POMR_V2_DEMO",lot_id:"LOT_BOUT_2026_2400",matiere_id:"MAT_BOUTEILLE_50",nom_matiere:"Bouteille 50 cL",categorie:"bouteille",quantite_consommee:198,unite:"unité",cout_unitaire_snapshot:.6,cout_total_impute:118.8,created_at:"2026-05-20T10:00:00.000Z"}]
-};
-function $(id){return document.getElementById(id)}
-function asArray(value){return Array.isArray(value)?value:[]}
-function n(value){const parsed=Number(String(value??"").replace(",","."));return Number.isFinite(parsed)?parsed:0}
-function money(value){return new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(n(value))}
-function number(value,dec=0){return new Intl.NumberFormat("fr-FR",{maximumFractionDigits:dec,minimumFractionDigits:dec}).format(n(value))}
-function isoNow(){return new Date().toISOString()}
-function today(){return new Date().toISOString().slice(0,10)}
-function uid(prefix){return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8).toUpperCase()}`}
-function readLocal(key,fallback=[]){try{return JSON.parse(localStorage.getItem(key)||"null")||fallback}catch{return fallback}}
-function writeLocal(key,value){localStorage.setItem(key,JSON.stringify(value))}
-async function apiList(table,key,demo){try{if(window.LugdurumAPI?.list){const rows=await window.LugdurumAPI.list(table);writeLocal(key,asArray(rows));return asArray(rows)}if(window.LugdurumAPI?.getCoreData){const data=await window.LugdurumAPI.getCoreData(table);const rows=asArray(data?.[table]);writeLocal(key,rows);return rows}}catch(err){console.warn(`Lecture API impossible pour ${table}`,err)}const cached=readLocal(key,[]);return cached.length?cached:demo}
-async function apiUpsert(table,row,key){const next={...row,updated_at:isoNow()};try{if(window.LugdurumAPI?.upsert){await window.LugdurumAPI.upsert(table,next)}}catch(err){console.warn(`Upsert API impossible pour ${table}. Sauvegarde locale uniquement.`,err)}const rows=readLocal(key,[]);const idKey=Object.keys(next).find(k=>k.endsWith("_id"))||"id";const i=rows.findIndex(item=>String(item[idKey])===String(next[idKey]));if(i>=0)rows[i]=next;else rows.unshift(next);writeLocal(key,rows);return next}
-function setStatus(text,kind=""){const el=$("syncStatus");if(el){el.textContent=text;el.className=`syncPill ${kind}`.trim()}}
-function byDateDesc(a,b){return String(b.updated_at||b.created_at||"").localeCompare(String(a.updated_at||a.created_at||""))}
+  /*
+    Dashboard recettes V2 — connecté Google Sheets via LugdurumAPI
 
-(() => {"use strict";
-let data={};
-async function load(){setStatus(navigator.onLine?"Synchronisation…":"Hors ligne — cache local");const [recipes,batches,lots]=await Promise.all([apiList("recettes",STORAGE_KEYS.recipes,DEMO_DATA.recipes),apiList("cuvees",STORAGE_KEYS.batches,DEMO_DATA.batches),apiList("matieres_lots",STORAGE_KEYS.lots,DEMO_DATA.lots)]);data={recipes,batches,lots};render();setStatus(navigator.onLine?"Données prêtes":"Hors ligne — données locales")}
-function render(){const archived=data.batches.filter(b=>b.statut==="archivee"||b.statut==="en_maceration"||b.statut==="en_preparation");$("statRecipes").textContent=data.recipes.length;$("statBatches").textContent=archived.length;const costs=archived.map(b=>n(b.cout_unitaire_50_estime)).filter(Boolean);$("statAvgCost").textContent=costs.length?money(costs.reduce((a,b)=>a+b,0)/costs.length):"—";const alerts=getAlerts(data.lots);$("statAlerts").textContent=alerts.length;renderLatest();renderAlerts(alerts)}
-function getAlerts(lots){return lots.filter(l=>{const ratio=n(l.quantite_initiale)?n(l.quantite_restante)/n(l.quantite_initiale):1;return l.statut!=="archive"&&ratio<=.25}).sort((a,b)=>(n(a.quantite_restante)/Math.max(1,n(a.quantite_initiale)))-(n(b.quantite_restante)/Math.max(1,n(b.quantite_initiale))))}
-function renderLatest(){const el=$("latestBatches");const rows=[...data.batches].sort(byDateDesc).slice(0,4);el.innerHTML=rows.length?rows.map(b=>`<article class="itemCard"><div class="itemTop"><div><div class="itemTitle">${b.nom||"Cuvée sans nom"}</div><div class="meta">${b.parfum_nom||"—"} · ${b.annee_production||"—"} · ${number(b.volume_rhum_l,1)} L rhum</div></div><span class="badge ${b.statut==="archivee"?"success":""}">${b.statut||"brouillon"}</span></div><div class="stats"><div class="stat"><strong>${money(b.cout_total)}</strong><span>coût total</span></div><div class="stat"><strong>${money(b.cout_unitaire_50_estime)}</strong><span>/ 50 cL</span></div></div></article>`).join(""):`<div class="empty">Aucune cuvée pour le moment.</div>`}
-function renderAlerts(alerts){const el=$("matterAlerts");el.innerHTML=alerts.length?alerts.map(l=>`<article class="itemCard"><div class="itemTop"><div><div class="itemTitle">${l.nom_lot||l.nom||"Lot"}</div><div class="meta">Restant : ${number(l.quantite_restante,2)} ${l.unite||""} / ${number(l.quantite_initiale,2)} ${l.unite||""}</div></div><span class="badge warning">À surveiller</span></div><div class="meta">Coût unitaire : ${money(l.cout_unitaire||n(l.cout_total)/Math.max(1,n(l.quantite_initiale)))}</div></article>`).join(""):`<div class="empty">Aucune alerte matière. Le tonneau respire.</div>`}
-window.addEventListener("online",load);window.addEventListener("offline",()=>setStatus("Hors ligne — cache local"));load();
+    - Lecture remote-first via getCoreData :
+      recettes, cuvees, matieresLots
+
+    - Cache localStorage utilisé uniquement en secours :
+      - hors ligne
+      - API indisponible
+      - erreur Google Sheets
+
+    - Aucune donnée démo.
+    - Page lecture seule.
+  */
+
+  const STORAGE_KEYS = {
+    recipes: "lugdurum_recettes",
+    batches: "lugdurum_cuvees",
+    lots: "lugdurum_matieres_lots"
+  };
+
+  const CORE_TABLES = "recettes,cuvees,matieresLots";
+
+  const TABLE_ALIASES = {
+    recettes: ["recettes"],
+    cuvees: ["cuvees"],
+    matieresLots: ["matieresLots", "matieres_lots"]
+  };
+
+  let data = {
+    recipes: [],
+    batches: [],
+    lots: []
+  };
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function toNumber(value, fallback = 0) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(",", ".");
+
+    if (!normalized) return fallback;
+
+    const parsed = Number(normalized);
+
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function money(value) {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR"
+    }).format(toNumber(value, 0));
+  }
+
+  function number(value, decimals = 0) {
+    return new Intl.NumberFormat("fr-FR", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    }).format(toNumber(value, 0));
+  }
+
+  function normalizeText(value) {
+    return String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function normalizeStatus(value) {
+    return normalizeText(value).replace(/\s+/g, "_");
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function readLocal(key, fallback = []) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+
+      const parsed = JSON.parse(raw);
+
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeLocal(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(asArray(value)));
+    } catch (err) {
+      console.warn("Impossible d’écrire le cache local.", err);
+    }
+  }
+
+  function setText(id, value) {
+    const el = $(id);
+    if (el) el.textContent = value;
+  }
+
+  function setStatus(text, kind = "") {
+    const el = $("syncStatus");
+
+    if (!el) return;
+
+    el.textContent = text;
+    el.className = `syncPill ${kind}`.trim();
+  }
+
+  function byDateDesc(a, b) {
+    return String(b.updated_at || b.created_at || "").localeCompare(
+      String(a.updated_at || a.created_at || "")
+    );
+  }
+
+  function hydrateFromCache() {
+    data = {
+      recipes: readLocal(STORAGE_KEYS.recipes, []),
+      batches: readLocal(STORAGE_KEYS.batches, []),
+      lots: readLocal(STORAGE_KEYS.lots, [])
+    };
+  }
+
+  function saveCache() {
+    writeLocal(STORAGE_KEYS.recipes, data.recipes);
+    writeLocal(STORAGE_KEYS.batches, data.batches);
+    writeLocal(STORAGE_KEYS.lots, data.lots);
+  }
+
+  function unwrapCoreData(response) {
+    if (!response) return {};
+
+    if (response.data && typeof response.data === "object") {
+      if (response.data.data && typeof response.data.data === "object") {
+        return response.data.data;
+      }
+
+      return response.data;
+    }
+
+    return response;
+  }
+
+  function getRowsFromCoreData(core, key) {
+    const aliases = TABLE_ALIASES[key] || [key];
+
+    for (const alias of aliases) {
+      if (Array.isArray(core?.[alias])) {
+        return core[alias];
+      }
+    }
+
+    return [];
+  }
+
+  async function readCoreDataFromApi() {
+    const api = window.LugdurumAPI;
+
+    if (!api) {
+      throw new Error("LugdurumAPI indisponible.");
+    }
+
+    if (typeof api.getCoreData === "function") {
+      const response = await api.getCoreData(CORE_TABLES);
+      const core = unwrapCoreData(response);
+
+      return {
+        recipes: getRowsFromCoreData(core, "recettes"),
+        batches: getRowsFromCoreData(core, "cuvees"),
+        lots: getRowsFromCoreData(core, "matieresLots")
+      };
+    }
+
+    if (typeof api.list === "function") {
+      const [recipes, batches, lots] = await Promise.all([
+        readTableWithListApi("recettes"),
+        readTableWithListApi("cuvees"),
+        readTableWithListApi("matieresLots")
+      ]);
+
+      return {
+        recipes,
+        batches,
+        lots
+      };
+    }
+
+    throw new Error("Aucune méthode de lecture compatible dans LugdurumAPI.");
+  }
+
+  async function readTableWithListApi(key) {
+    const api = window.LugdurumAPI;
+    const aliases = TABLE_ALIASES[key] || [key];
+    let lastError = null;
+
+    for (const alias of aliases) {
+      try {
+        const response = await api.list(alias);
+        return asArray(response?.data || response);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error(`Lecture impossible : ${key}`);
+  }
+
+  function isArchivedBatch(batch) {
+    const status = normalizeStatus(batch?.statut);
+
+    return [
+      "archive",
+      "archivee",
+      "termine",
+      "terminee",
+      "cloture",
+      "cloturee"
+    ].includes(status);
+  }
+
+  function isActiveOrTrackedBatch(batch) {
+    const status = normalizeStatus(batch?.statut);
+
+    return [
+      "brouillon",
+      "en_preparation",
+      "en_maceration",
+      "en_cours",
+      "active",
+      "actif",
+      "archive",
+      "archivee",
+      "termine",
+      "terminee",
+      "cloture",
+      "cloturee"
+    ].includes(status);
+  }
+
+  function isArchivedLot(lot) {
+    const status = normalizeStatus(lot?.statut);
+
+    return [
+      "archive",
+      "archivee",
+      "inactif",
+      "annule",
+      "annulee"
+    ].includes(status);
+  }
+
+  function getUnitCost(lot) {
+    const explicit = toNumber(lot?.cout_unitaire, NaN);
+
+    if (Number.isFinite(explicit)) {
+      return explicit;
+    }
+
+    const total = toNumber(lot?.cout_total, 0);
+    const initial = toNumber(lot?.quantite_initiale, 0);
+
+    if (!initial) return 0;
+
+    return total / initial;
+  }
+
+  function getAlerts(lots) {
+    return asArray(lots)
+      .filter((lot) => {
+        if (isArchivedLot(lot)) return false;
+
+        const initial = toNumber(lot.quantite_initiale, 0);
+        const remaining = toNumber(lot.quantite_restante, 0);
+
+        if (!initial) return false;
+
+        return remaining / initial <= 0.25;
+      })
+      .sort((a, b) => {
+        const ratioA =
+          toNumber(a.quantite_restante, 0) /
+          Math.max(1, toNumber(a.quantite_initiale, 0));
+
+        const ratioB =
+          toNumber(b.quantite_restante, 0) /
+          Math.max(1, toNumber(b.quantite_initiale, 0));
+
+        return ratioA - ratioB;
+      });
+  }
+
+  function getAverageBatchCost(batches) {
+    const costs = asArray(batches)
+      .map((batch) => toNumber(batch.cout_unitaire_50_estime, 0))
+      .filter((value) => value > 0);
+
+    if (costs.length === 0) return null;
+
+    return costs.reduce((sum, value) => sum + value, 0) / costs.length;
+  }
+
+  function render() {
+    const recipes = asArray(data.recipes);
+    const batches = asArray(data.batches);
+    const lots = asArray(data.lots);
+
+    const trackedBatches = batches.filter(isActiveOrTrackedBatch);
+    const alerts = getAlerts(lots);
+    const averageCost = getAverageBatchCost(trackedBatches);
+
+    setText("statRecipes", String(recipes.length));
+    setText("statBatches", String(trackedBatches.length));
+    setText("statAvgCost", averageCost === null ? "—" : money(averageCost));
+    setText("statAlerts", String(alerts.length));
+
+    renderLatestBatches(trackedBatches);
+    renderAlerts(alerts);
+  }
+
+  function renderLatestBatches(batches) {
+    const el = $("latestBatches");
+
+    if (!el) return;
+
+    const rows = [...asArray(batches)].sort(byDateDesc).slice(0, 4);
+
+    if (rows.length === 0) {
+      el.innerHTML = `<div class="empty">Aucune cuvée pour le moment.</div>`;
+      return;
+    }
+
+    el.innerHTML = rows
+      .map((batch) => {
+        const status = normalizeStatus(batch.statut);
+        const badgeClass = isArchivedBatch(batch)
+          ? "success"
+          : status.includes("maceration") || status.includes("preparation")
+            ? "warning"
+            : "";
+
+        return `
+          <article class="itemCard">
+            <div class="itemTop">
+              <div>
+                <div class="itemTitle">
+                  ${escapeHtml(batch.nom || "Cuvée sans nom")}
+                </div>
+
+                <div class="meta">
+                  ${escapeHtml(batch.parfum_nom || batch.parfum_code || "—")}
+                  · ${escapeHtml(batch.annee_production || "—")}
+                  · ${number(batch.volume_rhum_l, 1)} L rhum
+                </div>
+              </div>
+
+              <span class="badge ${badgeClass}">
+                ${escapeHtml(batch.statut || "brouillon")}
+              </span>
+            </div>
+
+            <div class="stats">
+              <div class="stat">
+                <strong>${money(batch.cout_total)}</strong>
+                <span>coût total</span>
+              </div>
+
+              <div class="stat">
+                <strong>
+                  ${
+                    toNumber(batch.cout_unitaire_50_estime, 0) > 0
+                      ? money(batch.cout_unitaire_50_estime)
+                      : "—"
+                  }
+                </strong>
+                <span>/ 50 cL</span>
+              </div>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  function renderAlerts(alerts) {
+    const el = $("matterAlerts");
+
+    if (!el) return;
+
+    const rows = asArray(alerts).slice(0, 5);
+
+    if (rows.length === 0) {
+      el.innerHTML = `<div class="empty">Aucune alerte matière. Le tonneau respire.</div>`;
+      return;
+    }
+
+    el.innerHTML = rows
+      .map((lot) => {
+        return `
+          <article class="itemCard">
+            <div class="itemTop">
+              <div>
+                <div class="itemTitle">
+                  ${escapeHtml(lot.nom_lot || lot.nom_matiere || lot.nom || "Lot")}
+                </div>
+
+                <div class="meta">
+                  Restant :
+                  ${number(lot.quantite_restante, 2)}
+                  ${escapeHtml(lot.unite || "")}
+                  /
+                  ${number(lot.quantite_initiale, 2)}
+                  ${escapeHtml(lot.unite || "")}
+                </div>
+              </div>
+
+              <span class="badge warning">À surveiller</span>
+            </div>
+
+            <div class="meta">
+              Coût unitaire : ${money(getUnitCost(lot))}
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  async function refreshFromApi() {
+    if (!navigator.onLine) {
+      hydrateFromCache();
+      render();
+      setStatus("Hors ligne — données locales", "isLocal");
+      return;
+    }
+
+    if (!window.LugdurumAPI) {
+      hydrateFromCache();
+      render();
+      setStatus("API indisponible — cache local", "isLocal");
+      return;
+    }
+
+    setStatus("Chargement Google Sheets…", "isRefreshing");
+
+    try {
+      const fresh = await readCoreDataFromApi();
+
+      data = {
+        recipes: asArray(fresh.recipes),
+        batches: asArray(fresh.batches),
+        lots: asArray(fresh.lots)
+      };
+
+      saveCache();
+      render();
+
+      setStatus("Données Google Sheets à jour", "isOnline");
+    } catch (err) {
+      console.warn("Lecture Google Sheets impossible.", err);
+
+      hydrateFromCache();
+      render();
+
+      setStatus("Google Sheets indisponible — cache local", "isLocal");
+    }
+  }
+
+  function bindEvents() {
+    window.addEventListener("online", () => {
+      refreshFromApi();
+    });
+
+    window.addEventListener("offline", () => {
+      hydrateFromCache();
+      render();
+      setStatus("Hors ligne — données locales", "isLocal");
+    });
+  }
+
+  function init() {
+    bindEvents();
+
+    if (navigator.onLine && window.LugdurumAPI) {
+      setStatus("Chargement Google Sheets…", "isRefreshing");
+      refreshFromApi();
+      return;
+    }
+
+    hydrateFromCache();
+    render();
+
+    if (!navigator.onLine) {
+      setStatus("Hors ligne — données locales", "isLocal");
+      return;
+    }
+
+    setStatus("API indisponible — cache local", "isLocal");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
