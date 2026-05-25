@@ -2,10 +2,13 @@
   "use strict";
 
   /*
-    Lugdurum API V15 PRO TABLES FIX + DATA STATE + FRONT QUEUE + HOME DATA + JSONP GET
+    Lugdurum API V16 RECETTES DATA + PRO TABLES + FRONT QUEUE + HOME DATA + JSONP GET
+
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
     - Ajout méthode rapide getHomeData() pour l’accueil.
+    - Ajout méthode rapide getRecettesData(view) pour le module recettes :
+      dashboard, historique, production, matieres.
     - getHomeData() ne bloque pas le rendu sur la synchronisation de la file.
     - Écritures POST avec file d’attente offline officielle : lugdurum_pending_writes.
     - Rejeu automatique au retour réseau, au focus, à la visibilité et au chargement.
@@ -18,13 +21,17 @@
       après toute lecture JSONP réussie, l’état passe explicitement en ligne.
     - Compatible avec une pastille déjà présente dans le HTML ou créée dynamiquement.
     - Évite les doublons d’écriture ventes_lignes quand Apps Script sauvegarde déjà les lignes dans les bundles.
-    - Helpers pro corrigés :
+    - Helpers pro :
       clients, commandes_pro, commandes_lignes, documents, referentiels.
+    - Helpers recettes :
+      recettes, recettes_ingredients, ingredients, cuvees, cuvees_ingredients_reels,
+      matieres_premieres, matieres_lots, cuvees_matieres_consommees, mouvements_matieres.
     - Ajoute alias compatibles :
       getCommandesLignes() + getCommandesProLignes()
       saveCommandeLigne() + saveCommandeProLigne()
       saveCommandeLignes() + saveCommandeProLignes()
       getReferentiels() + getReferentiel()
+      list() + upsert() + post() + request() + call()
   */
 
   const API_URL =
@@ -48,6 +55,7 @@
       sheetName: "ventes_lignes",
       keyField: "ligne_id"
     },
+
     clients: {
       sheetKey: "clients",
       sheetName: "clients",
@@ -69,14 +77,61 @@
       keyField: "document_id"
     },
     referentiels: {
-      sheetKey: "referentiels",
-      sheetName: "referentiels",
+      sheetKey: "",
+      sheetName: "referentiel",
       keyField: "referentiel_id"
+    },
+
+    recettes: {
+      sheetKey: "recettes",
+      sheetName: "recettes",
+      keyField: "recette_id"
+    },
+    recettesIngredients: {
+      sheetKey: "recettesIngredients",
+      sheetName: "recettes_ingredients",
+      keyField: "recette_ingredient_id"
+    },
+    ingredients: {
+      sheetKey: "ingredients",
+      sheetName: "ingredients",
+      keyField: "ingredient_id"
+    },
+    cuvees: {
+      sheetKey: "cuvees",
+      sheetName: "cuvees",
+      keyField: "cuvee_id"
+    },
+    cuveesIngredientsReels: {
+      sheetKey: "cuveesIngredientsReels",
+      sheetName: "cuvees_ingredients_reels",
+      keyField: "cuvee_ingredient_id"
+    },
+    matieresPremieres: {
+      sheetKey: "matieresPremieres",
+      sheetName: "matieres_premieres",
+      keyField: "matiere_id"
+    },
+    matieresLots: {
+      sheetKey: "matieresLots",
+      sheetName: "matieres_lots",
+      keyField: "lot_id"
+    },
+    cuveesMatieresConsommees: {
+      sheetKey: "cuveesMatieresConsommees",
+      sheetName: "cuvees_matieres_consommees",
+      keyField: "conso_id"
+    },
+    mouvementsMatieres: {
+      sheetKey: "mouvementsMatieres",
+      sheetName: "mouvements_matieres",
+      keyField: "mouvement_matiere_id"
     }
   };
 
   const CORE_TABLE_KEY_ALIASES = {
     clients: ["clients"],
+
     commandesPro: ["commandesPro", "commandes_pro"],
     commandesLignes: [
       "commandesLignes",
@@ -84,19 +139,65 @@
       "commandesProLignes",
       "commandes_pro_lignes"
     ],
+
     documents: ["documents"],
     referentiels: ["referentiels", "referentiel"],
+
     transactions: ["transactions"],
     ventesLignes: ["ventesLignes", "ventes_lignes"],
+
     catalogue: ["catalogue"],
     offresVente: ["offresVente", "offres_vente"],
+
     inscriptions: ["inscriptions", "inscriptions_evenements"],
     missions: ["missions", "missions_vente"],
     missionsStock: ["missionsStock", "missions_stock"],
     journees: ["journees", "journees_vente"],
     mouvementsStock: ["mouvementsStock", "mouvements_stock"],
     frais: ["frais"],
-    clotures: ["clotures", "clotures_journees"]
+    clotures: ["clotures", "clotures_journees"],
+
+    recettes: ["recettes"],
+    recettesIngredients: ["recettesIngredients", "recettes_ingredients"],
+    ingredients: ["ingredients"],
+
+    cuvees: ["cuvees"],
+    cuveesIngredientsReels: [
+      "cuveesIngredientsReels",
+      "cuvees_ingredients_reels"
+    ],
+
+    matieresPremieres: ["matieresPremieres", "matieres_premieres"],
+    matieresLots: ["matieresLots", "matieres_lots"],
+
+    cuveesMatieresConsommees: [
+      "cuveesMatieresConsommees",
+      "cuvees_matieres_consommees"
+    ],
+
+    mouvementsMatieres: ["mouvementsMatieres", "mouvements_matieres"]
+  };
+
+  const RECETTES_VIEW_ALIASES = {
+    dashboard: ["dashboard", "hub", "accueil"],
+    historique: ["historique", "history", "recettes", "archives"],
+    production: [
+      "production",
+      "nouvelle_cuvee",
+      "nouvelle-cuvee",
+      "cuvee",
+      "cuvees",
+      "atelier"
+    ],
+    matieres: [
+      "matieres",
+      "matières",
+      "matieres_premieres",
+      "matières_premières",
+      "matiere",
+      "matiere_premiere",
+      "stocks_matieres"
+    ]
   };
 
   const FLUSH_BATCH_SIZE = 20;
@@ -152,6 +253,30 @@
     const day = String(date.getDate()).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
+  };
+
+  const normalizeSimpleKey = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/-/g, "_")
+      .replace(/\s+/g, "_");
+
+  const resolveRecettesView = (view) => {
+    const normalized = normalizeSimpleKey(view || "dashboard");
+
+    for (const [canonical, aliases] of Object.entries(RECETTES_VIEW_ALIASES)) {
+      if (
+        canonical === normalized ||
+        aliases.some((alias) => normalizeSimpleKey(alias) === normalized)
+      ) {
+        return canonical;
+      }
+    }
+
+    return normalized || "dashboard";
   };
 
   const resolveCoreTableKey = (tableName) => {
@@ -221,7 +346,8 @@
   });
 
   const buildConfiguredUpsertOperation = (configKey, data) => {
-    const config = SHEET_UPSERT_CONFIG[configKey];
+    const resolvedKey = resolveCoreTableKey(configKey);
+    const config = SHEET_UPSERT_CONFIG[resolvedKey] || SHEET_UPSERT_CONFIG[configKey];
 
     if (!config) {
       throw new Error(`Configuration batchUpsert inconnue : ${configKey}`);
@@ -231,6 +357,26 @@
       sheetKey: config.sheetKey,
       sheetName: config.sheetName,
       keyField: config.keyField,
+      data
+    });
+  };
+
+  const buildGenericUpsertOperation = (tableName, data) => {
+    const resolvedKey = resolveCoreTableKey(tableName);
+    const config = SHEET_UPSERT_CONFIG[resolvedKey];
+
+    if (config) {
+      return buildConfiguredUpsertOperation(resolvedKey, data);
+    }
+
+    const keyField =
+      Object.keys(data || {}).find((key) => key.endsWith("_id")) ||
+      "id";
+
+    return buildSheetUpsertOperation({
+      sheetKey: "",
+      sheetName: String(tableName || resolvedKey || "").trim(),
+      keyField,
       data
     });
   };
@@ -1272,6 +1418,47 @@
       flushBeforeRead: false
     });
 
+  const getRecettesData = (view = "dashboard", params = {}) => {
+    const safeView =
+      typeof view === "object"
+        ? resolveRecettesView(view.view || view.mode || "dashboard")
+        : resolveRecettesView(view);
+
+    const extraParams =
+      typeof view === "object"
+        ? {
+            ...view,
+            ...params
+          }
+        : {
+            ...params
+          };
+
+    return requestGet(
+      "getRecettesData",
+      {
+        ...extraParams,
+        view: safeView
+      },
+      {
+        flushBeforeRead: extraParams.flushBeforeRead !== false,
+        timeoutMs: extraParams.timeoutMs || 15000
+      }
+    );
+  };
+
+  const getRecettesDashboardData = (params = {}) =>
+    getRecettesData("dashboard", params);
+
+  const getRecettesHistoriqueData = (params = {}) =>
+    getRecettesData("historique", params);
+
+  const getRecettesProductionData = (params = {}) =>
+    getRecettesData("production", params);
+
+  const getRecettesMatieresData = (params = {}) =>
+    getRecettesData("matieres", params);
+
   const saveInscriptionEvenement = (inscription) =>
     requestQueuedPost("upsertInscriptionEvenement", {
       inscription
@@ -1532,6 +1719,16 @@
     return getCoreArrayFromResult(result, key);
   };
 
+  const list = (tableName) =>
+    getCoreTable(tableName);
+
+  const upsert = (tableName, row) =>
+    requestQueuedPost("batchUpsert", {
+      operations: [
+        buildGenericUpsertOperation(tableName, row)
+      ]
+    });
+
   const getClients = () =>
     getCoreTable("clients");
 
@@ -1601,6 +1798,220 @@
       ]
     });
 
+  const getRecettes = () =>
+    getCoreTable("recettes");
+
+  const getRecettesIngredients = () =>
+    getCoreTable("recettesIngredients");
+
+  const getIngredients = () =>
+    getCoreTable("ingredients");
+
+  const getCuvees = () =>
+    getCoreTable("cuvees");
+
+  const getCuveesIngredientsReels = () =>
+    getCoreTable("cuveesIngredientsReels");
+
+  const getMatieresPremieres = () =>
+    getCoreTable("matieresPremieres");
+
+  const getMatieresLots = () =>
+    getCoreTable("matieresLots");
+
+  const getCuveesMatieresConsommees = () =>
+    getCoreTable("cuveesMatieresConsommees");
+
+  const getMouvementsMatieres = () =>
+    getCoreTable("mouvementsMatieres");
+
+  const saveRecette = (recette) =>
+    requestQueuedPost("upsertRecette", {
+      recette
+    });
+
+  const saveRecetteIngredient = (recetteIngredient) =>
+    requestQueuedPost("upsertRecetteIngredient", {
+      recette_ingredient: recetteIngredient
+    });
+
+  const saveRecetteIngredients = (rows = []) =>
+    requestQueuedPost("batchUpsert", {
+      operations: toArray(rows).map((row) =>
+        buildConfiguredUpsertOperation("recettesIngredients", row)
+      )
+    });
+
+  const saveIngredient = (ingredient) =>
+    requestQueuedPost("upsertIngredient", {
+      ingredient
+    });
+
+  const saveCuvee = (cuvee) =>
+    requestQueuedPost("upsertCuvee", {
+      cuvee
+    });
+
+  const saveCuveeIngredientReel = (cuveeIngredientReel) =>
+    requestQueuedPost("upsertCuveeIngredientReel", {
+      cuvee_ingredient_reel: cuveeIngredientReel
+    });
+
+  const saveCuveeIngredientsReels = (rows = []) =>
+    requestQueuedPost("batchUpsert", {
+      operations: toArray(rows).map((row) =>
+        buildConfiguredUpsertOperation("cuveesIngredientsReels", row)
+      )
+    });
+
+  const saveMatierePremiere = (matiere) =>
+    requestQueuedPost("upsertMatierePremiere", {
+      matiere
+    });
+
+  const saveMatiereLot = (lot) =>
+    requestQueuedPost("upsertMatiereLot", {
+      lot
+    });
+
+  const saveCuveeMatiereConsommee = (conso) =>
+    requestQueuedPost("upsertCuveeMatiereConsommee", {
+      conso
+    });
+
+  const saveCuveesMatieresConsommees = (rows = []) =>
+    requestQueuedPost("batchUpsert", {
+      operations: toArray(rows).map((row) =>
+        buildConfiguredUpsertOperation("cuveesMatieresConsommees", row)
+      )
+    });
+
+  const saveMouvementMatiere = (mouvement) =>
+    requestQueuedPost("upsertMouvementMatiere", {
+      mouvement
+    });
+
+  const saveMouvementsMatieres = (rows = []) =>
+    requestQueuedPost("batchUpsert", {
+      operations: toArray(rows).map((row) =>
+        buildConfiguredUpsertOperation("mouvementsMatieres", row)
+      )
+    });
+
+  const saveCuveeProductionBundleFallback = async (payload = {}) => {
+    const cuvee =
+      payload.cuvee ||
+      payload["cuvée"] ||
+      payload.batch ||
+      null;
+
+    const ingredientsReels =
+      toArray(payload.ingredients_reels).length
+        ? toArray(payload.ingredients_reels)
+        : toArray(payload.cuvees_ingredients_reels).length
+          ? toArray(payload.cuvees_ingredients_reels)
+          : toArray(payload.ingredients);
+
+    const matieresConsommees =
+      toArray(payload.matieres_consommees).length
+        ? toArray(payload.matieres_consommees)
+        : toArray(payload.cuvees_matieres_consommees).length
+          ? toArray(payload.cuvees_matieres_consommees)
+          : toArray(payload.consommations);
+
+    const mouvementsMatieres =
+      toArray(payload.mouvements_matieres).length
+        ? toArray(payload.mouvements_matieres)
+        : toArray(payload.mouvements);
+
+    const matieresLots =
+      toArray(payload.matieres_lots).length
+        ? toArray(payload.matieres_lots)
+        : toArray(payload.lots);
+
+    const results = {
+      fallback: true,
+      cuvee: null,
+      ingredients_reels: [],
+      matieres_consommees: [],
+      mouvements_matieres: [],
+      matieres_lots: [],
+      ingredients_reels_count: 0,
+      matieres_consommees_count: 0,
+      mouvements_matieres_count: 0,
+      matieres_lots_count: 0
+    };
+
+    if (cuvee) {
+      results.cuvee = await saveCuvee(cuvee);
+    }
+
+    if (ingredientsReels.length > 0) {
+      results.ingredients_reels = await saveCuveeIngredientsReels(ingredientsReels);
+      results.ingredients_reels_count = ingredientsReels.length;
+    }
+
+    if (matieresConsommees.length > 0) {
+      results.matieres_consommees = await saveCuveesMatieresConsommees(matieresConsommees);
+      results.matieres_consommees_count = matieresConsommees.length;
+    }
+
+    if (mouvementsMatieres.length > 0) {
+      results.mouvements_matieres = await saveMouvementsMatieres(mouvementsMatieres);
+      results.mouvements_matieres_count = mouvementsMatieres.length;
+    }
+
+    if (matieresLots.length > 0) {
+      results.matieres_lots = await requestQueuedPost("batchUpsert", {
+        operations: matieresLots.map((lot) =>
+          buildConfiguredUpsertOperation("matieresLots", lot)
+        )
+      });
+      results.matieres_lots_count = matieresLots.length;
+    }
+
+    return results;
+  };
+
+  const saveCuveeProductionBundle = async (payload = {}) => {
+    try {
+      return await requestQueuedPost("saveCuveeProductionBundle", payload);
+    } catch (error) {
+      if (
+        isUnknownPostActionError(error, "saveCuveeProductionBundle") ||
+        isUnknownPostActionError(error, "saveRecetteProductionBundle") ||
+        isUnknownPostActionError(error, "saveCuveeBundle")
+      ) {
+        console.warn(
+          "saveCuveeProductionBundle indisponible côté Apps Script, fallback détaillé utilisé.",
+          error
+        );
+
+        return saveCuveeProductionBundleFallback(payload);
+      }
+
+      throw error;
+    }
+  };
+
+  const saveRecetteProductionBundle = saveCuveeProductionBundle;
+  const saveCuveeBundle = saveCuveeProductionBundle;
+
+  const post = (action, payload = {}) =>
+    requestQueuedPost(action, payload);
+
+  const request = (action, payload = {}) =>
+    requestQueuedPost(action, payload);
+
+  const call = (action, payload = {}) =>
+    requestQueuedPost(action, payload);
+
+  const queueAction = (action, payload = {}) =>
+    requestQueuedPost(action, payload);
+
+  const enqueueAction = (action, payload = {}) =>
+    requestQueuedPost(action, payload);
+
   window.LugdurumDataState = {
     set: setDataState,
     get: getDataState
@@ -1619,7 +2030,22 @@
       return requestGet("getSpreadsheetInfo", {}, { flushBeforeRead: false });
     },
 
+    post,
+    request,
+    call,
+    queueAction,
+    enqueueAction,
+
+    list,
+    upsert,
+
     getHomeData,
+
+    getRecettesData,
+    getRecettesDashboardData,
+    getRecettesHistoriqueData,
+    getRecettesProductionData,
+    getRecettesMatieresData,
 
     getCoreData(tables = []) {
       return requestGet("getCoreData", {
@@ -1740,6 +2166,33 @@
     saveCloture,
 
     saveJourneeHistoriqueBundle,
+
+    getRecettes,
+    getRecettesIngredients,
+    getIngredients,
+    getCuvees,
+    getCuveesIngredientsReels,
+    getMatieresPremieres,
+    getMatieresLots,
+    getCuveesMatieresConsommees,
+    getMouvementsMatieres,
+
+    saveRecette,
+    saveRecetteIngredient,
+    saveRecetteIngredients,
+    saveIngredient,
+    saveCuvee,
+    saveCuveeIngredientReel,
+    saveCuveeIngredientsReels,
+    saveMatierePremiere,
+    saveMatiereLot,
+    saveCuveeMatiereConsommee,
+    saveCuveesMatieresConsommees,
+    saveMouvementMatiere,
+    saveMouvementsMatieres,
+    saveCuveeProductionBundle,
+    saveRecetteProductionBundle,
+    saveCuveeBundle,
 
     batchUpsert,
     ensureVentesLignes,
