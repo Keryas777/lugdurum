@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Inscriptions évènements V8 — connecté Google Sheets :
+    Inscriptions évènements V9 — connecté Google Sheets :
     - Source principale : Google Sheets via window.LugdurumAPI.
     - Cache localStorage conservé en secours si l’API est indisponible.
     - Lecture :
@@ -28,19 +28,39 @@
       paiement_statut_label = libellé lisible
     - Le champ texte “Détail paiement / caution” est stocké dans caution.
     - Compat ancienne donnée : si paiement_statut contenait du texte libre, il est repris dans caution.
+    - Remplace le sélecteur personne unique par des chips multi-sélection :
+      Antho, Will, Jay.
+    - Écrit vendeurs_prevus et vendeurs_prevus_noms dans inscriptions_evenements.
+    - Propage vendeurs_prevus et vendeurs_prevus_noms vers missions_vente.
+    - Garde responsable_user_id / responsable_nom en compatibilité, basé sur Jay si sélectionné,
+      sinon sur la première personne sélectionnée.
   */
 
   const CURRENT_USER = {
     user_id: "U_JEROME",
-    nom: "Jérôme"
+    nom: "Jay"
   };
 
   const OPERATORS = {
-    U_JEROME: "Jérôme",
+    U_JEROME: "Jay",
     U_ANTHO: "Antho",
-    U_WILL: "Will",
-    AUTRE: "Autre"
+    U_WILL: "Will"
   };
+
+  const VENDORS = [
+    {
+      user_id: "U_ANTHO",
+      nom: "Antho"
+    },
+    {
+      user_id: "U_WILL",
+      nom: "Will"
+    },
+    {
+      user_id: "U_JEROME",
+      nom: "Jay"
+    }
+  ];
 
   const EVENT_KIND_LABELS = {
     MARCHE_ARTISANAL: "Marché artisanal",
@@ -102,6 +122,7 @@
     setupInput: document.getElementById("setupInput"),
     priceInput: document.getElementById("priceInput"),
     ownerInput: document.getElementById("ownerInput"),
+    vendorsInput: document.getElementById("vendorsInput"),
     cityInput: document.getElementById("cityInput"),
     locationInput: document.getElementById("locationInput"),
     addressInput: document.getElementById("addressInput"),
@@ -167,6 +188,15 @@
       .replace(/[^A-Z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "")
       .slice(0, 30) || fallback;
+
+  const normalizeToken = (value) =>
+    String(value ?? "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
 
   const toNumber = (value, fallback = 0) => {
     if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -321,6 +351,182 @@
     return "";
   };
 
+  const getVendorLabel = (vendorId) =>
+    OPERATORS[vendorId] || String(vendorId || "").trim();
+
+  const isKnownVendorId = (vendorId) =>
+    Object.prototype.hasOwnProperty.call(OPERATORS, String(vendorId || "").trim());
+
+  const normalizeVendorId = (value) => {
+    if (value && typeof value === "object") {
+      return normalizeVendorId(
+        value.user_id ||
+        value.vendor_id ||
+        value.id ||
+        value.value ||
+        value.nom ||
+        value.name ||
+        ""
+      );
+    }
+
+    const raw = String(value || "").trim();
+
+    if (isKnownVendorId(raw)) return raw;
+
+    const normalized = normalizeToken(raw);
+
+    if (["U_JEROME", "JEROME", "JAY"].includes(normalized)) return "U_JEROME";
+    if (["U_ANTHO", "ANTHO", "ANTHONY"].includes(normalized)) return "U_ANTHO";
+    if (["U_WILL", "WILL", "WILLIAM"].includes(normalized)) return "U_WILL";
+
+    return "";
+  };
+
+  const dedupeVendorIds = (vendorIds = []) => {
+    const seen = new Set();
+    const result = [];
+
+    vendorIds.forEach((vendorId) => {
+      const normalized = normalizeVendorId(vendorId);
+
+      if (!normalized || seen.has(normalized)) return;
+
+      seen.add(normalized);
+      result.push(normalized);
+    });
+
+    return result;
+  };
+
+  const parseVendorIdsFromValue = (value) => {
+    if (Array.isArray(value)) {
+      return dedupeVendorIds(value.map((item) => normalizeVendorId(item)));
+    }
+
+    if (value && typeof value === "object") {
+      return dedupeVendorIds([normalizeVendorId(value)]);
+    }
+
+    const text = String(value || "").trim();
+
+    if (!text) return [];
+
+    try {
+      const parsed = JSON.parse(text);
+      return parseVendorIdsFromValue(parsed);
+    } catch {
+      // Texte libre ou liste séparée par virgule.
+    }
+
+    return dedupeVendorIds(text.split(/[;,|]/).map((item) => normalizeVendorId(item)));
+  };
+
+  const getVendorIdsFromInscription = (inscription) => {
+    const fromJson = parseVendorIdsFromValue(inscription?.vendeurs_prevus);
+
+    if (fromJson.length > 0) return fromJson;
+
+    const fromNames = parseVendorIdsFromValue(inscription?.vendeurs_prevus_noms);
+
+    if (fromNames.length > 0) return fromNames;
+
+    const fromResponsible = parseVendorIdsFromValue(inscription?.responsable_user_id);
+
+    if (fromResponsible.length > 0) return fromResponsible;
+
+    return [CURRENT_USER.user_id];
+  };
+
+  const getPrimaryVendorId = (vendorIds = []) => {
+    const safeVendorIds = dedupeVendorIds(vendorIds);
+
+    if (safeVendorIds.includes(CURRENT_USER.user_id)) {
+      return CURRENT_USER.user_id;
+    }
+
+    return safeVendorIds[0] || CURRENT_USER.user_id;
+  };
+
+  const getVendorNames = (vendorIds = []) =>
+    dedupeVendorIds(vendorIds)
+      .map((vendorId) => getVendorLabel(vendorId))
+      .filter(Boolean)
+      .join(", ");
+
+  const buildVendorsArray = (vendorIds = []) =>
+    dedupeVendorIds(vendorIds).map((vendorId) => ({
+      user_id: vendorId,
+      nom: getVendorLabel(vendorId)
+    }));
+
+  const buildVendorsJson = (vendorIds = []) =>
+    JSON.stringify(buildVendorsArray(vendorIds));
+
+  const getVendorsLabel = (inscription) => {
+    const names =
+      String(inscription?.vendeurs_prevus_noms || "").trim() ||
+      getVendorNames(getVendorIdsFromInscription(inscription));
+
+    return names || getVendorLabel(inscription?.responsable_user_id || CURRENT_USER.user_id);
+  };
+
+  const getSelectedVendorIds = () => {
+    const selected = [...document.querySelectorAll("[data-vendor-id].isActive")]
+      .map((button) => button.dataset.vendorId)
+      .filter(Boolean);
+
+    return dedupeVendorIds(selected.length > 0 ? selected : [CURRENT_USER.user_id]);
+  };
+
+  const syncVendorInputs = (vendorIds = []) => {
+    const safeVendorIds = dedupeVendorIds(vendorIds.length > 0 ? vendorIds : [CURRENT_USER.user_id]);
+    const primaryVendorId = getPrimaryVendorId(safeVendorIds);
+
+    if (els.ownerInput) {
+      els.ownerInput.value = primaryVendorId;
+    }
+
+    if (els.vendorsInput) {
+      els.vendorsInput.value = JSON.stringify(safeVendorIds);
+    }
+  };
+
+  const setSelectedVendorIds = (vendorIds = []) => {
+    const safeVendorIds = dedupeVendorIds(vendorIds.length > 0 ? vendorIds : [CURRENT_USER.user_id]);
+
+    document.querySelectorAll("[data-vendor-id]").forEach((button) => {
+      const isActive = safeVendorIds.includes(button.dataset.vendorId);
+
+      button.classList.toggle("isActive", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+
+    syncVendorInputs(safeVendorIds);
+  };
+
+  const toggleVendor = (vendorId) => {
+    const safeVendorId = normalizeVendorId(vendorId);
+
+    if (!safeVendorId) return;
+
+    const currentVendorIds = getSelectedVendorIds();
+    const isAlreadySelected = currentVendorIds.includes(safeVendorId);
+
+    if (isAlreadySelected && currentVendorIds.length <= 1) {
+      setStatus("Garde au moins une personne prévue sur l’évènement.", "isError");
+      setSelectedVendorIds(currentVendorIds);
+      return;
+    }
+
+    const nextVendorIds = isAlreadySelected
+      ? currentVendorIds.filter((id) => id !== safeVendorId)
+      : [...currentVendorIds, safeVendorId];
+
+    setStatus("");
+    setSelectedVendorIds(nextVendorIds);
+  };
+
   const getPendingWritesCount = () => {
     if (hasApi() && typeof api().getPendingWritesCount === "function") {
       return api().getPendingWritesCount();
@@ -359,7 +565,8 @@
 
     [
       els.saveInscriptionBtn,
-      els.resetFormBtn
+      els.resetFormBtn,
+      ...document.querySelectorAll("[data-vendor-id]")
     ].forEach((button) => {
       if (button) button.disabled = isSaving;
     });
@@ -445,6 +652,7 @@
   const buildNoteFromInscription = (inscription) =>
     [
       inscription.commentaire ? `Commentaire : ${inscription.commentaire}` : "",
+      inscription.vendeurs_prevus_noms ? `Équipe prévue : ${inscription.vendeurs_prevus_noms}` : "",
       inscription.paiement_statut_label ? `Paiement : ${inscription.paiement_statut_label}` : "",
       inscription.caution ? `Détail paiement/caution : ${inscription.caution}` : "",
       inscription.contact_nom ? `Contact : ${inscription.contact_nom}` : "",
@@ -453,12 +661,7 @@
     ].filter(Boolean).join("\n");
 
   const buildVendorCell = (inscription) =>
-    JSON.stringify([
-      {
-        user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
-        nom: OPERATORS[inscription.responsable_user_id] || CURRENT_USER.nom
-      }
-    ]);
+    buildVendorsJson(getVendorIdsFromInscription(inscription));
 
   const buildInscriptionFromForm = () => {
     const now = new Date().toISOString();
@@ -466,6 +669,8 @@
     const startDate = els.startDateInput.value;
     const endDate = els.endDateInput.value || startDate;
     const dates = getDateRange(startDate, endDate);
+    const vendorIds = getSelectedVendorIds();
+    const primaryVendorId = getPrimaryVendorId(vendorIds);
 
     if (!name) {
       setStatus("Indique le nom du marché ou salon.", "isError");
@@ -474,6 +679,11 @@
 
     if (!startDate || dates.length === 0) {
       setStatus("Indique une période valide.", "isError");
+      return null;
+    }
+
+    if (vendorIds.length === 0) {
+      setStatus("Sélectionne au moins une personne prévue sur l’évènement.", "isError");
       return null;
     }
 
@@ -530,8 +740,10 @@
       chaises_fournies: els.chairsInput.checked,
       eclairage_fourni: els.lightInput.checked,
       electricite_fournie: els.electricityInput.checked,
-      responsable_user_id: els.ownerInput.value,
-      responsable_nom: OPERATORS[els.ownerInput.value] || els.ownerInput.value,
+      responsable_user_id: primaryVendorId,
+      responsable_nom: getVendorLabel(primaryVendorId),
+      vendeurs_prevus: buildVendorsJson(vendorIds),
+      vendeurs_prevus_noms: getVendorNames(vendorIds),
       contact_nom: els.contactNameInput.value.trim(),
       contact_mail: els.contactMailInput.value.trim(),
       contact_tel: els.contactPhoneInput.value.trim(),
@@ -549,6 +761,8 @@
   const buildMissionFromInscription = (inscription, missionId, existingMission = null, dates = null) => {
     const resolvedDates = dates || getDateRange(inscription.date_debut, inscription.date_fin);
     const now = new Date().toISOString();
+    const vendorIds = getVendorIdsFromInscription(inscription);
+    const primaryVendorId = getPrimaryVendorId(vendorIds);
 
     return {
       ...existingMission,
@@ -567,7 +781,9 @@
       duree_type: resolvedDates.length > 1 ? "PLUSIEURS_JOURS" : "JOURNEE_UNIQUE",
       statut: existingMission?.statut || "prevu",
       vendeurs_prevus: buildVendorCell(inscription),
-      responsable_user_id: inscription.responsable_user_id || CURRENT_USER.user_id,
+      vendeurs_prevus_noms: getVendorNames(vendorIds),
+      responsable_user_id: primaryVendorId,
+      responsable_nom: getVendorLabel(primaryVendorId),
       source: existingMission?.source || "INSCRIPTION",
       note: buildNoteFromInscription(inscription),
       created_at: existingMission?.created_at || now,
@@ -823,7 +1039,7 @@
       els.paymentStatusInput.value = "A_ENVOYER";
     }
 
-    els.ownerInput.value = CURRENT_USER.user_id;
+    setSelectedVendorIds([CURRENT_USER.user_id]);
 
     if (els.formTitle) {
       els.formTitle.textContent = "Ajouter une inscription";
@@ -857,10 +1073,11 @@
     els.scheduleInput.value = inscription.horaires || "";
     els.setupInput.value = inscription.mise_en_place || "";
     els.priceInput.value = inscription.prix_emplacement || "";
-    els.ownerInput.value = inscription.responsable_user_id || CURRENT_USER.user_id;
     els.cityInput.value = inscription.ville || "";
     els.locationInput.value = inscription.lieu || "";
     els.addressInput.value = inscription.adresse || "";
+
+    setSelectedVendorIds(getVendorIdsFromInscription(inscription));
 
     els.docSentInput.checked = toBoolean(inscription.dossier_envoye);
     els.acceptedInput.checked = toBoolean(inscription.acceptation);
@@ -1025,6 +1242,7 @@
 
   const buildCalendarPayload = (inscription) => {
     const dateEnd = inscription.date_fin || inscription.date_debut;
+    const vendorsLabel = getVendorsLabel(inscription);
 
     return {
       title: inscription.nom,
@@ -1036,7 +1254,7 @@
         .join(" · "),
       description: [
         inscription.mise_en_place ? `Mise en place : ${inscription.mise_en_place}` : "",
-        OPERATORS[inscription.responsable_user_id] ? `Qui : ${OPERATORS[inscription.responsable_user_id]}` : "",
+        vendorsLabel ? `Qui : ${vendorsLabel}` : "",
         inscription.prix_emplacement ? `Prix : ${formatCurrency(inscription.prix_emplacement)}` : "",
         inscription.paiement_statut_label ? `Paiement : ${inscription.paiement_statut_label}` : "",
         inscription.caution ? `Détail paiement/caution : ${inscription.caution}` : "",
@@ -1167,7 +1385,9 @@
           item.contact_mail,
           item.commentaire,
           item.paiement_statut_label,
-          item.caution
+          item.caution,
+          item.vendeurs_prevus_noms,
+          getVendorsLabel(item)
         ]
           .filter(Boolean)
           .join(" ")
@@ -1206,12 +1426,6 @@
 
     return "";
   };
-
-  const getResponsibleLabel = (item) =>
-    item.responsable_nom ||
-    OPERATORS[item.responsable_user_id] ||
-    item.responsable_user_id ||
-    "";
 
   const renderStats = () => {
     const items = getInscriptions().filter((item) => item.statut !== "ANNULE");
@@ -1324,7 +1538,7 @@
         const statusClass = getStatusClass(item.statut);
         const cardClass = getCardClass(item);
         const price = formatCurrency(item.prix_emplacement);
-        const responsibleLabel = getResponsibleLabel(item);
+        const vendorsLabel = getVendorsLabel(item);
         const missionId = getMissionIdFromInscription(item);
         const paymentLabel = getPaymentStatusLabel(item);
         const paymentFlagClass = getPaymentFlagClass(item);
@@ -1362,7 +1576,7 @@
               ${item.horaires ? `<span>🕒 ${escapeHtml(item.horaires)}</span>` : ""}
               ${item.mise_en_place ? `<span>🚚 ${escapeHtml(item.mise_en_place)}</span>` : ""}
               ${price ? `<span>💶 ${escapeHtml(price)}</span>` : ""}
-              ${responsibleLabel ? `<span>👤 ${escapeHtml(responsibleLabel)}</span>` : ""}
+              ${vendorsLabel ? `<span>👥 ${escapeHtml(vendorsLabel)}</span>` : ""}
               ${paymentLabel ? `<span>💳 ${escapeHtml(paymentLabel)}</span>` : ""}
               ${paymentDetail ? `<span>🧾 ${escapeHtml(paymentDetail)}</span>` : ""}
             </div>
@@ -1398,6 +1612,7 @@
             <div class="inscriptionFlags">
               ${toBoolean(item.dossier_envoye) ? `<span class="flagOk">Dossier envoyé</span>` : `<span>Dossier non envoyé</span>`}
               ${toBoolean(item.acceptation) ? `<span class="flagOk">Accepté</span>` : ""}
+              ${vendorsLabel ? `<span>Équipe : ${escapeHtml(vendorsLabel)}</span>` : ""}
               ${paymentLabel ? `<span class="${escapeAttr(paymentFlagClass)}">Paiement : ${escapeHtml(paymentLabel)}</span>` : ""}
               ${missionId ? `<span class="flagOk">Évènement créé</span>` : ""}
               ${item.calendar_statut === "ajoute" ? `<span class="flagOk">Calendrier OK</span>` : ""}
@@ -1520,6 +1735,12 @@
   };
 
   document.addEventListener("click", async (event) => {
+    const vendorButton = event.target.closest("[data-vendor-id]");
+    if (vendorButton) {
+      toggleVendor(vendorButton.dataset.vendorId);
+      return;
+    }
+
     const filterButton = event.target.closest("[data-filter-status]");
     if (filterButton) {
       state.filterStatus = filterButton.dataset.filterStatus;
@@ -1649,6 +1870,8 @@
   if (els.paymentStatusInput) {
     els.paymentStatusInput.value = "A_ENVOYER";
   }
+
+  setSelectedVendorIds([CURRENT_USER.user_id]);
 
   loadFromCache();
   renderAll();
