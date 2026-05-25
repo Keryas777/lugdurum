@@ -2,10 +2,15 @@
   "use strict";
 
   /*
-    Dashboard recettes V2 — connecté Google Sheets via LugdurumAPI
+    Dashboard recettes V3 — connecté Google Sheets via LugdurumAPI V16
 
-    - Lecture remote-first via getCoreData :
-      recettes, cuvees, matieresLots
+    - Lecture remote-first via vue rapide recettes :
+      getRecettesDashboardData()
+      ou getRecettesData("dashboard")
+
+    - Fallback compatibilité :
+      getCoreData("recettes,cuvees,matieresLots")
+      puis list() si nécessaire.
 
     - Cache localStorage utilisé uniquement en secours :
       - hors ligne
@@ -25,9 +30,9 @@
   const CORE_TABLES = "recettes,cuvees,matieresLots";
 
   const TABLE_ALIASES = {
-    recettes: ["recettes"],
-    cuvees: ["cuvees"],
-    matieresLots: ["matieresLots", "matieres_lots"]
+    recettes: ["recettes", "recipes"],
+    cuvees: ["cuvees", "batches"],
+    matieresLots: ["matieresLots", "matieres_lots", "lots"]
   };
 
   let data = {
@@ -151,12 +156,15 @@
     writeLocal(STORAGE_KEYS.lots, data.lots);
   }
 
-  function unwrapCoreData(response) {
+  function unwrapRemoteData(response) {
     if (!response) return {};
 
     if (response.data && typeof response.data === "object") {
       if (response.data.data && typeof response.data.data === "object") {
-        return response.data.data;
+        return {
+          ...response.data,
+          ...response.data.data
+        };
       }
 
       return response.data;
@@ -165,16 +173,60 @@
     return response;
   }
 
-  function getRowsFromCoreData(core, key) {
+  function getRowsFromRemoteData(remote, key) {
     const aliases = TABLE_ALIASES[key] || [key];
+    const candidates = [
+      remote,
+      remote?.data
+    ].filter(Boolean);
 
-    for (const alias of aliases) {
-      if (Array.isArray(core?.[alias])) {
-        return core[alias];
+    for (const source of candidates) {
+      for (const alias of aliases) {
+        if (Array.isArray(source?.[alias])) {
+          return source[alias];
+        }
       }
     }
 
     return [];
+  }
+
+  async function readRecettesDashboardDataFromApi() {
+    const api = window.LugdurumAPI;
+
+    if (!api) {
+      throw new Error("LugdurumAPI indisponible.");
+    }
+
+    if (typeof api.getRecettesDashboardData === "function") {
+      const response = await api.getRecettesDashboardData({
+        flushBeforeRead: false
+      });
+
+      const remote = unwrapRemoteData(response);
+
+      return {
+        recipes: getRowsFromRemoteData(remote, "recettes"),
+        batches: getRowsFromRemoteData(remote, "cuvees"),
+        lots: getRowsFromRemoteData(remote, "matieresLots")
+      };
+    }
+
+    if (typeof api.getRecettesData === "function") {
+      const response = await api.getRecettesData("dashboard", {
+        flushBeforeRead: false
+      });
+
+      const remote = unwrapRemoteData(response);
+
+      return {
+        recipes: getRowsFromRemoteData(remote, "recettes"),
+        batches: getRowsFromRemoteData(remote, "cuvees"),
+        lots: getRowsFromRemoteData(remote, "matieresLots")
+      };
+    }
+
+    throw new Error("Vue rapide recettes indisponible.");
   }
 
   async function readCoreDataFromApi() {
@@ -186,12 +238,12 @@
 
     if (typeof api.getCoreData === "function") {
       const response = await api.getCoreData(CORE_TABLES);
-      const core = unwrapCoreData(response);
+      const remote = unwrapRemoteData(response);
 
       return {
-        recipes: getRowsFromCoreData(core, "recettes"),
-        batches: getRowsFromCoreData(core, "cuvees"),
-        lots: getRowsFromCoreData(core, "matieresLots")
+        recipes: getRowsFromRemoteData(remote, "recettes"),
+        batches: getRowsFromRemoteData(remote, "cuvees"),
+        lots: getRowsFromRemoteData(remote, "matieresLots")
       };
     }
 
@@ -210,6 +262,19 @@
     }
 
     throw new Error("Aucune méthode de lecture compatible dans LugdurumAPI.");
+  }
+
+  async function readDataFromApi() {
+    try {
+      return await readRecettesDashboardDataFromApi();
+    } catch (viewErr) {
+      console.warn(
+        "Lecture getRecettesData(dashboard) impossible, fallback getCoreData/list.",
+        viewErr
+      );
+
+      return readCoreDataFromApi();
+    }
   }
 
   async function readTableWithListApi(key) {
@@ -244,6 +309,8 @@
 
   function isActiveOrTrackedBatch(batch) {
     const status = normalizeStatus(batch?.statut);
+
+    if (!status) return true;
 
     return [
       "brouillon",
@@ -467,7 +534,7 @@
     setStatus("Chargement Google Sheets…", "isRefreshing");
 
     try {
-      const fresh = await readCoreDataFromApi();
+      const fresh = await readDataFromApi();
 
       data = {
         recipes: asArray(fresh.recipes),
