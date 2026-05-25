@@ -1,36 +1,838 @@
+(() => {
+  "use strict";
 
-const STORAGE_KEYS={recipes:"lugdurum_recettes",recipeIngredients:"lugdurum_recettes_ingredients",ingredients:"lugdurum_ingredients",batches:"lugdurum_cuvees",matters:"lugdurum_matieres_premieres",lots:"lugdurum_matieres_lots",consumptions:"lugdurum_cuvees_matieres_consommees",batchIngredientRows:"lugdurum_cuvees_ingredients_reels",draft:"lugdurum_cuvee_brouillon"};
-const DEMO_DATA={
- recipes:[{recette_id:"REC_CITG_2023",nom:"Citron Gingembre",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2023",annee_reference:"2023",statut:"favorite",type_recette:"historique",description:"Version de référence, plus nerveuse et équilibrée que 2024.",volume_reference_l:1,sucre_cible_g_l:80,dilution_cible_pct:28,temps_maceration_jours:42,fabrication_note:"Zestes fins, gingembre frais râpé grossièrement.",degustation_note:"Belle attaque citron, gingembre présent sans brûler."},{recette_id:"REC_CITG_2024",nom:"Citron Gingembre",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2024",annee_reference:"2024",statut:"archivee",type_recette:"production",description:"Version plus douce, moins tranchante.",volume_reference_l:1,sucre_cible_g_l:95,dilution_cible_pct:30,temps_maceration_jours:38,fabrication_note:"Moins de gingembre, plus de sucre.",degustation_note:"Facile mais moins mémorable."},{recette_id:"REC_POMR_2026_V2",nom:"Pomelo Romarin",parfum_code:"POMR",parfum_nom:"Pomelo Romarin",version:"V2",annee_reference:"2026",statut:"active",type_recette:"production",description:"Pomelo en suprêmes, romarin plus maîtrisé.",volume_reference_l:1,sucre_cible_g_l:70,dilution_cible_pct:24,temps_maceration_jours:28,fabrication_note:"Éviter le blanc du pomelo pour limiter l’amertume.",degustation_note:"À valider sur nouvelle cuvée."}],
- recipeIngredients:[{recette_ingredient_id:"RI_CITG_2023_CITRON",recette_id:"REC_CITG_2023",ingredient_id:"ING_CITRON",nom_ingredient:"Citron",categorie:"fruit",quantite_par_litre_rhum:350,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:"Zeste + chair selon rendement"},{recette_ingredient_id:"RI_CITG_2023_GING",recette_id:"REC_CITG_2023",ingredient_id:"ING_GINGEMBRE",nom_ingredient:"Gingembre frais",categorie:"epice",quantite_par_litre_rhum:120,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:"Râpé grossièrement"},{recette_ingredient_id:"RI_CITG_2023_SUCRE",recette_id:"REC_CITG_2023",ingredient_id:"ING_SUCRE",nom_ingredient:"Sucre de canne",categorie:"sucre",quantite_par_litre_rhum:80,unite:"g",ordre_affichage:3,obligatoire:"TRUE",note:"Ajuster après dégustation"},{recette_ingredient_id:"RI_CITG_2024_CITRON",recette_id:"REC_CITG_2024",ingredient_id:"ING_CITRON",nom_ingredient:"Citron",categorie:"fruit",quantite_par_litre_rhum:320,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:""},{recette_ingredient_id:"RI_CITG_2024_GING",recette_id:"REC_CITG_2024",ingredient_id:"ING_GINGEMBRE",nom_ingredient:"Gingembre frais",categorie:"epice",quantite_par_litre_rhum:90,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:""},{recette_ingredient_id:"RI_POMR_POMELO",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_POMELO",nom_ingredient:"Pomelo suprêmes",categorie:"fruit",quantite_par_litre_rhum:420,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:"Sans blanc"},{recette_ingredient_id:"RI_POMR_ROMARIN",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_ROMARIN",nom_ingredient:"Romarin",categorie:"herbe",quantite_par_litre_rhum:4,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:"Goûter régulièrement"},{recette_ingredient_id:"RI_POMR_SUCRE",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_SUCRE",nom_ingredient:"Sucre de canne",categorie:"sucre",quantite_par_litre_rhum:70,unite:"g",ordre_affichage:3,obligatoire:"TRUE",note:""}],
- ingredients:[{ingredient_id:"ING_CITRON",nom:"Citron",categorie:"fruit",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_GINGEMBRE",nom:"Gingembre frais",categorie:"epice",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_SUCRE",nom:"Sucre de canne",categorie:"sucre",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_POMELO",nom:"Pomelo",categorie:"fruit",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_ROMARIN",nom:"Romarin",categorie:"herbe",unite_defaut:"g",actif:"TRUE"}],
- batches:[{cuvee_id:"CUV_2026_POMR_V2_DEMO",recette_id:"REC_POMR_2026_V2",nom:"Pomelo Romarin V2 (2026)",parfum_code:"POMR",parfum_nom:"Pomelo Romarin",version:"V2",annee_production:"2026",type_cuvee:"test",statut:"en_maceration",volume_rhum_l:80,volume_final_estime_l:99.2,nombre_bouteilles_50:198,cout_total:1120,cout_unitaire_50_estime:5.66,note_fabrication:"Démo : suprêmes uniquement.",updated_at:"2026-05-20T10:00:00.000Z"},{cuvee_id:"CUV_2023_CITG_DEMO",recette_id:"REC_CITG_2023",nom:"Citron Gingembre V2023",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2023",annee_production:"2023",type_cuvee:"production",statut:"archivee",volume_rhum_l:60,volume_final_estime_l:76.8,nombre_bouteilles_50:153,cout_total:790,cout_unitaire_50_estime:5.16,note_degustation:"Version à reprendre.",updated_at:"2023-10-10T10:00:00.000Z"}],
- matters:[{matiere_id:"MAT_RHUM_AGRICOLE",nom:"Rhum agricole",categorie:"rhum",unite_stock:"L",actif:"TRUE"},{matiere_id:"MAT_BOUTEILLE_50",nom:"Bouteille 50 cL",categorie:"bouteille",unite_stock:"unité",actif:"TRUE"},{matiere_id:"MAT_BOUCHON",nom:"Bouchon liège",categorie:"bouchon",unite_stock:"unité",actif:"TRUE"}],
- lots:[{lot_id:"LOT_RHUM_2026_450L",matiere_id:"MAT_RHUM_AGRICOLE",nom_lot:"Rhum agricole 450 L — Achat 2026",categorie:"rhum",fournisseur:"Fournisseur rhum",date_achat:"2026-02-15",quantite_initiale:450,quantite_restante:370,unite:"L",cout_total:4500,cout_unitaire:10,statut:"actif",note:"Lot démo"},{lot_id:"LOT_BOUT_2026_2400",matiere_id:"MAT_BOUTEILLE_50",nom_lot:"Bouteilles 50 cL — Palette 2400",categorie:"bouteille",fournisseur:"Verrier",date_achat:"2026-01-20",quantite_initiale:2400,quantite_restante:2210,unite:"unité",cout_total:1440,cout_unitaire:.6,statut:"actif",note:"Lot démo"},{lot_id:"LOT_BOUCH_2026_5000",matiere_id:"MAT_BOUCHON",nom_lot:"Bouchons liège — Carton 5000",categorie:"bouchon",fournisseur:"Fournisseur bouchons",date_achat:"2026-01-20",quantite_initiale:5000,quantite_restante:4300,unite:"unité",cout_total:650,cout_unitaire:.13,statut:"actif",note:"Lot démo"}],
- consumptions:[{conso_id:"CONSO_DEMO_RHUM",cuvee_id:"CUV_2026_POMR_V2_DEMO",lot_id:"LOT_RHUM_2026_450L",matiere_id:"MAT_RHUM_AGRICOLE",nom_matiere:"Rhum agricole",categorie:"rhum",quantite_consommee:80,unite:"L",cout_unitaire_snapshot:10,cout_total_impute:800,created_at:"2026-05-20T10:00:00.000Z"},{conso_id:"CONSO_DEMO_BOUT",cuvee_id:"CUV_2026_POMR_V2_DEMO",lot_id:"LOT_BOUT_2026_2400",matiere_id:"MAT_BOUTEILLE_50",nom_matiere:"Bouteille 50 cL",categorie:"bouteille",quantite_consommee:198,unite:"unité",cout_unitaire_snapshot:.6,cout_total_impute:118.8,created_at:"2026-05-20T10:00:00.000Z"}]
-};
-function $(id){return document.getElementById(id)}
-function asArray(value){return Array.isArray(value)?value:[]}
-function n(value){const parsed=Number(String(value??"").replace(",","."));return Number.isFinite(parsed)?parsed:0}
-function money(value){return new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(n(value))}
-function number(value,dec=0){return new Intl.NumberFormat("fr-FR",{maximumFractionDigits:dec,minimumFractionDigits:dec}).format(n(value))}
-function isoNow(){return new Date().toISOString()}
-function today(){return new Date().toISOString().slice(0,10)}
-function uid(prefix){return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8).toUpperCase()}`}
-function readLocal(key,fallback=[]){try{return JSON.parse(localStorage.getItem(key)||"null")||fallback}catch{return fallback}}
-function writeLocal(key,value){localStorage.setItem(key,JSON.stringify(value))}
-async function apiList(table,key,demo){try{if(window.LugdurumAPI?.list){const rows=await window.LugdurumAPI.list(table);writeLocal(key,asArray(rows));return asArray(rows)}if(window.LugdurumAPI?.getCoreData){const data=await window.LugdurumAPI.getCoreData(table);const rows=asArray(data?.[table]);writeLocal(key,rows);return rows}}catch(err){console.warn(`Lecture API impossible pour ${table}`,err)}const cached=readLocal(key,[]);return cached.length?cached:demo}
-async function apiUpsert(table,row,key){const next={...row,updated_at:isoNow()};try{if(window.LugdurumAPI?.upsert){await window.LugdurumAPI.upsert(table,next)}}catch(err){console.warn(`Upsert API impossible pour ${table}. Sauvegarde locale uniquement.`,err)}const rows=readLocal(key,[]);const idKey=Object.keys(next).find(k=>k.endsWith("_id"))||"id";const i=rows.findIndex(item=>String(item[idKey])===String(next[idKey]));if(i>=0)rows[i]=next;else rows.unshift(next);writeLocal(key,rows);return next}
-function setStatus(text,kind=""){const el=$("syncStatus");if(el){el.textContent=text;el.className=`syncPill ${kind}`.trim()}}
-function byDateDesc(a,b){return String(b.updated_at||b.created_at||"").localeCompare(String(a.updated_at||a.created_at||""))}
+  /*
+    Historique recettes V2 — connecté Google Sheets via LugdurumAPI
 
-(() => {"use strict";
-let recipes=[],recipeIngredients=[],batches=[],selectedId="";
-async function load(){setStatus(navigator.onLine?"Synchronisation…":"Hors ligne — cache local");[recipes,recipeIngredients,batches]=await Promise.all([apiList("recettes",STORAGE_KEYS.recipes,DEMO_DATA.recipes),apiList("recettes_ingredients",STORAGE_KEYS.recipeIngredients,DEMO_DATA.recipeIngredients),apiList("cuvees",STORAGE_KEYS.batches,DEMO_DATA.batches)]);fillYears();renderList();setStatus(navigator.onLine?"Historique prêt":"Hors ligne — données locales")}
-function fillYears(){const years=[...new Set(recipes.map(r=>r.annee_reference).filter(Boolean))].sort((a,b)=>String(b).localeCompare(String(a)));$("yearFilter").innerHTML='<option value="">Toutes années</option>'+years.map(y=>`<option value="${y}">${y}</option>`).join("")}
-function filtered(){const q=$("searchInput").value.trim().toLowerCase();const y=$("yearFilter").value;const s=$("statusFilter").value;return recipes.filter(r=>{const hay=[r.nom,r.parfum_nom,r.version,r.description,r.fabrication_note,r.degustation_note].join(" ").toLowerCase();return(!q||hay.includes(q))&&(!y||String(r.annee_reference)===String(y))&&(!s||String(r.statut)===String(s))}).sort((a,b)=>String(b.annee_reference||"").localeCompare(String(a.annee_reference||"")))}
-function renderList(){const el=$("recipesList");const rows=filtered();el.innerHTML=rows.length?rows.map(r=>`<button type="button" class="itemCard" data-id="${r.recette_id}" style="text-align:left;color:inherit;background:rgba(255,250,241,.8)"><div class="itemTop"><div><div class="itemTitle">${r.parfum_nom||r.nom} ${r.version||""} (${r.annee_reference||"—"})</div><div class="meta">${r.description||"Sans description"}</div></div><span class="badge ${r.statut==="favorite"?"success":""}">${r.statut||"brouillon"}</span></div></button>`).join(""):`<div class="empty">Aucune recette ne correspond aux filtres.</div>`;el.querySelectorAll("[data-id]").forEach(btn=>btn.addEventListener("click",()=>selectRecipe(btn.dataset.id)));if(!selectedId&&rows[0])selectRecipe(rows[0].recette_id)}
-function selectRecipe(id){selectedId=id;const r=recipes.find(x=>x.recette_id===id);if(!r)return;const ings=recipeIngredients.filter(i=>i.recette_id===id).sort((a,b)=>n(a.ordre_affichage)-n(b.ordre_affichage));const linked=batches.filter(b=>b.recette_id===id);$("recipeDetail").innerHTML=`<h2>${r.parfum_nom||r.nom} ${r.version||""}</h2><p class="meta">Année ${r.annee_reference||"—"} · statut ${r.statut||"—"} · ${r.temps_maceration_jours||"—"} jours de macération</p><p>${r.description||""}</p><div class="stats"><div class="stat"><strong>${number(r.volume_reference_l||1,1)} L</strong><span>référence rhum</span></div><div class="stat"><strong>${number(r.sucre_cible_g_l,0)} g/L</strong><span>sucre cible</span></div><div class="stat"><strong>+${number(r.dilution_cible_pct,0)}%</strong><span>dilution cible</span></div><div class="stat"><strong>${linked.length}</strong><span>cuvées liées</span></div></div><h2 style="margin-top:18px">Ratios par litre de rhum</h2><div class="list">${ings.length?ings.map(i=>`<div class="itemCard"><div class="itemTop"><div><div class="itemTitle">${i.nom_ingredient}</div><div class="meta">${number(i.quantite_par_litre_rhum,2)} ${i.unite||""} / L · ${i.note||""}</div></div><span class="badge">${i.categorie||"ingrédient"}</span></div></div>`).join(""):'<div class="empty">Aucun ingrédient saisi.</div>'}</div><h2 style="margin-top:18px">Notes</h2><div class="itemCard"><strong>Fabrication</strong><p>${r.fabrication_note||"—"}</p><strong>Dégustation</strong><p>${r.degustation_note||"—"}</p></div><h2 style="margin-top:18px">Cuvées produites</h2><div class="list">${linked.length?linked.map(b=>`<div class="itemCard"><div class="itemTop"><div><div class="itemTitle">${b.nom}</div><div class="meta">${b.statut||"—"} · coût 50 cL ${money(b.cout_unitaire_50_estime)}</div></div></div></div>`).join(""):'<div class="empty">Aucune cuvée liée.</div>'}</div><div class="actions"><a class="button" href="./recettes-production.html?recette_id=${encodeURIComponent(r.recette_id)}">Utiliser comme base</a><button class="secondary" id="duplicateRecipeBtn">Dupliquer en nouvelle version</button></div>`;$("duplicateRecipeBtn")?.addEventListener("click",()=>duplicateRecipe(r,ings))}
-async function duplicateRecipe(r,ings){const year=new Date().getFullYear();const copy={...r,recette_id:uid("REC"),recette_source_id:r.recette_id,version:`${r.version||"V"}-copie`,annee_reference:String(year),statut:"brouillon",created_at:isoNow(),updated_at:isoNow()};await apiUpsert("recettes",copy,STORAGE_KEYS.recipes);for(const ing of ings){await apiUpsert("recettes_ingredients",{...ing,recette_ingredient_id:uid("RI"),recette_id:copy.recette_id,created_at:isoNow()},STORAGE_KEYS.recipeIngredients)};recipes=readLocal(STORAGE_KEYS.recipes,DEMO_DATA.recipes);recipeIngredients=readLocal(STORAGE_KEYS.recipeIngredients,DEMO_DATA.recipeIngredients);selectedId=copy.recette_id;renderList();selectRecipe(copy.recette_id);setStatus("Recette dupliquée en brouillon")}
-["searchInput","yearFilter","statusFilter"].forEach(id=>$(id).addEventListener("input",renderList));load();
+    - Lecture remote-first via getCoreData :
+      recettes, recettesIngredients, cuvees
+
+    - Écriture :
+      upsertRecette
+      upsertRecetteIngredient
+
+    - Cache localStorage uniquement en secours :
+      - hors ligne
+      - API indisponible
+      - erreur Google Sheets
+
+    - Aucune donnée démo.
+  */
+
+  const STORAGE_KEYS = {
+    recipes: "lugdurum_recettes",
+    recipeIngredients: "lugdurum_recettes_ingredients",
+    batches: "lugdurum_cuvees"
+  };
+
+  const CORE_TABLES = "recettes,recettesIngredients,cuvees";
+
+  const TABLE_ALIASES = {
+    recettes: ["recettes"],
+    recettesIngredients: ["recettesIngredients", "recettes_ingredients"],
+    cuvees: ["cuvees"]
+  };
+
+  const ACTION_TABLE_MAP = {
+    upsertRecette: ["recettes"],
+    upsertRecetteIngredient: ["recettesIngredients", "recettes_ingredients"]
+  };
+
+  let recipes = [];
+  let recipeIngredients = [];
+  let batches = [];
+  let selectedId = "";
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function toNumber(value, fallback = 0) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(",", ".");
+
+    if (!normalized) return fallback;
+
+    const parsed = Number(normalized);
+
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function money(value) {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR"
+    }).format(toNumber(value, 0));
+  }
+
+  function number(value, decimals = 0) {
+    return new Intl.NumberFormat("fr-FR", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    }).format(toNumber(value, 0));
+  }
+
+  function isoNow() {
+    return new Date().toISOString();
+  }
+
+  function uid(prefix) {
+    return `${prefix}_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase()}`;
+  }
+
+  function normalizeText(value) {
+    return String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function normalizeStatus(value) {
+    return normalizeText(value).replace(/\s+/g, "_");
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function readLocal(key, fallback = []) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+
+      const parsed = JSON.parse(raw);
+
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeLocal(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(asArray(value)));
+    } catch (err) {
+      console.warn("Impossible d’écrire le cache local.", err);
+    }
+  }
+
+  function setStatus(text, kind = "") {
+    const el = $("syncStatus");
+
+    if (!el) return;
+
+    el.textContent = text;
+    el.className = `syncPill ${kind}`.trim();
+  }
+
+  function hydrateFromCache() {
+    recipes = readLocal(STORAGE_KEYS.recipes, []);
+    recipeIngredients = readLocal(STORAGE_KEYS.recipeIngredients, []);
+    batches = readLocal(STORAGE_KEYS.batches, []);
+  }
+
+  function saveCache() {
+    writeLocal(STORAGE_KEYS.recipes, recipes);
+    writeLocal(STORAGE_KEYS.recipeIngredients, recipeIngredients);
+    writeLocal(STORAGE_KEYS.batches, batches);
+  }
+
+  function unwrapCoreData(response) {
+    if (!response) return {};
+
+    if (response.data && typeof response.data === "object") {
+      if (response.data.data && typeof response.data.data === "object") {
+        return response.data.data;
+      }
+
+      return response.data;
+    }
+
+    return response;
+  }
+
+  function getRowsFromCoreData(core, key) {
+    const aliases = TABLE_ALIASES[key] || [key];
+
+    for (const alias of aliases) {
+      const value = core?.[alias];
+
+      if (Array.isArray(value)) {
+        return value;
+      }
+
+      if (value && typeof value === "object" && value.ok === false) {
+        throw new Error(value.error || `Table indisponible : ${alias}`);
+      }
+    }
+
+    return [];
+  }
+
+  async function readCoreDataFromApi() {
+    const api = window.LugdurumAPI;
+
+    if (!api) {
+      throw new Error("LugdurumAPI indisponible.");
+    }
+
+    if (typeof api.getCoreData === "function") {
+      const response = await api.getCoreData(CORE_TABLES);
+      const core = unwrapCoreData(response);
+
+      return {
+        recipes: getRowsFromCoreData(core, "recettes"),
+        recipeIngredients: getRowsFromCoreData(core, "recettesIngredients"),
+        batches: getRowsFromCoreData(core, "cuvees")
+      };
+    }
+
+    if (typeof api.list === "function") {
+      const [recipeRows, ingredientRows, batchRows] = await Promise.all([
+        readTableWithListApi("recettes"),
+        readTableWithListApi("recettesIngredients"),
+        readTableWithListApi("cuvees")
+      ]);
+
+      return {
+        recipes: recipeRows,
+        recipeIngredients: ingredientRows,
+        batches: batchRows
+      };
+    }
+
+    throw new Error("Aucune méthode de lecture compatible dans LugdurumAPI.");
+  }
+
+  async function readTableWithListApi(key) {
+    const api = window.LugdurumAPI;
+    const aliases = TABLE_ALIASES[key] || [key];
+    let lastError = null;
+
+    for (const alias of aliases) {
+      try {
+        const response = await api.list(alias);
+        return asArray(response?.data || response);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error(`Lecture impossible : ${key}`);
+  }
+
+  async function apiPost(action, payload) {
+    const api = window.LugdurumAPI;
+
+    if (!api) {
+      throw new Error("LugdurumAPI indisponible.");
+    }
+
+    if (typeof api.post === "function") {
+      return api.post(action, payload);
+    }
+
+    if (typeof api.request === "function") {
+      return api.request(action, payload);
+    }
+
+    if (typeof api.call === "function") {
+      return api.call(action, payload);
+    }
+
+    if (typeof api.queueAction === "function") {
+      return api.queueAction(action, payload);
+    }
+
+    if (typeof api.enqueueAction === "function") {
+      return api.enqueueAction(action, payload);
+    }
+
+    if (typeof api.upsert === "function" && ACTION_TABLE_MAP[action]) {
+      return apiUpsertFallback(action, payload?.data || payload);
+    }
+
+    throw new Error(`Aucune méthode POST compatible pour ${action}.`);
+  }
+
+  async function apiUpsertFallback(action, row) {
+    const api = window.LugdurumAPI;
+    const aliases = ACTION_TABLE_MAP[action] || [];
+    let lastError = null;
+
+    for (const alias of aliases) {
+      try {
+        return await api.upsert(alias, row);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error(`Upsert impossible : ${action}.`);
+  }
+
+  async function apiBatchActions(actions) {
+    try {
+      return await apiPost("batchActions", { actions });
+    } catch (batchErr) {
+      console.warn("batchActions indisponible, tentative action par action.", batchErr);
+
+      const results = [];
+
+      for (const item of actions) {
+        try {
+          const data = await apiPost(item.action, item.payload || {});
+          results.push({
+            ok: true,
+            action: item.action,
+            queue_id: item.queue_id || "",
+            data
+          });
+        } catch (err) {
+          results.push({
+            ok: false,
+            action: item.action,
+            queue_id: item.queue_id || "",
+            error: err.message
+          });
+        }
+      }
+
+      const failed = results.filter((item) => !item.ok);
+
+      if (failed.length > 0) {
+        throw new Error(
+          failed.map((item) => `${item.action}: ${item.error}`).join(" | ")
+        );
+      }
+
+      return {
+        ok: true,
+        data: {
+          results,
+          success_count: results.length,
+          failed_count: 0
+        }
+      };
+    }
+  }
+
+  function upsertInArray(rows, idKey, row) {
+    const safeRows = asArray(rows);
+    const id = String(row?.[idKey] || "").trim();
+
+    if (!id) return safeRows;
+
+    const index = safeRows.findIndex((item) => String(item?.[idKey] || "") === id);
+
+    if (index >= 0) {
+      safeRows[index] = {
+        ...safeRows[index],
+        ...row
+      };
+    } else {
+      safeRows.unshift(row);
+    }
+
+    return safeRows;
+  }
+
+  function fillYears() {
+    const yearFilter = $("yearFilter");
+
+    if (!yearFilter) return;
+
+    const currentValue = yearFilter.value;
+
+    const years = [
+      ...new Set(
+        recipes
+          .map((recipe) => String(recipe.annee_reference || "").trim())
+          .filter(Boolean)
+      )
+    ].sort((a, b) => String(b).localeCompare(String(a)));
+
+    yearFilter.innerHTML =
+      '<option value="">Toutes années</option>' +
+      years.map((year) => `<option value="${escapeHtml(year)}">${escapeHtml(year)}</option>`).join("");
+
+    if (currentValue && years.includes(currentValue)) {
+      yearFilter.value = currentValue;
+    }
+  }
+
+  function filteredRecipes() {
+    const searchValue = normalizeText($("searchInput")?.value || "");
+    const yearValue = String($("yearFilter")?.value || "").trim();
+    const statusValue = String($("statusFilter")?.value || "").trim();
+
+    return recipes
+      .filter((recipe) => {
+        const haystack = normalizeText(
+          [
+            recipe.nom,
+            recipe.parfum_nom,
+            recipe.parfum_code,
+            recipe.version,
+            recipe.description,
+            recipe.fabrication_note,
+            recipe.degustation_note
+          ].join(" ")
+        );
+
+        const matchesSearch = !searchValue || haystack.includes(searchValue);
+        const matchesYear =
+          !yearValue || String(recipe.annee_reference || "") === String(yearValue);
+        const matchesStatus =
+          !statusValue || String(recipe.statut || "") === String(statusValue);
+
+        return matchesSearch && matchesYear && matchesStatus;
+      })
+      .sort((a, b) => {
+        const byYear = String(b.annee_reference || "").localeCompare(
+          String(a.annee_reference || "")
+        );
+
+        if (byYear !== 0) return byYear;
+
+        return String(b.updated_at || b.created_at || "").localeCompare(
+          String(a.updated_at || a.created_at || "")
+        );
+      });
+  }
+
+  function renderList() {
+    const list = $("recipesList");
+
+    if (!list) return;
+
+    const rows = filteredRecipes();
+
+    if (rows.length === 0) {
+      list.innerHTML = `<div class="empty">Aucune recette ne correspond aux filtres.</div>`;
+      renderEmptyDetail();
+      return;
+    }
+
+    list.innerHTML = rows
+      .map((recipe) => {
+        const isSelected = String(recipe.recette_id || "") === String(selectedId || "");
+        const status = normalizeStatus(recipe.statut);
+        const badgeClass =
+          status === "favorite" || status === "favori"
+            ? "success"
+            : status === "test" || status === "brouillon"
+              ? "warning"
+              : "";
+
+        return `
+          <button
+            type="button"
+            class="itemCard${isSelected ? " isSelected" : ""}"
+            data-recette-id="${escapeHtml(recipe.recette_id)}"
+          >
+            <div class="itemTop">
+              <div>
+                <div class="itemTitle">
+                  ${escapeHtml(recipe.parfum_nom || recipe.nom || "Recette")}
+                  ${escapeHtml(recipe.version || "")}
+                  (${escapeHtml(recipe.annee_reference || "—")})
+                </div>
+
+                <div class="meta">
+                  ${escapeHtml(recipe.description || "Sans description")}
+                </div>
+              </div>
+
+              <span class="badge ${badgeClass}">
+                ${escapeHtml(recipe.statut || "brouillon")}
+              </span>
+            </div>
+          </button>
+        `;
+      })
+      .join("");
+
+    list.querySelectorAll("[data-recette-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectRecipe(button.dataset.recetteId || "");
+      });
+    });
+
+    if (!selectedId || !rows.some((recipe) => String(recipe.recette_id) === String(selectedId))) {
+      selectRecipe(rows[0].recette_id);
+    }
+  }
+
+  function renderEmptyDetail() {
+    const detail = $("recipeDetail");
+
+    if (!detail) return;
+
+    detail.innerHTML = `
+      <h2>Détail</h2>
+      <div class="empty">Sélectionne une recette pour voir ses ratios, notes et cuvées liées.</div>
+    `;
+  }
+
+  function selectRecipe(id) {
+    selectedId = id;
+
+    const recipe = recipes.find((item) => String(item.recette_id || "") === String(id || ""));
+
+    if (!recipe) {
+      renderEmptyDetail();
+      return;
+    }
+
+    renderRecipeDetail(recipe);
+    renderListSelectionOnly();
+  }
+
+  function renderListSelectionOnly() {
+    const list = $("recipesList");
+
+    if (!list) return;
+
+    list.querySelectorAll("[data-recette-id]").forEach((button) => {
+      const isSelected = String(button.dataset.recetteId || "") === String(selectedId || "");
+      button.classList.toggle("isSelected", isSelected);
+    });
+  }
+
+  function renderRecipeDetail(recipe) {
+    const detail = $("recipeDetail");
+
+    if (!detail) return;
+
+    const ingredientRows = recipeIngredients
+      .filter((item) => String(item.recette_id || "") === String(recipe.recette_id || ""))
+      .sort((a, b) => toNumber(a.ordre_affichage, 999) - toNumber(b.ordre_affichage, 999));
+
+    const linkedBatches = batches
+      .filter((batch) => String(batch.recette_id || "") === String(recipe.recette_id || ""))
+      .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(
+        String(a.updated_at || a.created_at || "")
+      ));
+
+    detail.innerHTML = `
+      <h2>
+        ${escapeHtml(recipe.parfum_nom || recipe.nom || "Recette")}
+        ${escapeHtml(recipe.version || "")}
+      </h2>
+
+      <p class="meta">
+        Année ${escapeHtml(recipe.annee_reference || "—")}
+        · statut ${escapeHtml(recipe.statut || "—")}
+        · ${escapeHtml(recipe.temps_maceration_jours || "—")} jours de macération
+      </p>
+
+      ${recipe.description ? `<p>${escapeHtml(recipe.description)}</p>` : ""}
+
+      <div class="stats">
+        <div class="stat">
+          <strong>${number(recipe.volume_reference_l || 1, 1)} L</strong>
+          <span>référence rhum</span>
+        </div>
+
+        <div class="stat">
+          <strong>${number(recipe.sucre_cible_g_l, 0)} g/L</strong>
+          <span>sucre cible</span>
+        </div>
+
+        <div class="stat">
+          <strong>+${number(recipe.dilution_cible_pct, 0)}%</strong>
+          <span>dilution cible</span>
+        </div>
+
+        <div class="stat">
+          <strong>${linkedBatches.length}</strong>
+          <span>cuvées liées</span>
+        </div>
+      </div>
+
+      <h2 style="margin-top:18px">Ratios par litre de rhum</h2>
+
+      <div class="list">
+        ${
+          ingredientRows.length
+            ? ingredientRows
+                .map((ingredient) => {
+                  return `
+                    <div class="itemCard">
+                      <div class="itemTop">
+                        <div>
+                          <div class="itemTitle">
+                            ${escapeHtml(ingredient.nom_ingredient || "Ingrédient")}
+                          </div>
+
+                          <div class="meta">
+                            ${number(ingredient.quantite_par_litre_rhum, 2)}
+                            ${escapeHtml(ingredient.unite || "")} / L
+                            ${ingredient.note ? `· ${escapeHtml(ingredient.note)}` : ""}
+                          </div>
+                        </div>
+
+                        <span class="badge">
+                          ${escapeHtml(ingredient.categorie || "ingrédient")}
+                        </span>
+                      </div>
+                    </div>
+                  `;
+                })
+                .join("")
+            : `<div class="empty">Aucun ingrédient saisi.</div>`
+        }
+      </div>
+
+      <h2 style="margin-top:18px">Notes</h2>
+
+      <div class="itemCard">
+        <strong>Fabrication</strong>
+        <p>${escapeHtml(recipe.fabrication_note || "—")}</p>
+
+        <strong>Dégustation</strong>
+        <p>${escapeHtml(recipe.degustation_note || "—")}</p>
+      </div>
+
+      <h2 style="margin-top:18px">Cuvées produites</h2>
+
+      <div class="list">
+        ${
+          linkedBatches.length
+            ? linkedBatches
+                .map((batch) => {
+                  return `
+                    <div class="itemCard">
+                      <div class="itemTop">
+                        <div>
+                          <div class="itemTitle">
+                            ${escapeHtml(batch.nom || "Cuvée")}
+                          </div>
+
+                          <div class="meta">
+                            ${escapeHtml(batch.statut || "—")}
+                            · coût 50 cL ${
+                              toNumber(batch.cout_unitaire_50_estime, 0) > 0
+                                ? money(batch.cout_unitaire_50_estime)
+                                : "—"
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                })
+                .join("")
+            : `<div class="empty">Aucune cuvée liée.</div>`
+        }
+      </div>
+
+      <div class="actions">
+        <a
+          class="button"
+          href="./recettes-production.html?recette_id=${encodeURIComponent(recipe.recette_id)}"
+        >
+          Utiliser comme base
+        </a>
+
+        <button class="secondary" id="duplicateRecipeBtn" type="button">
+          Dupliquer en nouvelle version
+        </button>
+      </div>
+    `;
+
+    const duplicateButton = $("duplicateRecipeBtn");
+
+    if (duplicateButton) {
+      duplicateButton.addEventListener("click", () => duplicateRecipe(recipe, ingredientRows));
+    }
+  }
+
+  async function duplicateRecipe(recipe, ingredientRows) {
+    const currentYear = String(new Date().getFullYear());
+
+    const copy = {
+      ...recipe,
+      recette_id: uid("REC"),
+      recette_source_id: recipe.recette_id,
+      version: `${recipe.version || "V"}-copie`,
+      annee_reference: currentYear,
+      statut: "brouillon",
+      created_at: isoNow(),
+      updated_at: isoNow()
+    };
+
+    const copiedIngredients = ingredientRows.map((ingredient) => {
+      return {
+        ...ingredient,
+        recette_ingredient_id: uid("RI"),
+        recette_id: copy.recette_id,
+        created_at: isoNow(),
+        updated_at: isoNow()
+      };
+    });
+
+    setStatus("Duplication de la recette…", "isRefreshing");
+
+    recipes = upsertInArray(recipes, "recette_id", copy);
+
+    copiedIngredients.forEach((ingredient) => {
+      recipeIngredients = upsertInArray(
+        recipeIngredients,
+        "recette_ingredient_id",
+        ingredient
+      );
+    });
+
+    saveCache();
+
+    try {
+      await apiBatchActions([
+        {
+          queue_id: uid("QUEUE_REC"),
+          action: "upsertRecette",
+          payload: {
+            data: copy
+          }
+        },
+        ...copiedIngredients.map((ingredient) => {
+          return {
+            queue_id: uid("QUEUE_RI"),
+            action: "upsertRecetteIngredient",
+            payload: {
+              data: ingredient
+            }
+          };
+        })
+      ]);
+
+      setStatus("Recette dupliquée", "isOnline");
+    } catch (err) {
+      console.warn("Duplication distante impossible, copie conservée en local.", err);
+      setStatus("Copie conservée en local — synchro à refaire", "isLocal");
+    }
+
+    selectedId = copy.recette_id;
+    fillYears();
+    renderList();
+    selectRecipe(copy.recette_id);
+  }
+
+  async function refreshFromApi() {
+    if (!navigator.onLine) {
+      hydrateFromCache();
+      fillYears();
+      renderList();
+      setStatus("Hors ligne — données locales", "isLocal");
+      return;
+    }
+
+    if (!window.LugdurumAPI) {
+      hydrateFromCache();
+      fillYears();
+      renderList();
+      setStatus("API indisponible — cache local", "isLocal");
+      return;
+    }
+
+    setStatus("Chargement Google Sheets…", "isRefreshing");
+
+    try {
+      const fresh = await readCoreDataFromApi();
+
+      recipes = asArray(fresh.recipes);
+      recipeIngredients = asArray(fresh.recipeIngredients);
+      batches = asArray(fresh.batches);
+
+      saveCache();
+      fillYears();
+      renderList();
+
+      setStatus("Historique Google Sheets à jour", "isOnline");
+    } catch (err) {
+      console.warn("Lecture Google Sheets impossible.", err);
+
+      hydrateFromCache();
+      fillYears();
+      renderList();
+
+      setStatus("Google Sheets indisponible — cache local", "isLocal");
+    }
+  }
+
+  function bindEvents() {
+    ["searchInput", "yearFilter", "statusFilter"].forEach((id) => {
+      const el = $(id);
+
+      if (!el) return;
+
+      el.addEventListener("input", () => {
+        selectedId = "";
+        renderList();
+      });
+
+      el.addEventListener("change", () => {
+        selectedId = "";
+        renderList();
+      });
+    });
+
+    window.addEventListener("online", () => {
+      refreshFromApi();
+    });
+
+    window.addEventListener("offline", () => {
+      hydrateFromCache();
+      fillYears();
+      renderList();
+      setStatus("Hors ligne — données locales", "isLocal");
+    });
+  }
+
+  function init() {
+    bindEvents();
+
+    if (navigator.onLine && window.LugdurumAPI) {
+      setStatus("Chargement Google Sheets…", "isRefreshing");
+      refreshFromApi();
+      return;
+    }
+
+    hydrateFromCache();
+    fillYears();
+    renderList();
+
+    if (!navigator.onLine) {
+      setStatus("Hors ligne — données locales", "isLocal");
+      return;
+    }
+
+    setStatus("API indisponible — cache local", "isLocal");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
