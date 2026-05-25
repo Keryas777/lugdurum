@@ -1,16 +1,22 @@
-<!DOCTYPE html><html lang="fr"><head>  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#f6f1e8" />
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
-  <title>Matières premières — Lugdurum</title>
-  <link rel="stylesheet" href="./style.css" />
-  <link rel="stylesheet" href="./matieres-premieres.css" />
-</head><body><main class="appShell">
-<header class="topbar missionsTopbar">
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f1e8" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
+    <title>Matières premières — Lugdurum</title>
+    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./matieres-premieres.css" />
+  </head>
+
+  <body>
+    <main class="appShell">
+      <header class="topbar">
         <a class="backBtn" href="./recettes-dashboard.html" aria-label="Retour au module recettes">
-  ←
-</a>
+          ←
+        </a>
 
         <div class="brandBlock">
           <div class="brandHeader">
@@ -27,14 +33,141 @@
           </div>
         </div>
       </header>
-      <nav class="moduleNav" aria-label="Navigation recettes">
-        <a href="./index.html">← Accueil</a>
-        <a href="./recettes-dashboard.html">Hub</a>
-        <a href="./recettes-historique.html">Historique</a>
-        <a href="./recettes-production.html">Nouvelle cuvée</a>
-        <a href="./matieres-premieres.html" aria-current="page">Matières</a>
-      </nav>
-<section class="hero"><h2>Lots actifs</h2><p>Rhum, bouteilles, bouchons, étiquettes, coffrets et autres achats utilisés sur plusieurs cuvées.</p><div class="stats"><div class="stat"><strong id="activeLots">—</strong><span>lots actifs</span></div><div class="stat"><strong id="totalValue">—</strong><span>valeur théorique restante</span></div><div class="stat"><strong id="lowLots">—</strong><span>lots bas</span></div><div class="stat"><strong id="avgUnit">—</strong><span>coût unitaire moyen</span></div></div></section>
-<section class="grid two"><div class="panel"><h2>Rechercher</h2><div class="filters"><input id="searchInput" type="search" placeholder="Rhum, bouteilles, fournisseur…"/><select id="categoryFilter"><option value="">Toutes catégories</option><option value="rhum">Rhum</option><option value="bouteille">Bouteilles</option><option value="bouchon">Bouchons</option><option value="etiquette">Étiquettes</option><option value="coffret">Coffrets</option><option value="carton">Cartons</option><option value="sucre">Sucre</option><option value="consommable">Consommables</option><option value="autre">Autre</option></select></div><div id="lotsList" class="list"></div></div><aside class="formCard"><h2>Ajouter un achat</h2><form id="lotForm" class="formGrid"><div class="field"><label for="lotName">Nom du lot</label><input id="lotName" required placeholder="Rhum agricole 450 L — Achat 2026"/></div><div class="field"><label for="lotCategory">Catégorie</label><select id="lotCategory"><option value="rhum">Rhum</option><option value="bouteille">Bouteille</option><option value="bouchon">Bouchon</option><option value="etiquette">Étiquette</option><option value="coffret">Coffret</option><option value="carton">Carton</option><option value="sucre">Sucre</option><option value="consommable">Consommable</option><option value="autre">Autre</option></select></div><div class="field"><label for="supplier">Fournisseur</label><input id="supplier"/></div><div class="field"><label for="buyDate">Date achat</label><input id="buyDate" type="date"/></div><div class="field"><label for="qtyInitial">Quantité initiale</label><input id="qtyInitial" type="number" min="0" step="0.01" required/></div><div class="field"><label for="unit">Unité</label><input id="unit" placeholder="L, unité, kg…"/></div><div class="field"><label for="costTotal">Coût total (€)</label><input id="costTotal" type="number" min="0" step="0.01" required/></div><div class="field"><label for="invoiceRef">Référence facture</label><input id="invoiceRef"/></div><div class="field wide"><label for="lotNote">Note</label><textarea id="lotNote"></textarea></div><div class="actions wide"><button type="submit" class="success">Enregistrer le lot</button></div></form></aside></section>
-<section class="panel"><h2>Détail du lot</h2><div id="lotDetail" class="empty">Sélectionne un lot pour voir le coût unitaire, le restant et les consommations.</div></section>
-</main><script src="./matieres-premieres.js" defer></script></body></html>
+
+      <div class="moduleNavSpacer" aria-hidden="true"></div>
+
+      <section class="hero">
+        <h2>Lots actifs</h2>
+        <p>
+          Rhum, bouteilles, bouchons, étiquettes, coffrets et autres achats utilisés
+          sur plusieurs cuvées.
+        </p>
+
+        <div class="stats">
+          <div class="stat">
+            <strong id="activeLots">—</strong>
+            <span>lots actifs</span>
+          </div>
+
+          <div class="stat">
+            <strong id="totalValue">—</strong>
+            <span>valeur théorique restante</span>
+          </div>
+
+          <div class="stat">
+            <strong id="lowLots">—</strong>
+            <span>lots bas</span>
+          </div>
+
+          <div class="stat">
+            <strong id="avgUnit">—</strong>
+            <span>coût unitaire moyen</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid two">
+        <div class="panel">
+          <h2>Rechercher</h2>
+
+          <div class="filters">
+            <input
+              id="searchInput"
+              type="search"
+              placeholder="Rhum, bouteilles, fournisseur…"
+            />
+
+            <select id="categoryFilter">
+              <option value="">Toutes catégories</option>
+              <option value="rhum">Rhum</option>
+              <option value="bouteille">Bouteilles</option>
+              <option value="bouchon">Bouchons</option>
+              <option value="etiquette">Étiquettes</option>
+              <option value="coffret">Coffrets</option>
+              <option value="carton">Cartons</option>
+              <option value="sucre">Sucre</option>
+              <option value="consommable">Consommables</option>
+              <option value="autre">Autre</option>
+            </select>
+          </div>
+
+          <div id="lotsList" class="list"></div>
+        </div>
+
+        <aside class="formCard">
+          <h2>Ajouter un achat</h2>
+
+          <form id="lotForm" class="formGrid">
+            <div class="field">
+              <label for="lotName">Nom du lot</label>
+              <input id="lotName" required placeholder="Rhum agricole 450 L — Achat 2026" />
+            </div>
+
+            <div class="field">
+              <label for="lotCategory">Catégorie</label>
+              <select id="lotCategory">
+                <option value="rhum">Rhum</option>
+                <option value="bouteille">Bouteille</option>
+                <option value="bouchon">Bouchon</option>
+                <option value="etiquette">Étiquette</option>
+                <option value="coffret">Coffret</option>
+                <option value="carton">Carton</option>
+                <option value="sucre">Sucre</option>
+                <option value="consommable">Consommable</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="supplier">Fournisseur</label>
+              <input id="supplier" />
+            </div>
+
+            <div class="field">
+              <label for="buyDate">Date achat</label>
+              <input id="buyDate" type="date" />
+            </div>
+
+            <div class="field">
+              <label for="qtyInitial">Quantité initiale</label>
+              <input id="qtyInitial" type="number" min="0" step="0.01" required />
+            </div>
+
+            <div class="field">
+              <label for="unit">Unité</label>
+              <input id="unit" placeholder="L, unité, kg…" />
+            </div>
+
+            <div class="field">
+              <label for="costTotal">Coût total (€)</label>
+              <input id="costTotal" type="number" min="0" step="0.01" required />
+            </div>
+
+            <div class="field">
+              <label for="invoiceRef">Référence facture</label>
+              <input id="invoiceRef" />
+            </div>
+
+            <div class="field wide">
+              <label for="lotNote">Note</label>
+              <textarea id="lotNote"></textarea>
+            </div>
+
+            <div class="actions wide">
+              <button type="submit" class="success">Enregistrer le lot</button>
+            </div>
+          </form>
+        </aside>
+      </section>
+
+      <section class="panel">
+        <h2>Détail du lot</h2>
+        <div id="lotDetail" class="empty">
+          Sélectionne un lot pour voir le coût unitaire, le restant et les consommations.
+        </div>
+      </section>
+    </main>
+
+    <script src="./matieres-premieres.js" defer></script>
+  </body>
+</html>
