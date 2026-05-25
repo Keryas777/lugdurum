@@ -1,38 +1,1105 @@
+(() => {
+  "use strict";
 
-const STORAGE_KEYS={recipes:"lugdurum_recettes",recipeIngredients:"lugdurum_recettes_ingredients",ingredients:"lugdurum_ingredients",batches:"lugdurum_cuvees",matters:"lugdurum_matieres_premieres",lots:"lugdurum_matieres_lots",consumptions:"lugdurum_cuvees_matieres_consommees",batchIngredientRows:"lugdurum_cuvees_ingredients_reels",draft:"lugdurum_cuvee_brouillon"};
-const DEMO_DATA={
- recipes:[{recette_id:"REC_CITG_2023",nom:"Citron Gingembre",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2023",annee_reference:"2023",statut:"favorite",type_recette:"historique",description:"Version de référence, plus nerveuse et équilibrée que 2024.",volume_reference_l:1,sucre_cible_g_l:80,dilution_cible_pct:28,temps_maceration_jours:42,fabrication_note:"Zestes fins, gingembre frais râpé grossièrement.",degustation_note:"Belle attaque citron, gingembre présent sans brûler."},{recette_id:"REC_CITG_2024",nom:"Citron Gingembre",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2024",annee_reference:"2024",statut:"archivee",type_recette:"production",description:"Version plus douce, moins tranchante.",volume_reference_l:1,sucre_cible_g_l:95,dilution_cible_pct:30,temps_maceration_jours:38,fabrication_note:"Moins de gingembre, plus de sucre.",degustation_note:"Facile mais moins mémorable."},{recette_id:"REC_POMR_2026_V2",nom:"Pomelo Romarin",parfum_code:"POMR",parfum_nom:"Pomelo Romarin",version:"V2",annee_reference:"2026",statut:"active",type_recette:"production",description:"Pomelo en suprêmes, romarin plus maîtrisé.",volume_reference_l:1,sucre_cible_g_l:70,dilution_cible_pct:24,temps_maceration_jours:28,fabrication_note:"Éviter le blanc du pomelo pour limiter l’amertume.",degustation_note:"À valider sur nouvelle cuvée."}],
- recipeIngredients:[{recette_ingredient_id:"RI_CITG_2023_CITRON",recette_id:"REC_CITG_2023",ingredient_id:"ING_CITRON",nom_ingredient:"Citron",categorie:"fruit",quantite_par_litre_rhum:350,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:"Zeste + chair selon rendement"},{recette_ingredient_id:"RI_CITG_2023_GING",recette_id:"REC_CITG_2023",ingredient_id:"ING_GINGEMBRE",nom_ingredient:"Gingembre frais",categorie:"epice",quantite_par_litre_rhum:120,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:"Râpé grossièrement"},{recette_ingredient_id:"RI_CITG_2023_SUCRE",recette_id:"REC_CITG_2023",ingredient_id:"ING_SUCRE",nom_ingredient:"Sucre de canne",categorie:"sucre",quantite_par_litre_rhum:80,unite:"g",ordre_affichage:3,obligatoire:"TRUE",note:"Ajuster après dégustation"},{recette_ingredient_id:"RI_CITG_2024_CITRON",recette_id:"REC_CITG_2024",ingredient_id:"ING_CITRON",nom_ingredient:"Citron",categorie:"fruit",quantite_par_litre_rhum:320,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:""},{recette_ingredient_id:"RI_CITG_2024_GING",recette_id:"REC_CITG_2024",ingredient_id:"ING_GINGEMBRE",nom_ingredient:"Gingembre frais",categorie:"epice",quantite_par_litre_rhum:90,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:""},{recette_ingredient_id:"RI_POMR_POMELO",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_POMELO",nom_ingredient:"Pomelo suprêmes",categorie:"fruit",quantite_par_litre_rhum:420,unite:"g",ordre_affichage:1,obligatoire:"TRUE",note:"Sans blanc"},{recette_ingredient_id:"RI_POMR_ROMARIN",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_ROMARIN",nom_ingredient:"Romarin",categorie:"herbe",quantite_par_litre_rhum:4,unite:"g",ordre_affichage:2,obligatoire:"TRUE",note:"Goûter régulièrement"},{recette_ingredient_id:"RI_POMR_SUCRE",recette_id:"REC_POMR_2026_V2",ingredient_id:"ING_SUCRE",nom_ingredient:"Sucre de canne",categorie:"sucre",quantite_par_litre_rhum:70,unite:"g",ordre_affichage:3,obligatoire:"TRUE",note:""}],
- ingredients:[{ingredient_id:"ING_CITRON",nom:"Citron",categorie:"fruit",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_GINGEMBRE",nom:"Gingembre frais",categorie:"epice",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_SUCRE",nom:"Sucre de canne",categorie:"sucre",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_POMELO",nom:"Pomelo",categorie:"fruit",unite_defaut:"g",actif:"TRUE"},{ingredient_id:"ING_ROMARIN",nom:"Romarin",categorie:"herbe",unite_defaut:"g",actif:"TRUE"}],
- batches:[{cuvee_id:"CUV_2026_POMR_V2_DEMO",recette_id:"REC_POMR_2026_V2",nom:"Pomelo Romarin V2 (2026)",parfum_code:"POMR",parfum_nom:"Pomelo Romarin",version:"V2",annee_production:"2026",type_cuvee:"test",statut:"en_maceration",volume_rhum_l:80,volume_final_estime_l:99.2,nombre_bouteilles_50:198,cout_total:1120,cout_unitaire_50_estime:5.66,note_fabrication:"Démo : suprêmes uniquement.",updated_at:"2026-05-20T10:00:00.000Z"},{cuvee_id:"CUV_2023_CITG_DEMO",recette_id:"REC_CITG_2023",nom:"Citron Gingembre V2023",parfum_code:"CITG",parfum_nom:"Citron Gingembre",version:"V2023",annee_production:"2023",type_cuvee:"production",statut:"archivee",volume_rhum_l:60,volume_final_estime_l:76.8,nombre_bouteilles_50:153,cout_total:790,cout_unitaire_50_estime:5.16,note_degustation:"Version à reprendre.",updated_at:"2023-10-10T10:00:00.000Z"}],
- matters:[{matiere_id:"MAT_RHUM_AGRICOLE",nom:"Rhum agricole",categorie:"rhum",unite_stock:"L",actif:"TRUE"},{matiere_id:"MAT_BOUTEILLE_50",nom:"Bouteille 50 cL",categorie:"bouteille",unite_stock:"unité",actif:"TRUE"},{matiere_id:"MAT_BOUCHON",nom:"Bouchon liège",categorie:"bouchon",unite_stock:"unité",actif:"TRUE"}],
- lots:[{lot_id:"LOT_RHUM_2026_450L",matiere_id:"MAT_RHUM_AGRICOLE",nom_lot:"Rhum agricole 450 L — Achat 2026",categorie:"rhum",fournisseur:"Fournisseur rhum",date_achat:"2026-02-15",quantite_initiale:450,quantite_restante:370,unite:"L",cout_total:4500,cout_unitaire:10,statut:"actif",note:"Lot démo"},{lot_id:"LOT_BOUT_2026_2400",matiere_id:"MAT_BOUTEILLE_50",nom_lot:"Bouteilles 50 cL — Palette 2400",categorie:"bouteille",fournisseur:"Verrier",date_achat:"2026-01-20",quantite_initiale:2400,quantite_restante:2210,unite:"unité",cout_total:1440,cout_unitaire:.6,statut:"actif",note:"Lot démo"},{lot_id:"LOT_BOUCH_2026_5000",matiere_id:"MAT_BOUCHON",nom_lot:"Bouchons liège — Carton 5000",categorie:"bouchon",fournisseur:"Fournisseur bouchons",date_achat:"2026-01-20",quantite_initiale:5000,quantite_restante:4300,unite:"unité",cout_total:650,cout_unitaire:.13,statut:"actif",note:"Lot démo"}],
- consumptions:[{conso_id:"CONSO_DEMO_RHUM",cuvee_id:"CUV_2026_POMR_V2_DEMO",lot_id:"LOT_RHUM_2026_450L",matiere_id:"MAT_RHUM_AGRICOLE",nom_matiere:"Rhum agricole",categorie:"rhum",quantite_consommee:80,unite:"L",cout_unitaire_snapshot:10,cout_total_impute:800,created_at:"2026-05-20T10:00:00.000Z"},{conso_id:"CONSO_DEMO_BOUT",cuvee_id:"CUV_2026_POMR_V2_DEMO",lot_id:"LOT_BOUT_2026_2400",matiere_id:"MAT_BOUTEILLE_50",nom_matiere:"Bouteille 50 cL",categorie:"bouteille",quantite_consommee:198,unite:"unité",cout_unitaire_snapshot:.6,cout_total_impute:118.8,created_at:"2026-05-20T10:00:00.000Z"}]
-};
-function $(id){return document.getElementById(id)}
-function asArray(value){return Array.isArray(value)?value:[]}
-function n(value){const parsed=Number(String(value??"").replace(",","."));return Number.isFinite(parsed)?parsed:0}
-function money(value){return new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(n(value))}
-function number(value,dec=0){return new Intl.NumberFormat("fr-FR",{maximumFractionDigits:dec,minimumFractionDigits:dec}).format(n(value))}
-function isoNow(){return new Date().toISOString()}
-function today(){return new Date().toISOString().slice(0,10)}
-function uid(prefix){return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8).toUpperCase()}`}
-function readLocal(key,fallback=[]){try{return JSON.parse(localStorage.getItem(key)||"null")||fallback}catch{return fallback}}
-function writeLocal(key,value){localStorage.setItem(key,JSON.stringify(value))}
-async function apiList(table,key,demo){try{if(window.LugdurumAPI?.list){const rows=await window.LugdurumAPI.list(table);writeLocal(key,asArray(rows));return asArray(rows)}if(window.LugdurumAPI?.getCoreData){const data=await window.LugdurumAPI.getCoreData(table);const rows=asArray(data?.[table]);writeLocal(key,rows);return rows}}catch(err){console.warn(`Lecture API impossible pour ${table}`,err)}const cached=readLocal(key,[]);return cached.length?cached:demo}
-async function apiUpsert(table,row,key){const next={...row,updated_at:isoNow()};try{if(window.LugdurumAPI?.upsert){await window.LugdurumAPI.upsert(table,next)}}catch(err){console.warn(`Upsert API impossible pour ${table}. Sauvegarde locale uniquement.`,err)}const rows=readLocal(key,[]);const idKey=Object.keys(next).find(k=>k.endsWith("_id"))||"id";const i=rows.findIndex(item=>String(item[idKey])===String(next[idKey]));if(i>=0)rows[i]=next;else rows.unshift(next);writeLocal(key,rows);return next}
-function setStatus(text,kind=""){const el=$("syncStatus");if(el){el.textContent=text;el.className=`syncPill ${kind}`.trim()}}
-function byDateDesc(a,b){return String(b.updated_at||b.created_at||"").localeCompare(String(a.updated_at||a.created_at||""))}
+  /*
+    Matières premières V3 — connecté Google Sheets via LugdurumAPI
 
-(() => {"use strict";
-let lots=[],consumptions=[],selectedLotId="";
-async function load(){setStatus(navigator.onLine?"Synchronisation…":"Hors ligne — cache local");[lots,consumptions]=await Promise.all([apiList("matieres_lots",STORAGE_KEYS.lots,DEMO_DATA.lots),apiList("cuvees_matieres_consommees",STORAGE_KEYS.consumptions,DEMO_DATA.consumptions)]);$("buyDate").value=today();render();setStatus(navigator.onLine?"Lots prêts":"Hors ligne — données locales")}
-function filtered(){const q=$("searchInput").value.trim().toLowerCase();const c=$("categoryFilter").value;return lots.filter(l=>{const hay=[l.nom_lot,l.categorie,l.fournisseur,l.note].join(" ").toLowerCase();return(!q||hay.includes(q))&&(!c||l.categorie===c)}).sort((a,b)=>String(a.statut).localeCompare(String(b.statut))||String(b.date_achat||"").localeCompare(String(a.date_achat||"")))}
-function render(){renderStats();renderLots();if(selectedLotId)showDetail(selectedLotId)}
-function renderStats(){const active=lots.filter(l=>l.statut!=="archive"&&l.statut!=="archivee");const value=active.reduce((s,l)=>s+n(l.quantite_restante)*(n(l.cout_unitaire)||n(l.cout_total)/Math.max(1,n(l.quantite_initiale))),0);const low=active.filter(l=>n(l.quantite_initiale)&&n(l.quantite_restante)/n(l.quantite_initiale)<=.25).length;const avg=active.length?active.reduce((s,l)=>s+(n(l.cout_unitaire)||n(l.cout_total)/Math.max(1,n(l.quantite_initiale))),0)/active.length:0;$("activeLots").textContent=active.length;$("totalValue").textContent=money(value);$("lowLots").textContent=low;$("avgUnit").textContent=money(avg)}
-function renderLots(){const rows=filtered();$("lotsList").innerHTML=rows.length?rows.map(l=>{const ratio=n(l.quantite_initiale)?n(l.quantite_restante)/n(l.quantite_initiale):0;const cls=ratio<=.25?"warning":ratio>.5?"success":"";return `<button type="button" class="itemCard" data-id="${l.lot_id}" style="text-align:left;color:inherit;background:rgba(255,250,241,.8)"><div class="itemTop"><div><div class="itemTitle">${l.nom_lot||"Lot sans nom"}</div><div class="meta">${l.fournisseur||"—"} · ${l.date_achat||"—"}</div></div><span class="badge ${cls}">${l.categorie||"autre"}</span></div><div class="stats"><div class="stat"><strong>${number(l.quantite_restante,2)} ${l.unite||""}</strong><span>restant</span></div><div class="stat"><strong>${money(l.cout_unitaire||n(l.cout_total)/Math.max(1,n(l.quantite_initiale)))}</strong><span>coût unitaire</span></div></div></button>`}).join(""):`<div class="empty">Aucun lot trouvé.</div>`;$("lotsList").querySelectorAll("[data-id]").forEach(btn=>btn.addEventListener("click",()=>showDetail(btn.dataset.id)));if(!selectedLotId&&rows[0])showDetail(rows[0].lot_id)}
-function showDetail(id){selectedLotId=id;const l=lots.find(x=>x.lot_id===id);if(!l)return;const conso=consumptions.filter(c=>c.lot_id===id);const unit=n(l.cout_unitaire)||n(l.cout_total)/Math.max(1,n(l.quantite_initiale));const ratio=n(l.quantite_initiale)?Math.round(n(l.quantite_restante)/n(l.quantite_initiale)*100):0;$("lotDetail").className="";$("lotDetail").innerHTML=`<article><div class="itemTop"><div><h2>${l.nom_lot}</h2><p class="meta">${l.categorie||"autre"} · ${l.fournisseur||"—"} · ${l.date_achat||"—"}</p></div><span class="badge ${ratio<=25?"warning":"success"}">${ratio}% restant</span></div><div class="stats"><div class="stat"><strong>${number(l.quantite_initiale,2)} ${l.unite||""}</strong><span>initial</span></div><div class="stat"><strong>${number(l.quantite_restante,2)} ${l.unite||""}</strong><span>restant</span></div><div class="stat"><strong>${money(l.cout_total)}</strong><span>coût achat</span></div><div class="stat"><strong>${money(unit)}</strong><span>coût unitaire</span></div></div><p>${l.note||""}</p><h2 style="margin-top:18px">Consommations liées</h2><div class="list">${conso.length?conso.map(c=>`<div class="itemCard"><div class="itemTop"><div><div class="itemTitle">${c.nom_matiere||l.nom_lot}</div><div class="meta">Cuvée ${c.cuvee_id} · ${number(c.quantite_consommee,2)} ${c.unite||l.unite}</div></div><span class="badge">${money(c.cout_total_impute)}</span></div></div>`).join(""):'<div class="empty">Aucune consommation enregistrée pour ce lot.</div>'}</div><div class="actions"><button class="secondary" id="archiveLotBtn">Archiver le lot</button></div></article>`;$("archiveLotBtn").addEventListener("click",()=>archiveLot(l))}
-async function archiveLot(l){if(!confirm("Archiver ce lot ? Il restera consultable dans l’historique."))return;const updated={...l,statut:"archivee",updated_at:isoNow()};await apiUpsert("matieres_lots",updated,STORAGE_KEYS.lots);lots=readLocal(STORAGE_KEYS.lots,DEMO_DATA.lots);render();setStatus("Lot archivé")}
-async function saveLot(e){e.preventDefault();const qty=n($("qtyInitial").value),cost=n($("costTotal").value);if(!$("lotName").value.trim()||!qty){alert("Nom et quantité initiale sont obligatoires.");return}const lot={lot_id:uid("LOT"),matiere_id:uid("MAT"),nom_lot:$("lotName").value.trim(),categorie:$("lotCategory").value,fournisseur:$("supplier").value.trim(),date_achat:$("buyDate").value||today(),quantite_initiale:qty,quantite_restante:qty,unite:$("unit").value.trim()||"unité",cout_total:cost,cout_unitaire:qty?cost/qty:0,statut:"actif",facture_reference:$("invoiceRef").value.trim(),note:$("lotNote").value.trim(),created_at:isoNow(),updated_at:isoNow()};await apiUpsert("matieres_lots",lot,STORAGE_KEYS.lots);lots=readLocal(STORAGE_KEYS.lots,DEMO_DATA.lots);e.target.reset();$("buyDate").value=today();selectedLotId=lot.lot_id;render();setStatus("Lot enregistré")}
-["searchInput","categoryFilter"].forEach(id=>$(id).addEventListener("input",renderLots));$("lotForm").addEventListener("submit",saveLot);load();
+    - Lecture remote-first via getCoreData :
+      matieresPremieres, matieresLots, mouvementsMatieres, cuveesMatieresConsommees
+
+    - Cache localStorage utilisé uniquement en secours au démarrage :
+      - hors ligne
+      - API indisponible
+      - erreur Google Sheets
+
+    - Écriture :
+      upsertMatierePremiere
+      upsertMatiereLot
+      upsertMouvementMatiere
+
+    - Compatible offline/cache localStorage.
+    - Ne dépend pas de données démo.
+    - Les écritures passent par LugdurumAPI quand disponible.
+  */
+
+  const STORAGE_KEYS = {
+    matters: "lugdurum_matieres_premieres",
+    lots: "lugdurum_matieres_lots",
+    movements: "lugdurum_mouvements_matieres",
+    consumptions: "lugdurum_cuvees_matieres_consommees"
+  };
+
+  const CORE_TABLES =
+    "matieresPremieres,matieresLots,mouvementsMatieres,cuveesMatieresConsommees";
+
+  const TABLE_ALIASES = {
+    matieresPremieres: ["matieresPremieres", "matieres_premieres"],
+    matieresLots: ["matieresLots", "matieres_lots"],
+    mouvementsMatieres: ["mouvementsMatieres", "mouvements_matieres"],
+    cuveesMatieresConsommees: [
+      "cuveesMatieresConsommees",
+      "cuvees_matieres_consommees"
+    ]
+  };
+
+  const ACTION_TABLE_MAP = {
+    upsertMatierePremiere: ["matieresPremieres", "matieres_premieres"],
+    upsertMatiereLot: ["matieresLots", "matieres_lots"],
+    upsertMouvementMatiere: ["mouvementsMatieres", "mouvements_matieres"]
+  };
+
+  let matters = [];
+  let lots = [];
+  let movements = [];
+  let consumptions = [];
+  let selectedLotId = "";
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function toNumber(value, fallback = 0) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(",", ".");
+
+    if (!normalized) return fallback;
+
+    const parsed = Number(normalized);
+
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function roundAmount(value) {
+    return Math.round((toNumber(value, 0) + Number.EPSILON) * 100) / 100;
+  }
+
+  function money(value) {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR"
+    }).format(toNumber(value, 0));
+  }
+
+  function number(value, decimals = 0) {
+    return new Intl.NumberFormat("fr-FR", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    }).format(toNumber(value, 0));
+  }
+
+  function isoNow() {
+    return new Date().toISOString();
+  }
+
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function uid(prefix) {
+    return `${prefix}_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase()}`;
+  }
+
+  function normalizeText(value) {
+    return String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function normalizeCode(value) {
+    return String(value ?? "")
+      .trim()
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 42);
+  }
+
+  function normalizeStatus(value) {
+    return normalizeText(value).replace(/\s+/g, "_");
+  }
+
+  function isArchived(item) {
+    const status = normalizeStatus(item?.statut);
+
+    return [
+      "archive",
+      "archivee",
+      "inactif",
+      "annule",
+      "annulee"
+    ].includes(status);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function readLocal(key, fallback = []) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+
+      const parsed = JSON.parse(raw);
+
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeLocal(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(asArray(value)));
+    } catch (err) {
+      console.warn("Impossible d’écrire le cache local.", err);
+    }
+  }
+
+  function setText(id, value) {
+    const el = $(id);
+    if (el) el.textContent = value;
+  }
+
+  function setStatus(text, kind = "") {
+    const el = $("syncStatus");
+
+    if (!el) return;
+
+    el.textContent = text;
+    el.className = `syncPill ${kind}`.trim();
+  }
+
+  function hydrateFromCache() {
+    matters = readLocal(STORAGE_KEYS.matters, []);
+    lots = readLocal(STORAGE_KEYS.lots, []);
+    movements = readLocal(STORAGE_KEYS.movements, []);
+    consumptions = readLocal(STORAGE_KEYS.consumptions, []);
+  }
+
+  function saveCache() {
+    writeLocal(STORAGE_KEYS.matters, matters);
+    writeLocal(STORAGE_KEYS.lots, lots);
+    writeLocal(STORAGE_KEYS.movements, movements);
+    writeLocal(STORAGE_KEYS.consumptions, consumptions);
+  }
+
+  function unwrapCoreData(response) {
+    if (!response) return {};
+
+    if (response.data && typeof response.data === "object") {
+      if (response.data.data && typeof response.data.data === "object") {
+        return response.data.data;
+      }
+
+      return response.data;
+    }
+
+    return response;
+  }
+
+  function getRowsFromCoreData(core, key) {
+    const aliases = TABLE_ALIASES[key] || [key];
+
+    for (const alias of aliases) {
+      if (Array.isArray(core?.[alias])) {
+        return core[alias];
+      }
+    }
+
+    return [];
+  }
+
+  async function readCoreDataFromApi() {
+    const api = window.LugdurumAPI;
+
+    if (!api) {
+      throw new Error("LugdurumAPI indisponible.");
+    }
+
+    if (typeof api.getCoreData === "function") {
+      const response = await api.getCoreData(CORE_TABLES);
+      const core = unwrapCoreData(response);
+
+      return {
+        matters: getRowsFromCoreData(core, "matieresPremieres"),
+        lots: getRowsFromCoreData(core, "matieresLots"),
+        movements: getRowsFromCoreData(core, "mouvementsMatieres"),
+        consumptions: getRowsFromCoreData(core, "cuveesMatieresConsommees")
+      };
+    }
+
+    if (typeof api.list === "function") {
+      const [
+        matterRows,
+        lotRows,
+        movementRows,
+        consumptionRows
+      ] = await Promise.all([
+        readTableWithListApi("matieresPremieres"),
+        readTableWithListApi("matieresLots"),
+        readTableWithListApi("mouvementsMatieres"),
+        readTableWithListApi("cuveesMatieresConsommees")
+      ]);
+
+      return {
+        matters: matterRows,
+        lots: lotRows,
+        movements: movementRows,
+        consumptions: consumptionRows
+      };
+    }
+
+    throw new Error("Aucune méthode de lecture compatible dans LugdurumAPI.");
+  }
+
+  async function readTableWithListApi(key) {
+    const api = window.LugdurumAPI;
+    const aliases = TABLE_ALIASES[key] || [key];
+    let lastError = null;
+
+    for (const alias of aliases) {
+      try {
+        const response = await api.list(alias);
+        return asArray(response?.data || response);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error(`Lecture impossible : ${key}`);
+  }
+
+  async function apiPost(action, payload) {
+    const api = window.LugdurumAPI;
+
+    if (!api) {
+      throw new Error("LugdurumAPI indisponible.");
+    }
+
+    if (typeof api.post === "function") {
+      return api.post(action, payload);
+    }
+
+    if (typeof api.request === "function") {
+      return api.request(action, payload);
+    }
+
+    if (typeof api.call === "function") {
+      return api.call(action, payload);
+    }
+
+    if (typeof api.queueAction === "function") {
+      return api.queueAction(action, payload);
+    }
+
+    if (typeof api.enqueueAction === "function") {
+      return api.enqueueAction(action, payload);
+    }
+
+    if (typeof api.upsert === "function" && ACTION_TABLE_MAP[action]) {
+      return apiUpsertFallback(action, payload?.data || payload);
+    }
+
+    throw new Error(`Aucune méthode POST compatible pour ${action}.`);
+  }
+
+  async function apiUpsertFallback(action, row) {
+    const api = window.LugdurumAPI;
+    const aliases = ACTION_TABLE_MAP[action] || [];
+    let lastError = null;
+
+    for (const alias of aliases) {
+      try {
+        return await api.upsert(alias, row);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error(`Upsert impossible : ${action}.`);
+  }
+
+  async function apiBatchActions(actions) {
+    try {
+      return await apiPost("batchActions", { actions });
+    } catch (batchErr) {
+      console.warn("batchActions indisponible, tentative action par action.", batchErr);
+
+      const results = [];
+
+      for (const item of actions) {
+        try {
+          const data = await apiPost(item.action, item.payload || {});
+          results.push({
+            ok: true,
+            action: item.action,
+            queue_id: item.queue_id || "",
+            data
+          });
+        } catch (err) {
+          results.push({
+            ok: false,
+            action: item.action,
+            queue_id: item.queue_id || "",
+            error: err.message
+          });
+        }
+      }
+
+      const failed = results.filter((item) => !item.ok);
+
+      if (failed.length > 0) {
+        throw new Error(
+          failed.map((item) => `${item.action}: ${item.error}`).join(" | ")
+        );
+      }
+
+      return {
+        ok: true,
+        data: {
+          results,
+          success_count: results.length,
+          failed_count: 0
+        }
+      };
+    }
+  }
+
+  function upsertInArray(rows, idKey, row) {
+    const safeRows = asArray(rows);
+    const id = String(row?.[idKey] || "").trim();
+
+    if (!id) return safeRows;
+
+    const index = safeRows.findIndex((item) => String(item?.[idKey] || "") === id);
+
+    if (index >= 0) {
+      safeRows[index] = {
+        ...safeRows[index],
+        ...row
+      };
+    } else {
+      safeRows.unshift(row);
+    }
+
+    return safeRows;
+  }
+
+  function getUnitCost(lot) {
+    const explicit = toNumber(lot?.cout_unitaire, NaN);
+
+    if (Number.isFinite(explicit)) {
+      return explicit;
+    }
+
+    const total = toNumber(lot?.cout_total, 0);
+    const initial = toNumber(lot?.quantite_initiale, 0);
+
+    if (!initial) return 0;
+
+    return total / initial;
+  }
+
+  function getRemainingValue(lot) {
+    return toNumber(lot?.quantite_restante, 0) * getUnitCost(lot);
+  }
+
+  function getMatterForLot(lot) {
+    const matterId = String(lot?.matiere_id || "").trim();
+
+    return matters.find((item) => String(item?.matiere_id || "") === matterId) || null;
+  }
+
+  function getMatterNameForLot(lot) {
+    const matter = getMatterForLot(lot);
+
+    return (
+      matter?.nom ||
+      lot?.nom_matiere ||
+      lot?.nom_lot ||
+      "Matière première"
+    );
+  }
+
+  function cleanMatterNameFromLotName(lotName, category) {
+    const beforeDash = String(lotName || "")
+      .split("—")[0]
+      .split(" - ")[0]
+      .trim();
+
+    const cleaned = beforeDash
+      .replace(/\b\d+([,.]\d+)?\s*(l|kg|g|cl|ml|unités?|unites?|u)\b/gi, "")
+      .replace(/\bpalette\b/gi, "")
+      .replace(/\bcarton\b/gi, "")
+      .replace(/\bachat\b/gi, "")
+      .replace(/\b20\d{2}\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (cleaned) return cleaned;
+
+    const labels = {
+      rhum: "Rhum",
+      bouteille: "Bouteilles",
+      bouchon: "Bouchons",
+      etiquette: "Étiquettes",
+      coffret: "Coffrets",
+      carton: "Cartons",
+      sucre: "Sucre",
+      consommable: "Consommable",
+      autre: "Autre matière"
+    };
+
+    return labels[category] || "Matière première";
+  }
+
+  function findExistingMatter(category, lotName) {
+    const cleanName = normalizeText(cleanMatterNameFromLotName(lotName, category));
+
+    return (
+      matters.find((matter) => {
+        const sameCategory = normalizeText(matter?.categorie) === normalizeText(category);
+        const matterName = normalizeText(matter?.nom);
+
+        return (
+          sameCategory &&
+          matterName &&
+          (cleanName.includes(matterName) || matterName.includes(cleanName))
+        );
+      }) || null
+    );
+  }
+
+  function buildMatterFromLotForm(lotName, category, unit) {
+    const existing = findExistingMatter(category, lotName);
+
+    if (existing) {
+      return {
+        ...existing,
+        categorie: existing.categorie || category,
+        unite_stock: existing.unite_stock || unit || "unité",
+        actif: existing.actif || "TRUE",
+        updated_at: isoNow()
+      };
+    }
+
+    const name = cleanMatterNameFromLotName(lotName, category);
+
+    return {
+      matiere_id: `MAT_${normalizeCode(category || "AUTRE")}_${normalizeCode(name)}`,
+      nom: name,
+      categorie: category || "autre",
+      unite_stock: unit || "unité",
+      actif: "TRUE",
+      note: "",
+      created_at: isoNow(),
+      updated_at: isoNow()
+    };
+  }
+
+  function buildInitialMovement(lot, matter) {
+    const unitCost = getUnitCost(lot);
+
+    return {
+      mouvement_matiere_id: uid("MMAT"),
+      lot_id: lot.lot_id,
+      matiere_id: lot.matiere_id,
+      type_mouvement: "achat",
+      source_type: "achat_lot",
+      source_id: lot.lot_id,
+      date_mouvement: lot.date_achat || todayIso(),
+      nom_matiere: matter?.nom || lot.nom_lot || "",
+      categorie: lot.categorie || matter?.categorie || "",
+      quantite: toNumber(lot.quantite_initiale, 0),
+      unite: lot.unite || matter?.unite_stock || "unité",
+      cout_unitaire_snapshot: roundAmount(unitCost),
+      cout_total_snapshot: roundAmount(toNumber(lot.cout_total, 0)),
+      note: `Entrée initiale du lot ${lot.nom_lot || lot.lot_id}`,
+      created_at: isoNow(),
+      updated_at: isoNow()
+    };
+  }
+
+  function filteredLots() {
+    const searchValue = normalizeText($("searchInput")?.value || "");
+    const categoryValue = String($("categoryFilter")?.value || "").trim();
+
+    return lots
+      .filter((lot) => {
+        const matter = getMatterForLot(lot);
+
+        const haystack = normalizeText(
+          [
+            lot.nom_lot,
+            lot.nom_matiere,
+            lot.categorie,
+            lot.fournisseur,
+            lot.note,
+            matter?.nom,
+            matter?.categorie
+          ].join(" ")
+        );
+
+        const matchesSearch = !searchValue || haystack.includes(searchValue);
+        const matchesCategory = !categoryValue || lot.categorie === categoryValue;
+
+        return matchesSearch && matchesCategory;
+      })
+      .sort((a, b) => {
+        const statusSort = Number(isArchived(a)) - Number(isArchived(b));
+
+        if (statusSort !== 0) return statusSort;
+
+        return String(b.date_achat || b.created_at || "").localeCompare(
+          String(a.date_achat || a.created_at || "")
+        );
+      });
+  }
+
+  function render() {
+    renderStats();
+    renderLots();
+
+    if (selectedLotId) {
+      renderLotDetail(selectedLotId);
+    } else {
+      renderEmptyDetail();
+    }
+  }
+
+  function renderStats() {
+    const activeLots = lots.filter((lot) => !isArchived(lot));
+
+    const totalValue = activeLots.reduce((sum, lot) => {
+      return sum + getRemainingValue(lot);
+    }, 0);
+
+    const lowLots = activeLots.filter((lot) => {
+      const initial = toNumber(lot.quantite_initiale, 0);
+      const remaining = toNumber(lot.quantite_restante, 0);
+
+      if (!initial) return false;
+
+      return remaining / initial <= 0.25;
+    });
+
+    const averageUnit =
+      activeLots.length > 0
+        ? activeLots.reduce((sum, lot) => sum + getUnitCost(lot), 0) / activeLots.length
+        : 0;
+
+    setText("activeLots", String(activeLots.length));
+    setText("totalValue", money(totalValue));
+    setText("lowLots", String(lowLots.length));
+    setText("avgUnit", money(averageUnit));
+  }
+
+  function renderLots() {
+    const list = $("lotsList");
+    if (!list) return;
+
+    const rows = filteredLots();
+
+    if (rows.length === 0) {
+      list.innerHTML = `<div class="empty">Aucun lot trouvé.</div>`;
+      return;
+    }
+
+    list.innerHTML = rows
+      .map((lot) => {
+        const initial = toNumber(lot.quantite_initiale, 0);
+        const remaining = toNumber(lot.quantite_restante, 0);
+        const ratio = initial ? remaining / initial : 0;
+        const ratioPct = initial ? Math.round(ratio * 100) : 0;
+        const badgeClass = isArchived(lot)
+          ? ""
+          : ratio <= 0.25
+            ? "warning"
+            : ratio > 0.5
+              ? "success"
+              : "";
+
+        const selectedClass =
+          String(lot.lot_id || "") === selectedLotId ? " isSelected" : "";
+
+        return `
+          <button
+            type="button"
+            class="itemCard${selectedClass}"
+            data-lot-id="${escapeHtml(lot.lot_id)}"
+          >
+            <div class="itemTop">
+              <div>
+                <div class="itemTitle">${escapeHtml(lot.nom_lot || "Lot sans nom")}</div>
+                <div class="meta">
+                  ${escapeHtml(getMatterNameForLot(lot))}
+                  · ${escapeHtml(lot.fournisseur || "fournisseur inconnu")}
+                  · ${escapeHtml(lot.date_achat || "date inconnue")}
+                </div>
+              </div>
+              <span class="badge ${badgeClass}">
+                ${escapeHtml(isArchived(lot) ? "archivé" : lot.categorie || "autre")}
+              </span>
+            </div>
+
+            <div class="stats">
+              <div class="stat">
+                <strong>${number(remaining, 2)} ${escapeHtml(lot.unite || "")}</strong>
+                <span>restant · ${ratioPct}%</span>
+              </div>
+
+              <div class="stat">
+                <strong>${money(getUnitCost(lot))}</strong>
+                <span>coût unitaire</span>
+              </div>
+            </div>
+          </button>
+        `;
+      })
+      .join("");
+
+    list.querySelectorAll("[data-lot-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedLotId = button.dataset.lotId || "";
+        render();
+      });
+    });
+
+    if (!selectedLotId && rows[0]) {
+      selectedLotId = rows[0].lot_id;
+      renderLotDetail(selectedLotId);
+    }
+  }
+
+  function renderEmptyDetail() {
+    const detail = $("lotDetail");
+
+    if (!detail) return;
+
+    detail.className = "empty";
+    detail.innerHTML = "Sélectionne un lot pour voir le coût unitaire, le restant et les consommations.";
+  }
+
+  function renderLotDetail(id) {
+    const detail = $("lotDetail");
+
+    if (!detail) return;
+
+    const lot = lots.find((item) => String(item.lot_id || "") === String(id || ""));
+
+    if (!lot) {
+      renderEmptyDetail();
+      return;
+    }
+
+    const initial = toNumber(lot.quantite_initiale, 0);
+    const remaining = toNumber(lot.quantite_restante, 0);
+    const ratioPct = initial ? Math.round((remaining / initial) * 100) : 0;
+    const unitCost = getUnitCost(lot);
+    const matter = getMatterForLot(lot);
+
+    const linkedConsumptions = consumptions.filter((item) => {
+      return String(item.lot_id || "") === String(lot.lot_id || "");
+    });
+
+    const linkedMovements = movements
+      .filter((item) => String(item.lot_id || "") === String(lot.lot_id || ""))
+      .sort((a, b) => {
+        return String(b.date_mouvement || b.created_at || "").localeCompare(
+          String(a.date_mouvement || a.created_at || "")
+        );
+      });
+
+    detail.className = "";
+    detail.innerHTML = `
+      <article>
+        <div class="itemTop">
+          <div>
+            <h2>${escapeHtml(lot.nom_lot || "Lot sans nom")}</h2>
+            <p class="meta">
+              ${escapeHtml(matter?.nom || lot.nom_matiere || "Matière non liée")}
+              · ${escapeHtml(lot.categorie || "autre")}
+              · ${escapeHtml(lot.fournisseur || "fournisseur inconnu")}
+              · ${escapeHtml(lot.date_achat || "date inconnue")}
+            </p>
+          </div>
+
+          <span class="badge ${ratioPct <= 25 && !isArchived(lot) ? "warning" : "success"}">
+            ${escapeHtml(isArchived(lot) ? "archivé" : `${ratioPct}% restant`)}
+          </span>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <strong>${number(initial, 2)} ${escapeHtml(lot.unite || "")}</strong>
+            <span>quantité initiale</span>
+          </div>
+
+          <div class="stat">
+            <strong>${number(remaining, 2)} ${escapeHtml(lot.unite || "")}</strong>
+            <span>quantité restante</span>
+          </div>
+
+          <div class="stat">
+            <strong>${money(lot.cout_total)}</strong>
+            <span>coût achat</span>
+          </div>
+
+          <div class="stat">
+            <strong>${money(unitCost)}</strong>
+            <span>coût unitaire</span>
+          </div>
+        </div>
+
+        ${lot.facture_reference ? `
+          <p class="meta">
+            Facture : ${escapeHtml(lot.facture_reference)}
+          </p>
+        ` : ""}
+
+        ${lot.note ? `
+          <p>${escapeHtml(lot.note)}</p>
+        ` : ""}
+
+        <h2 style="margin-top:18px">Consommations liées</h2>
+
+        <div class="list">
+          ${
+            linkedConsumptions.length
+              ? linkedConsumptions
+                  .map((item) => {
+                    return `
+                      <div class="itemCard">
+                        <div class="itemTop">
+                          <div>
+                            <div class="itemTitle">
+                              ${escapeHtml(item.nom_matiere || matter?.nom || lot.nom_lot)}
+                            </div>
+                            <div class="meta">
+                              Cuvée ${escapeHtml(item.cuvee_id || "—")}
+                              · ${number(item.quantite_consommee, 2)}
+                              ${escapeHtml(item.unite || lot.unite || "")}
+                            </div>
+                          </div>
+                          <span class="badge">${money(item.cout_total_impute)}</span>
+                        </div>
+                      </div>
+                    `;
+                  })
+                  .join("")
+              : `<div class="empty">Aucune consommation enregistrée pour ce lot.</div>`
+          }
+        </div>
+
+        <h2 style="margin-top:18px">Mouvements matière</h2>
+
+        <div class="list">
+          ${
+            linkedMovements.length
+              ? linkedMovements
+                  .map((item) => {
+                    return `
+                      <div class="itemCard">
+                        <div class="itemTop">
+                          <div>
+                            <div class="itemTitle">
+                              ${escapeHtml(item.type_mouvement || "mouvement")}
+                            </div>
+                            <div class="meta">
+                              ${escapeHtml(item.date_mouvement || item.created_at || "—")}
+                              · ${number(item.quantite, 2)}
+                              ${escapeHtml(item.unite || lot.unite || "")}
+                            </div>
+                          </div>
+                          <span class="badge">${money(item.cout_total_snapshot)}</span>
+                        </div>
+                      </div>
+                    `;
+                  })
+                  .join("")
+              : `<div class="empty">Aucun mouvement enregistré pour ce lot.</div>`
+          }
+        </div>
+
+        <div class="actions">
+          <button
+            type="button"
+            class="secondary"
+            id="archiveLotBtn"
+            ${isArchived(lot) ? "disabled" : ""}
+          >
+            Archiver le lot
+          </button>
+        </div>
+      </article>
+    `;
+
+    const archiveButton = $("archiveLotBtn");
+
+    if (archiveButton) {
+      archiveButton.addEventListener("click", () => archiveLot(lot));
+    }
+  }
+
+  async function saveLot(event) {
+    event.preventDefault();
+
+    const name = $("lotName")?.value.trim() || "";
+    const category = $("lotCategory")?.value || "autre";
+    const supplier = $("supplier")?.value.trim() || "";
+    const buyDate = $("buyDate")?.value || todayIso();
+    const quantity = toNumber($("qtyInitial")?.value, 0);
+    const unit = $("unit")?.value.trim() || "unité";
+    const totalCost = toNumber($("costTotal")?.value, 0);
+    const invoiceRef = $("invoiceRef")?.value.trim() || "";
+    const note = $("lotNote")?.value.trim() || "";
+
+    if (!name || quantity <= 0) {
+      alert("Nom du lot et quantité initiale sont obligatoires.");
+      return;
+    }
+
+    const matter = buildMatterFromLotForm(name, category, unit);
+    const unitCost = quantity ? totalCost / quantity : 0;
+
+    const lot = {
+      lot_id: uid("LOT"),
+      matiere_id: matter.matiere_id,
+      nom_lot: name,
+      nom_matiere: matter.nom,
+      categorie: category,
+      fournisseur: supplier,
+      date_achat: buyDate,
+      quantite_initiale: quantity,
+      quantite_restante: quantity,
+      unite: unit,
+      cout_total: roundAmount(totalCost),
+      cout_unitaire: roundAmount(unitCost),
+      statut: "actif",
+      facture_reference: invoiceRef,
+      note,
+      created_at: isoNow(),
+      updated_at: isoNow()
+    };
+
+    const movement = buildInitialMovement(lot, matter);
+
+    setStatus("Enregistrement du lot…", "isRefreshing");
+
+    matters = upsertInArray(matters, "matiere_id", matter);
+    lots = upsertInArray(lots, "lot_id", lot);
+    movements = upsertInArray(movements, "mouvement_matiere_id", movement);
+    saveCache();
+
+    try {
+      await apiBatchActions([
+        {
+          queue_id: uid("QUEUE_MAT"),
+          action: "upsertMatierePremiere",
+          payload: {
+            data: matter
+          }
+        },
+        {
+          queue_id: uid("QUEUE_LOT"),
+          action: "upsertMatiereLot",
+          payload: {
+            data: lot
+          }
+        },
+        {
+          queue_id: uid("QUEUE_MVT"),
+          action: "upsertMouvementMatiere",
+          payload: {
+            data: movement
+          }
+        }
+      ]);
+
+      setStatus("Lot enregistré", "isOnline");
+    } catch (err) {
+      console.warn("Écriture distante impossible, données conservées en local.", err);
+      setStatus("Lot conservé en local — synchro à refaire", "isLocal");
+    }
+
+    selectedLotId = lot.lot_id;
+
+    if (event.target && typeof event.target.reset === "function") {
+      event.target.reset();
+    }
+
+    const buyDateInput = $("buyDate");
+    if (buyDateInput) buyDateInput.value = todayIso();
+
+    render();
+  }
+
+  async function archiveLot(lot) {
+    if (!lot || !lot.lot_id) return;
+
+    const confirmed = confirm("Archiver ce lot ? Il restera consultable dans l’historique.");
+
+    if (!confirmed) return;
+
+    const updatedLot = {
+      ...lot,
+      statut: "archivee",
+      updated_at: isoNow()
+    };
+
+    setStatus("Archivage du lot…", "isRefreshing");
+
+    lots = upsertInArray(lots, "lot_id", updatedLot);
+    saveCache();
+    render();
+
+    try {
+      await apiPost("upsertMatiereLot", {
+        data: updatedLot
+      });
+
+      setStatus("Lot archivé", "isOnline");
+    } catch (err) {
+      console.warn("Archivage distant impossible, modification conservée en local.", err);
+      setStatus("Archivage local — synchro à refaire", "isLocal");
+    }
+  }
+
+  async function refreshFromApi() {
+    if (!navigator.onLine) {
+      hydrateFromCache();
+      render();
+      setStatus("Hors ligne — données locales", "isLocal");
+      return;
+    }
+
+    if (!window.LugdurumAPI) {
+      hydrateFromCache();
+      render();
+      setStatus("API indisponible — cache local", "isLocal");
+      return;
+    }
+
+    setStatus("Chargement Google Sheets…", "isRefreshing");
+
+    try {
+      const fresh = await readCoreDataFromApi();
+
+      matters = asArray(fresh.matters);
+      lots = asArray(fresh.lots);
+      movements = asArray(fresh.movements);
+      consumptions = asArray(fresh.consumptions);
+
+      saveCache();
+
+      if (
+        selectedLotId &&
+        !lots.some((lot) => String(lot.lot_id) === String(selectedLotId))
+      ) {
+        selectedLotId = "";
+      }
+
+      render();
+      setStatus("Données Google Sheets à jour", "isOnline");
+    } catch (err) {
+      console.warn("Lecture Google Sheets impossible.", err);
+
+      hydrateFromCache();
+      render();
+
+      setStatus("Google Sheets indisponible — cache local", "isLocal");
+    }
+  }
+
+  function bindEvents() {
+    const searchInput = $("searchInput");
+    const categoryFilter = $("categoryFilter");
+    const lotForm = $("lotForm");
+    const buyDateInput = $("buyDate");
+
+    if (buyDateInput && !buyDateInput.value) {
+      buyDateInput.value = todayIso();
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        selectedLotId = "";
+        render();
+      });
+    }
+
+    if (categoryFilter) {
+      categoryFilter.addEventListener("input", () => {
+        selectedLotId = "";
+        render();
+      });
+
+      categoryFilter.addEventListener("change", () => {
+        selectedLotId = "";
+        render();
+      });
+    }
+
+    if (lotForm) {
+      lotForm.addEventListener("submit", saveLot);
+    }
+
+    window.addEventListener("online", () => {
+      refreshFromApi();
+    });
+
+    window.addEventListener("offline", () => {
+      hydrateFromCache();
+      render();
+      setStatus("Hors ligne — données locales", "isLocal");
+    });
+  }
+
+  function init() {
+    hydrateFromCache();
+    bindEvents();
+
+    if (navigator.onLine && window.LugdurumAPI) {
+      setStatus("Chargement Google Sheets…", "isRefreshing");
+      refreshFromApi();
+      return;
+    }
+
+    render();
+
+    if (!navigator.onLine) {
+      setStatus("Hors ligne — données locales", "isLocal");
+      return;
+    }
+
+    setStatus("API indisponible — cache local", "isLocal");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
