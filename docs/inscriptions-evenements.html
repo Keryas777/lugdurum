@@ -19,10 +19,10 @@
     <title>Lugdurum — Inscriptions évènements</title>
 
     <link rel="stylesheet" href="./style.css?v=11" />
-    <link rel="stylesheet" href="./inscriptions-evenements.css?v=3" />
+    <link rel="stylesheet" href="./inscriptions-evenements.css?v=4" />
 
     <script src="./lugdurum-api.js?v=8" defer></script>
-    <script src="./inscriptions-evenements.js?v=9" defer></script>
+    <script src="./inscriptions-evenements.js?v=10" defer></script>
     <script src="./pwa.js?v=8" defer></script>
   </head>
 
@@ -175,15 +175,45 @@
                 />
               </label>
 
-              <label class="trackingField">
+              <div class="trackingField trackingFieldFull vendorField">
                 <span>Qui ?</span>
-                <select id="ownerInput">
-                  <option value="U_JEROME">Jérôme</option>
-                  <option value="U_ANTHO">Antho</option>
-                  <option value="U_WILL">Will</option>
-                  <option value="AUTRE">Autre</option>
-                </select>
-              </label>
+
+                <input id="ownerInput" type="hidden" value="U_JEROME" />
+                <input id="vendorsInput" type="hidden" value='["U_JEROME"]' />
+
+                <div class="operatorChipGroup" role="group" aria-label="Personnes présentes sur l’évènement">
+                  <button
+                    type="button"
+                    class="operatorChip"
+                    data-vendor-id="U_ANTHO"
+                    aria-pressed="false"
+                  >
+                    Antho
+                  </button>
+
+                  <button
+                    type="button"
+                    class="operatorChip"
+                    data-vendor-id="U_WILL"
+                    aria-pressed="false"
+                  >
+                    Will
+                  </button>
+
+                  <button
+                    type="button"
+                    class="operatorChip isActive"
+                    data-vendor-id="U_JEROME"
+                    aria-pressed="true"
+                  >
+                    Jay
+                  </button>
+                </div>
+
+                <small class="vendorHelp">
+                  Sélectionne 1 à 3 personnes prévues sur cet évènement.
+                </small>
+              </div>
 
               <label class="trackingField">
                 <span>Ville</span>
