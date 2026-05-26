@@ -147,7 +147,9 @@ video {
 .statusHero,
 .watchPanel,
 .tileGrid,
-.workflowGrid {
+.workflowGrid,
+.eventSelectorSection,
+.eventSelectorList {
   max-width: 100%;
   min-width: 0;
 }
@@ -207,10 +209,6 @@ video {
   z-index: 1;
 }
 
-/* ===== Header avec bouton retour intégré ===== */
-/* Si le header contient .backBtn, il passe automatiquement en ligne compacte. */
-/* Plus besoin de missionsTopbar, closeTopbar, recipeTopbar, etc. */
-
 .appShell > .topbar:has(.backBtn) {
   display: flex;
   align-items: center;
@@ -224,19 +222,15 @@ video {
   height: 50px;
   min-width: 50px;
   flex: 0 0 50px;
-
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   border: 1px solid rgba(86, 65, 42, 0.16);
   border-radius: 999px;
-
   color: var(--text);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 250, 241, 0.72));
   box-shadow: 0 10px 24px rgba(75, 48, 22, 0.11);
-
   font-size: 1.9rem;
   font-weight: 900;
   line-height: 1;
@@ -427,6 +421,247 @@ video {
   backdrop-filter: blur(18px);
 }
 
+.sectionBlock,
+.watchPanel {
+  padding: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.sectionHeader.compact {
+  margin-bottom: 8px;
+}
+
+.sectionHeader h2 {
+  font-size: clamp(1.35rem, 5.3vw, 2.3rem);
+  letter-spacing: -0.045em;
+}
+
+.sectionKicker {
+  margin-bottom: 5px;
+}
+
+/* ===== Sélecteur d’évènements accueil ===== */
+
+.eventSelectorSection {
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 16px;
+}
+
+.eventSelectorSection::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(216, 160, 79, 0.16), transparent 14rem),
+    linear-gradient(90deg, rgba(168, 143, 104, 0.08), transparent 48%);
+}
+
+.eventSelectorSection > * {
+  position: relative;
+  z-index: 1;
+}
+
+.eventSelectorHeader {
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.eventSelectorCount {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--rum);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 241, 0.54));
+  font-size: 0.74rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.eventSelectorList {
+  display: flex;
+  gap: 10px;
+  margin: 0 -4px;
+  padding: 2px 4px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.eventSelectorList::-webkit-scrollbar {
+  height: 0;
+}
+
+.eventOption {
+  position: relative;
+  flex: 0 0 min(82vw, 360px);
+  scroll-snap-align: start;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 11px;
+  align-items: center;
+  min-height: 86px;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: var(--radius-md);
+  padding: 13px;
+  color: var(--text);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 250, 241, 0.58));
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.07);
+  text-align: left;
+  cursor: pointer;
+}
+
+.eventOption::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: transparent;
+}
+
+.eventOption.isSelected {
+  border-color: rgba(138, 90, 43, 0.42);
+  background:
+    linear-gradient(145deg, rgba(255, 244, 226, 0.96), rgba(255, 250, 241, 0.72));
+  box-shadow:
+    0 12px 26px rgba(75, 48, 22, 0.11),
+    inset 0 0 0 2px rgba(216, 160, 79, 0.12);
+}
+
+.eventOption.isSelected::after {
+  background: var(--rum);
+}
+
+.eventOption.isAccepted::after,
+.eventOption.isReady::after,
+.eventOption.isSelling::after {
+  background: var(--green);
+}
+
+.eventOption.isPending::after {
+  background: var(--amber);
+}
+
+.eventOption.isClosed::after {
+  background: var(--muted-2);
+}
+
+.eventOption.isSkeleton {
+  cursor: default;
+  opacity: 0.78;
+}
+
+.eventOption:active {
+  transform: scale(0.985);
+}
+
+.eventOptionDate {
+  width: 52px;
+  min-height: 52px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: 17px;
+  padding: 7px 6px;
+  color: var(--rum);
+  background:
+    linear-gradient(160deg, rgba(216, 160, 79, 0.18), rgba(168, 143, 104, 0.1));
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1.05;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.eventOption.isSelected .eventOptionDate {
+  color: #fffaf1;
+  background:
+    linear-gradient(135deg, var(--rum-2), var(--rum));
+}
+
+.eventOptionMain {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.eventOptionMain strong {
+  display: block;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 950;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.eventOptionMain small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 780;
+  line-height: 1.22;
+}
+
+.eventOptionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.eventChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--rum);
+  background: rgba(168, 143, 104, 0.14);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.eventChip.isGreen {
+  color: var(--green);
+  background: rgba(63, 111, 79, 0.13);
+}
+
+.eventChip.isAmber {
+  color: var(--rum);
+  background: rgba(216, 160, 79, 0.18);
+}
+
+.eventChip.isRed {
+  color: var(--red);
+  background: rgba(179, 92, 58, 0.12);
+}
+
+.eventSelectorHint {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 760;
+  line-height: 1.28;
+}
+
 .statusHero {
   position: relative;
   overflow: hidden;
@@ -459,13 +694,15 @@ video {
   z-index: 1;
 }
 
-.statusHero.isNoMission::before {
+.statusHero.isNoMission::before,
+.statusHero.isEventPlanning::before {
   background:
     linear-gradient(90deg, rgba(168, 143, 104, 0.12), transparent 44%),
     radial-gradient(circle at 90% 12%, rgba(168, 143, 104, 0.22), transparent 16rem);
 }
 
-.statusHero.isStockToPrepare::before {
+.statusHero.isStockToPrepare::before,
+.statusHero.isMissionToPrepare::before {
   background:
     linear-gradient(90deg, rgba(216, 160, 79, 0.16), transparent 44%),
     radial-gradient(circle at 90% 12%, rgba(216, 160, 79, 0.34), transparent 16rem);
@@ -497,12 +734,14 @@ video {
   box-shadow: 0 0 0 6px var(--green-soft);
 }
 
-.liveDot.isNoMission {
+.liveDot.isNoMission,
+.liveDot.isEventPlanning {
   background: var(--kraft);
   box-shadow: 0 0 0 6px var(--kraft-soft);
 }
 
-.liveDot.isStockToPrepare {
+.liveDot.isStockToPrepare,
+.liveDot.isMissionToPrepare {
   background: var(--amber);
   box-shadow: 0 0 0 6px var(--amber-soft);
 }
@@ -622,32 +861,6 @@ video {
 
 .btn:active {
   transform: scale(0.985);
-}
-
-.sectionBlock,
-.watchPanel {
-  padding: 18px;
-}
-
-.sectionHeader {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.sectionHeader.compact {
-  margin-bottom: 8px;
-}
-
-.sectionHeader h2 {
-  font-size: clamp(1.35rem, 5.3vw, 2.3rem);
-  letter-spacing: -0.045em;
-}
-
-.sectionKicker {
-  margin-bottom: 5px;
 }
 
 .workflowGrid {
@@ -895,7 +1108,8 @@ video {
 
 @media (hover: hover) {
   .tile:hover,
-  .workflowCard:hover {
+  .workflowCard:hover,
+  .eventOption:hover {
     transform: translateY(-2px);
     border-color: rgba(138, 90, 43, 0.38);
     background:
@@ -1017,6 +1231,39 @@ video {
   .lugdurumDataStateBar {
     font-size: 0.7rem;
   }
+
+  .eventSelectorSection {
+    padding: 16px;
+  }
+
+  .eventSelectorHeader {
+    gap: 10px;
+  }
+
+  .eventSelectorCount {
+    font-size: 0.68rem;
+  }
+
+  .eventOption {
+    flex-basis: min(86vw, 340px);
+    min-height: 82px;
+    padding: 12px;
+  }
+
+  .eventOptionDate {
+    width: 48px;
+    min-height: 48px;
+    border-radius: 15px;
+    font-size: 0.74rem;
+  }
+
+  .eventOptionMain strong {
+    font-size: 0.96rem;
+  }
+
+  .eventOptionMain small {
+    font-size: 0.78rem;
+  }
 }
 
 @media (max-width: 370px) {
@@ -1122,9 +1369,14 @@ video {
     align-items: start;
   }
 
+  .eventSelectorSection,
   .statusHero,
   .homeWorkflow {
     grid-column: 1 / -1;
+  }
+
+  .eventOption {
+    flex-basis: min(32vw, 360px);
   }
 
   .workflowGrid {
