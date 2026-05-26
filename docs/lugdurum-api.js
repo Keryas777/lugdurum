@@ -2,10 +2,26 @@
   "use strict";
 
   /*
-    Lugdurum API V16 RECETTES DATA + PRO TABLES + FRONT QUEUE + HOME DATA + JSONP GET
+    Lugdurum API V17 HOME EVENT SELECTOR + RECETTES DATA + PRO TABLES + FRONT QUEUE + JSONP GET
 
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
+    - getHomeData(params) transmet désormais :
+      user_id / current_user_id,
+      selected_type,
+      selected_id,
+      activeStockMissionId,
+      activeJourneeId.
+    - Le dernier évènement sélectionné n’est pas utilisé comme défaut durable.
+      La sélection durable par défaut reste calculée côté Apps Script :
+      1) prochain évènement lié à l’utilisateur,
+      2) sinon prochain évènement global.
+    - L’URL peut imposer temporairement un contexte :
+      ?selected_type=mission&selected_id=...
+      ?selected_type=inscription&selected_id=...
+      ?mission_vente_id=...
+      ?evenement_id=...
+      ?inscription_id=...
     - Ajout méthode rapide getHomeData() pour l’accueil.
     - Ajout méthode rapide getRecettesData(view) pour le module recettes :
       dashboard, historique, production, matieres.
@@ -42,6 +58,8 @@
     lastSyncState: "lugdurum_last_sync_state",
     legacyPendingTransactions: "lugdurum_pending_transactions",
     dataState: "lugdurum_data_state",
+
+    currentUserId: "lugdurum_current_user_id",
 
     activeMissionId: "lugdurum_active_mission_id",
     activeStockMissionId: "lugdurum_active_stock_mission_id",
@@ -379,6 +397,104 @@
       keyField,
       data
     });
+  };
+
+  const getUrlParams = () => {
+    try {
+      return new URLSearchParams(window.location.search || "");
+    } catch {
+      return new URLSearchParams();
+    }
+  };
+
+  const getUrlParam = (key) => {
+    const params = getUrlParams();
+    return String(params.get(key) || "").trim();
+  };
+
+  const inferSelectedTypeFromId = (id) => {
+    const value = String(id || "").trim().toUpperCase();
+
+    if (value.startsWith("INS_")) return "inscription";
+    if (value.startsWith("EVT_")) return "mission";
+    if (value.startsWith("MIS_")) return "mission";
+
+    return "";
+  };
+
+  const getSelectedContextFromUrl = () => {
+    const selectedType = getUrlParam("selected_type") || getUrlParam("selectedType");
+    const selectedId =
+      getUrlParam("selected_id") ||
+      getUrlParam("selectedId") ||
+      getUrlParam("item_id") ||
+      getUrlParam("itemId") ||
+      getUrlParam("event") ||
+      getUrlParam("event_id") ||
+      getUrlParam("evenement_id") ||
+      getUrlParam("mission_vente_id") ||
+      getUrlParam("inscription_id");
+
+    if (selectedId) {
+      return {
+        selected_type:
+          selectedType ||
+          (getUrlParam("inscription_id") ? "inscription" : "") ||
+          inferSelectedTypeFromId(selectedId),
+        selected_id: selectedId
+      };
+    }
+
+    const missionId = getUrlParam("mission_id");
+
+    if (missionId && !missionId.toUpperCase().startsWith("MST_")) {
+      return {
+        selected_type: selectedType || inferSelectedTypeFromId(missionId) || "mission",
+        selected_id: missionId
+      };
+    }
+
+    return {
+      selected_type: "",
+      selected_id: ""
+    };
+  };
+
+  const getCurrentUserIdFromRuntime = (params = {}) => {
+    const explicit =
+      params.user_id ||
+      params.current_user_id ||
+      params.currentUserId ||
+      params.userId ||
+      "";
+
+    if (explicit) return String(explicit).trim();
+
+    const globalUser =
+      window.LugdurumCurrentUser ||
+      window.currentUser ||
+      window.CURRENT_USER ||
+      null;
+
+    const globalUserId =
+      globalUser?.user_id ||
+      globalUser?.id ||
+      globalUser?.userId ||
+      "";
+
+    if (globalUserId) return String(globalUserId).trim();
+
+    return String(safeLocalGet(STORAGE_KEYS.currentUserId) || "").trim();
+  };
+
+  const setCurrentUserId = (userId) => {
+    const value = String(userId || "").trim();
+
+    if (value) {
+      safeLocalSet(STORAGE_KEYS.currentUserId, value);
+    }
+
+    return value;
   };
 
   const ensureDataStateStyle = () => {
@@ -1386,11 +1502,38 @@
 
   const buildHomeDataParams = (params = {}) => {
     const context = readJson(STORAGE_KEYS.preparationContext, {});
+    const urlSelected = getSelectedContextFromUrl();
+
+    const userId = getCurrentUserIdFromRuntime(params);
+
+    const selectedId =
+      params.selected_id ||
+      params.selectedId ||
+      params.item_id ||
+      params.itemId ||
+      params.event ||
+      params.event_id ||
+      params.evenement_id ||
+      params.mission_vente_id ||
+      params.inscription_id ||
+      urlSelected.selected_id ||
+      "";
+
+    const selectedType =
+      params.selected_type ||
+      params.selectedType ||
+      params.item_type ||
+      params.itemType ||
+      urlSelected.selected_type ||
+      (params.inscription_id ? "inscription" : "") ||
+      inferSelectedTypeFromId(selectedId);
 
     const activeStockMissionId =
       params.activeStockMissionId ||
       params.stockMissionId ||
       params.stock_mission_id ||
+      getUrlParam("stock_mission_id") ||
+      getUrlParam("mission_stock_id") ||
       safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
       context.stock_mission_id ||
       context.mission_stock_id ||
@@ -1402,14 +1545,27 @@
       params.activeJourneeId ||
       params.journeeId ||
       params.journee_id ||
+      getUrlParam("journee_id") ||
       safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
       context.journee_id ||
       "";
 
     return {
       today: params.today || getTodayIso(),
+
+      user_id: userId,
+      current_user_id: userId,
+
+      selected_type: selectedType,
+      selected_id: selectedId,
+
       activeStockMissionId,
-      activeJourneeId
+      stockMissionId: activeStockMissionId,
+      stock_mission_id: activeStockMissionId,
+
+      activeJourneeId,
+      journeeId: activeJourneeId,
+      journee_id: activeJourneeId
     };
   };
 
@@ -2038,6 +2194,9 @@
 
     list,
     upsert,
+
+    setCurrentUserId,
+    getCurrentUserId: () => getCurrentUserIdFromRuntime(),
 
     getHomeData,
 
