@@ -18,10 +18,10 @@
 
     <title>Lugdurum — Accueil</title>
 
-    <link rel="stylesheet" href="./style.css?v=20" />
+    <link rel="stylesheet" href="./style.css?v=21" />
 
-    <script src="./lugdurum-api.js?v=13" defer></script>
-    <script src="./home.js?v=19" defer></script>
+    <script src="./lugdurum-api.js?v=14" defer></script>
+    <script src="./home.js?v=20" defer></script>
     <script src="./pwa.js?v=15" defer></script>
   </head>
 
@@ -62,6 +62,39 @@
       </header>
 
       <main class="mainContent homeLayout">
+        <section
+          class="sectionBlock eventSelectorSection"
+          aria-labelledby="eventSelectorTitle"
+        >
+          <div class="sectionHeader eventSelectorHeader">
+            <div>
+              <p class="sectionKicker">Évènements à venir</p>
+              <h2 id="eventSelectorTitle">Sur quoi on travaille ?</h2>
+            </div>
+
+            <span class="eventSelectorCount" id="eventSelectorCount">—</span>
+          </div>
+
+          <div
+            class="eventSelectorList"
+            id="eventSelectorList"
+            role="list"
+            aria-label="Sélection d’évènement"
+          >
+            <article class="eventOption isSkeleton" aria-hidden="true">
+              <span class="eventOptionDate">—</span>
+              <span class="eventOptionMain">
+                <strong>Chargement…</strong>
+                <small>Lecture des évènements.</small>
+              </span>
+            </article>
+          </div>
+
+          <p class="eventSelectorHint" id="eventSelectorHint">
+            L’accueil se cale par défaut sur le prochain évènement lié à l’utilisateur connecté.
+          </p>
+        </section>
+
         <section class="statusHero" id="statusHero" aria-labelledby="missionTitle">
           <div class="statusTopline">
             <span class="liveDot" id="liveDot" aria-hidden="true"></span>
