@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Accueil V20 — sélecteur d’évènements + parcours par évènement
+    Accueil V21 — sélecteur d’évènements + parcours par évènement
 
     - Affiche un sélecteur d’évènements à venir entre le header et la tuile récap.
     - Le défaut est calculé côté Apps Script :
@@ -19,6 +19,10 @@
       getCoreData(), getters séparés, cache accueil, anciens caches locaux.
     - File d’attente officielle : lugdurum_pending_writes.
     - Legacy transactions : lugdurum_pending_transactions.
+    - Corrige l’affichage des statuts bruts :
+      DOSSIER_A_ENVOYER -> Dossier à envoyer, etc.
+    - Corrige les tuiles récap :
+      labels toujours affichés, valeurs fallback si getHomeData renvoie "-", "—" ou rien.
   */
 
   const CURRENT_USER = {
@@ -66,6 +70,24 @@
     local: "Données locales",
     refreshing: "Actualisation",
     online: "Données en ligne"
+  };
+
+  const INSCRIPTION_STATUS_LABELS = {
+    A_CONTACTER: "À contacter",
+    DOSSIER_A_ENVOYER: "Dossier à envoyer",
+    EN_ATTENTE_REPONSE: "En attente",
+    A_RELANCER: "À relancer",
+    LISTE_ATTENTE: "Liste d’attente",
+    ACCEPTE: "Accepté",
+    ACCEPTEE: "Acceptée",
+    REFUSE: "Refusé",
+    ANNULE: "Annulé"
+  };
+
+  const PAYMENT_STATUS_LABELS = {
+    A_ENVOYER: "À envoyer",
+    ENVOYE: "Envoyé",
+    ENCAISSE: "Encaissé"
   };
 
   const formatEuro = new Intl.NumberFormat("fr-FR", {
@@ -234,7 +256,139 @@
       .replace(/[-\s]+/g, "_")
       .replace(/[^a-z0-9_]/g, "");
 
+  const normalizeCode = (value) =>
+    String(value ?? "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
   const normalizeStatus = (value) => normalizeText(value);
+
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+  const isPlaceholderValue = (value) => {
+    if (value === undefined || value === null) return true;
+
+    const text = String(value).trim();
+
+    return text === "" || text === "—" || text === "-" || text === "_";
+  };
+
+  const pickFirst = (source, keys = []) => {
+    if (!source || typeof source !== "object") return undefined;
+
+    for (const key of keys) {
+      if (source[key] !== undefined && source[key] !== null) {
+        return source[key];
+      }
+    }
+
+    return undefined;
+  };
+
+  const getInscriptionStatusLabel = (itemOrValue) => {
+    const rawValue =
+      typeof itemOrValue === "object"
+        ? String(itemOrValue?.statut || "").trim()
+        : String(itemOrValue || "").trim();
+
+    const key = normalizeCode(rawValue);
+
+    if (INSCRIPTION_STATUS_LABELS[key]) {
+      return INSCRIPTION_STATUS_LABELS[key];
+    }
+
+    if (typeof itemOrValue === "object") {
+      const explicit =
+        itemOrValue?.status_label ||
+        itemOrValue?.statut_label ||
+        itemOrValue?.acceptation_label ||
+        itemOrValue?.label_statut ||
+        "";
+
+      if (!isPlaceholderValue(explicit)) {
+        return String(explicit).trim();
+      }
+    }
+
+    return rawValue || "Dossier";
+  };
+
+  const getPaymentStatusValue = (item) => {
+    const key = normalizeCode(item?.paiement_statut || "");
+
+    if (PAYMENT_STATUS_LABELS[key]) {
+      return key;
+    }
+
+    return "A_ENVOYER";
+  };
+
+  const getPaymentStatusLabel = (itemOrValue) => {
+    const rawValue =
+      typeof itemOrValue === "object"
+        ? String(itemOrValue?.paiement_statut || "").trim()
+        : String(itemOrValue || "").trim();
+
+    const key = normalizeCode(rawValue);
+
+    if (PAYMENT_STATUS_LABELS[key]) {
+      return PAYMENT_STATUS_LABELS[key];
+    }
+
+    if (typeof itemOrValue === "object") {
+      const explicit = String(itemOrValue?.paiement_statut_label || "").trim();
+
+      if (!isPlaceholderValue(explicit)) {
+        return explicit;
+      }
+    }
+
+    return PAYMENT_STATUS_LABELS.A_ENVOYER;
+  };
+
+  const getReadableStatusLabel = (value, item = null) => {
+    const type = item ? getSelectedItemType(item) || getUpcomingItemType(item) : "";
+    const key = normalizeCode(value);
+
+    if (type === "inscription" && INSCRIPTION_STATUS_LABELS[key]) {
+      return INSCRIPTION_STATUS_LABELS[key];
+    }
+
+    if (INSCRIPTION_STATUS_LABELS[key]) {
+      return INSCRIPTION_STATUS_LABELS[key];
+    }
+
+    if (PAYMENT_STATUS_LABELS[key]) {
+      return PAYMENT_STATUS_LABELS[key];
+    }
+
+    if (key === "STOCK_A_PREPARER") return "Stock à préparer";
+    if (key === "PRET") return "Stock prêt";
+    if (key === "EN_COURS") return "En cours";
+    if (key === "PREVU") return "Prévu";
+    if (key === "CLOTURE" || key === "CLOTUREE") return "Clôturé";
+    if (key === "MISSION_A_PREPARER") return "Mission à préparer";
+
+    if (!isPlaceholderValue(value)) {
+      return String(value).trim();
+    }
+
+    if (item) {
+      return getUpcomingItemStatusLabel(item);
+    }
+
+    return "À suivre";
+  };
 
   const parseDate = (isoDate) => {
     if (!isoDate) return null;
@@ -1514,6 +1668,25 @@
     );
   };
 
+  const getSelectedItemId = (item) =>
+    String(
+      item?.selected_id ||
+      item?.item_id ||
+      item?.id ||
+      item?.mission_id ||
+      item?.evenement_id ||
+      item?.inscription_id ||
+      ""
+    ).trim();
+
+  const getSelectedItemType = (item) =>
+    normalizeKey(
+      item?.selected_type ||
+      item?.item_type ||
+      item?.type ||
+      inferSelectedTypeFromId(getSelectedItemId(item))
+    );
+
   const findEventForSelectedItem = (selectedItem, events) => {
     const type = getSelectedItemType(selectedItem);
     const id = getSelectedItemId(selectedItem);
@@ -1647,25 +1820,6 @@
   const getAcceptedInscriptions = (inscriptions) =>
     inscriptions.filter(isAcceptedInscription);
 
-  const getSelectedItemId = (item) =>
-    String(
-      item?.selected_id ||
-      item?.item_id ||
-      item?.id ||
-      item?.mission_id ||
-      item?.evenement_id ||
-      item?.inscription_id ||
-      ""
-    ).trim();
-
-  const getSelectedItemType = (item) =>
-    normalizeKey(
-      item?.selected_type ||
-      item?.item_type ||
-      item?.type ||
-      inferSelectedTypeFromId(getSelectedItemId(item))
-    );
-
   const getUpcomingItemId = (item) => getSelectedItemId(item);
 
   const getUpcomingItemType = (item) => getSelectedItemType(item) || "mission";
@@ -1684,16 +1838,16 @@
       item?.label_statut ||
       "";
 
-    if (explicit) return String(explicit).trim();
+    if (!isPlaceholderValue(explicit)) {
+      return getReadableStatusLabel(explicit, item);
+    }
 
     const type = getUpcomingItemType(item);
     const statut = normalizeStatus(item?.statut || item?.acceptation || "");
 
     if (type === "inscription") {
-      if (isAcceptedInscription(item)) return "Acceptée";
-      if (statut.includes("attente")) return "En attente";
-      if (statut.includes("envoye") || statut.includes("envoyé")) return "Dossier envoyé";
-      return "Dossier";
+      if (isAcceptedInscription(item)) return "Accepté";
+      return getInscriptionStatusLabel(item);
     }
 
     if (isClosedStatus(item)) return "Clôturé";
@@ -1701,6 +1855,7 @@
     if (statut === "stock_a_preparer") return "Stock à préparer";
     if (statut === "pret") return "Stock prêt";
     if (statut === "en_cours") return "En cours";
+    if (statut === "prevu") return "Prévu";
 
     return "Évènement";
   };
@@ -1928,9 +2083,9 @@
     if (type === "inscription") {
       return {
         statOneLabel: "Dossier",
-        statOneValue: getUpcomingItemStatusLabel(selectedItem),
-        statTwoLabel: "Date",
-        statTwoValue: selectedItem.date_debut ? formatEventDateBadge(selectedItem).replace("\n", " ") : "—",
+        statOneValue: getInscriptionStatusLabel(selectedItem),
+        statTwoLabel: "Paiement",
+        statTwoValue: getPaymentStatusLabel(selectedItem),
         statThreeLabel: "À synchro",
         statThreeValue: String(homeState.pending.total || 0)
       };
@@ -1941,7 +2096,7 @@
         statOneLabel: "Journées",
         statOneValue: String(linkedDays.length || 1),
         statTwoLabel: "Stock",
-        statTwoValue: stockPrepared ? "OK" : "À faire",
+        statTwoValue: stockPrepared ? "Prêt" : "À faire",
         statThreeLabel: "À synchro",
         statThreeValue: String(homeState.pending.total || 0)
       };
@@ -1965,6 +2120,32 @@
       statTwoValue: "À préparer",
       statThreeLabel: "À synchro",
       statThreeValue: String(homeState.pending.total || 0)
+    };
+  };
+
+  const getMergedSelectedSummary = (homeState) => {
+    const fallback = buildSelectedSummaryFallback(homeState);
+    const server = state.runtime.selectedSummary;
+
+    if (!fallback) return null;
+    if (!server || typeof server !== "object") return fallback;
+
+    const label1 = pickFirst(server, ["statOneLabel", "one_label", "label_1", "stat_one_label", "stat1_label"]);
+    const value1 = pickFirst(server, ["statOneValue", "one_value", "value_1", "stat_one_value", "stat1_value"]);
+
+    const label2 = pickFirst(server, ["statTwoLabel", "two_label", "label_2", "stat_two_label", "stat2_label"]);
+    const value2 = pickFirst(server, ["statTwoValue", "two_value", "value_2", "stat_two_value", "stat2_value"]);
+
+    const label3 = pickFirst(server, ["statThreeLabel", "three_label", "label_3", "stat_three_label", "stat3_label"]);
+    const value3 = pickFirst(server, ["statThreeValue", "three_value", "value_3", "stat_three_value", "stat3_value"]);
+
+    return {
+      statOneLabel: isPlaceholderValue(label1) ? fallback.statOneLabel : String(label1),
+      statOneValue: isPlaceholderValue(value1) ? fallback.statOneValue : String(value1),
+      statTwoLabel: isPlaceholderValue(label2) ? fallback.statTwoLabel : String(label2),
+      statTwoValue: isPlaceholderValue(value2) ? fallback.statTwoValue : String(value2),
+      statThreeLabel: isPlaceholderValue(label3) ? fallback.statThreeLabel : String(label3),
+      statThreeValue: isPlaceholderValue(value3) ? fallback.statThreeValue : String(value3)
     };
   };
 
@@ -2137,7 +2318,10 @@
       return {
         code: serverUi.code || "selected",
         step: normalizeStep(serverUi.step || serverUi.current_step || "inscriptions"),
-        label: serverUi.label || serverUi.status_label || "Évènement sélectionné",
+        label: getReadableStatusLabel(
+          serverUi.label || serverUi.status_label || "Évènement sélectionné",
+          homeState.selectedItem
+        ),
         title: serverUi.title || getUpcomingItemTitle(homeState.selectedItem),
         meta: serverUi.meta || serverUi.subtitle || "",
         primaryText: serverUi.primaryText || serverUi.primary_text || state.runtime.nextAction?.label || "Continuer",
@@ -2156,10 +2340,10 @@
         label: getUpcomingItemStatusLabel(selectedItem),
         title: getUpcomingItemTitle(selectedItem),
         meta: `${getDateLabel(selectedItem)}${getUpcomingItemCity(selectedItem) ? ` · ${getUpcomingItemCity(selectedItem)}` : ""}`,
-        primaryText: "Gérer l’inscription",
+        primaryText: "Suivre l’inscription",
         primaryHref: "./inscriptions-evenements.html",
-        secondaryText: "Préparation mission",
-        secondaryHref: "./missions.html"
+        secondaryText: "Voir les dossiers",
+        secondaryHref: "./inscriptions-evenements.html"
       };
     }
 
@@ -2398,31 +2582,21 @@
     });
   };
 
-  const escapeHtml = (value) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-
   const renderStats = (homeState, uiState) => {
     const syncCard = qs("#syncStatCard");
     syncCard?.classList.remove("hasWarning");
 
-    const summary =
-      state.runtime.selectedSummary ||
-      buildSelectedSummaryFallback(homeState);
+    const summary = getMergedSelectedSummary(homeState);
 
     if (summary) {
-      setText("#statOneLabel", summary.statOneLabel || summary.one_label || summary.label_1 || "—");
-      setText("#todayRevenue", summary.statOneValue || summary.one_value || summary.value_1 || "—");
+      setText("#statOneLabel", summary.statOneLabel);
+      setText("#todayRevenue", summary.statOneValue);
 
-      setText("#statTwoLabel", summary.statTwoLabel || summary.two_label || summary.label_2 || "—");
-      setText("#todayTickets", summary.statTwoValue || summary.two_value || summary.value_2 || "—");
+      setText("#statTwoLabel", summary.statTwoLabel);
+      setText("#todayTickets", summary.statTwoValue);
 
-      setText("#statThreeLabel", summary.statThreeLabel || summary.three_label || summary.label_3 || "À synchro");
-      setText("#pendingSync", summary.statThreeValue || summary.three_value || summary.value_3 || String(homeState.pending.total || 0));
+      setText("#statThreeLabel", summary.statThreeLabel);
+      setText("#pendingSync", summary.statThreeValue);
 
       syncCard?.classList.toggle(
         "hasWarning",
