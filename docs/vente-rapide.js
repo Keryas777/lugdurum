@@ -2,14 +2,18 @@
   "use strict";
 
   /*
-    Vente rapide V17 :
+    Vente rapide V18 :
     - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
     - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
-    - Fallback cache localStorage pour catalogue / offres uniquement.
+    - Fallback cache localStorage conservé uniquement pour catalogue / offres.
     - Contexte journée lu depuis lugdurum_preparation_context / active ids.
     - Aucun fallback de test : aucune vente possible sans mission_id + journee_id.
     - Enregistrement des tickets via LugdurumAPI.saveTransaction().
     - Écriture complémentaire des sorties de stock dans mouvements_stock.
+    - CA jour affiché en haut :
+      lecture réseau uniquement via getTransactions().
+      aucun calcul depuis lugdurum_transactions_backup ou cache local.
+    - Total ticket affiché uniquement dans le panier.
     - La file d’attente offline est gérée dans lugdurum-api.js.
     - SumUp V1 :
       - CB → bouton “Encaisser avec SumUp”.
@@ -95,7 +99,15 @@
     mouvementsStock: [],
     dataLoaded: false,
     contextLoaded: false,
-    journeeActive: { ...EMPTY_JOURNEE_ACTIVE }
+    journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
+    daySummary: {
+      isLoading: false,
+      isLoaded: false,
+      revenue: 0,
+      tickets: 0,
+      lastLoadedAt: "",
+      lastError: ""
+    }
   };
 
   const els = {
@@ -103,6 +115,8 @@
     ticketLines: document.getElementById("ticketLines"),
     ticketTotal: document.getElementById("ticketTotal"),
     ticketPanelTotal: document.getElementById("ticketPanelTotal"),
+    dayRevenueTotal: document.getElementById("dayRevenueTotal"),
+    dayTicketCount: document.getElementById("dayTicketCount"),
     saleSummaryTitle: document.getElementById("saleSummaryTitle"),
     missionMeta: document.querySelector(".saleSummary .missionMeta"),
     packComposer: document.getElementById("packComposer"),
@@ -415,6 +429,168 @@
   const getTicketTotal = () =>
     state.ticketItems.reduce((sum, item) => sum + getItemTotal(item), 0);
 
+  const getTransactionId = (transaction) =>
+    String(transaction?.transaction_id || transaction?.id || "").trim();
+
+  const isInvalidTransactionForDaySummary = (transaction) => {
+    const status = normalizeKey(transaction?.statut);
+    const paymentStatus = normalizeKey(transaction?.paiement_statut);
+
+    return (
+      status.includes("annule") ||
+      status.includes("refuse") ||
+      status.includes("rembourse") ||
+      status.includes("attente") ||
+      paymentStatus.includes("annule") ||
+      paymentStatus.includes("refuse") ||
+      paymentStatus.includes("rembourse") ||
+      paymentStatus.includes("lance")
+    );
+  };
+
+  const getTransactionAmount = (transaction) =>
+    toNumber(
+      transaction?.total_encaisse_ttc ??
+      transaction?.total_encaisse ??
+      transaction?.total_catalogue_ttc ??
+      transaction?.total_catalogue,
+      0
+    );
+
+  const computeDaySummaryFromTransactions = (transactions = []) => {
+    const journeeId = String(state.journeeActive?.journee_id || "").trim();
+
+    if (!journeeId) {
+      return {
+        revenue: 0,
+        tickets: 0
+      };
+    }
+
+    const byId = new Map();
+
+    transactions
+      .filter((transaction) => String(transaction?.journee_id || "").trim() === journeeId)
+      .filter((transaction) => !isInvalidTransactionForDaySummary(transaction))
+      .forEach((transaction, index) => {
+        const id = getTransactionId(transaction) || `TX_INDEX_${index}`;
+        byId.set(id, transaction);
+      });
+
+    const validTransactions = [...byId.values()];
+
+    return {
+      revenue: validTransactions.reduce(
+        (sum, transaction) => sum + getTransactionAmount(transaction),
+        0
+      ),
+      tickets: validTransactions.length
+    };
+  };
+
+  const renderDaySummary = () => {
+    if (!els.dayRevenueTotal || !els.dayTicketCount) return;
+
+    if (!hasActiveSalesContext()) {
+      els.dayRevenueTotal.textContent = "—";
+      els.dayTicketCount.textContent = "aucune journée";
+      return;
+    }
+
+    if (state.daySummary.isLoading && !state.daySummary.isLoaded) {
+      els.dayRevenueTotal.textContent = "…";
+      els.dayTicketCount.textContent = "lecture réseau";
+      return;
+    }
+
+    if (state.daySummary.lastError && !state.daySummary.isLoaded) {
+      els.dayRevenueTotal.textContent = "—";
+      els.dayTicketCount.textContent = "réseau indisponible";
+      return;
+    }
+
+    els.dayRevenueTotal.textContent = formatCurrency(state.daySummary.revenue);
+    els.dayTicketCount.textContent =
+      `${state.daySummary.tickets} ticket${state.daySummary.tickets > 1 ? "s" : ""}`;
+  };
+
+  const loadDaySummaryFromNetwork = async ({ silent = false } = {}) => {
+    if (!hasActiveSalesContext()) {
+      state.daySummary = {
+        ...state.daySummary,
+        isLoading: false,
+        isLoaded: false,
+        revenue: 0,
+        tickets: 0,
+        lastError: "Aucune journée active."
+      };
+      renderDaySummary();
+      return state.daySummary;
+    }
+
+    if (!hasApi() || typeof api().getTransactions !== "function") {
+      state.daySummary = {
+        ...state.daySummary,
+        isLoading: false,
+        isLoaded: false,
+        lastError: "LugdurumAPI.getTransactions() est indisponible."
+      };
+      renderDaySummary();
+
+      if (!silent) {
+        setStatus("Résumé journée indisponible : getTransactions() est introuvable.", "isError");
+      }
+
+      return state.daySummary;
+    }
+
+    state.daySummary = {
+      ...state.daySummary,
+      isLoading: true,
+      lastError: ""
+    };
+
+    renderDaySummary();
+
+    try {
+      const transactions = await api().getTransactions();
+      const summary = computeDaySummaryFromTransactions(
+        Array.isArray(transactions) ? transactions : []
+      );
+
+      state.daySummary = {
+        isLoading: false,
+        isLoaded: true,
+        revenue: summary.revenue,
+        tickets: summary.tickets,
+        lastLoadedAt: new Date().toISOString(),
+        lastError: ""
+      };
+
+      renderDaySummary();
+
+      return state.daySummary;
+    } catch (error) {
+      state.daySummary = {
+        ...state.daySummary,
+        isLoading: false,
+        lastError: error.message || "Lecture réseau impossible."
+      };
+
+      renderDaySummary();
+
+      if (!silent) {
+        setStatus(`Résumé journée non actualisé : ${state.daySummary.lastError}`, "isError");
+      }
+
+      return state.daySummary;
+    }
+  };
+
+  const refreshDaySummaryAfterSale = async () => {
+    await loadDaySummaryFromNetwork({ silent: true });
+  };
+
   const getVisibleProducts = () => {
     const mode = getMode();
 
@@ -475,6 +651,8 @@
     if (els.missionMeta) {
       els.missionMeta.textContent = state.journeeActive.date_label || "date non définie";
     }
+
+    renderDaySummary();
   };
 
   const renderModes = () => {
@@ -645,7 +823,9 @@
   const renderCart = () => {
     const total = getTicketTotal();
 
-    els.ticketTotal.textContent = formatCurrency(total);
+    if (els.ticketTotal) {
+      els.ticketTotal.textContent = formatCurrency(total);
+    }
 
     if (els.ticketPanelTotal) {
       els.ticketPanelTotal.textContent = formatCurrency(total);
@@ -1366,6 +1546,7 @@
 
     try {
       await saveTransactionToApi(transaction);
+      await refreshDaySummaryAfterSale();
 
       clearPendingSumup();
       hideSumupConfirm();
@@ -1450,6 +1631,7 @@
 
     try {
       await saveTransactionToApi(transaction);
+      await refreshDaySummaryAfterSale();
 
       const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
         ? api().getPendingWritesCount()
@@ -1507,6 +1689,7 @@
     };
 
     renderAll();
+    loadDaySummaryFromNetwork({ silent: true });
 
     try {
       if (!hasApi()) return;
@@ -1540,6 +1723,7 @@
         };
 
         renderAll();
+        loadDaySummaryFromNetwork({ silent: true });
       }
     } catch (error) {
       console.warn("Contexte journée non chargé depuis Sheets.", error);
@@ -1611,7 +1795,7 @@
         state.mouvementsStock = cachedMouvements;
         state.dataLoaded = true;
 
-        setStatus("Données chargées depuis le cache local.", "isError");
+        setStatus("Données chargées depuis le cache local. Le CA jour reste basé uniquement sur la lecture réseau.", "isError");
         renderAll({ refreshProducts: true });
         return;
       }
@@ -1712,11 +1896,19 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       checkPendingSumup();
+
+      if (hasActiveSalesContext()) {
+        loadDaySummaryFromNetwork({ silent: true });
+      }
     }
   });
 
   window.addEventListener("focus", () => {
     checkPendingSumup();
+
+    if (hasActiveSalesContext()) {
+      loadDaySummaryFromNetwork({ silent: true });
+    }
   });
 
   window.addEventListener("lugdurum:sync-status", (event) => {
