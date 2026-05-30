@@ -21,8 +21,8 @@
     <link rel="stylesheet" href="./style.css?v=14" />
     <link rel="stylesheet" href="./vente-rapide.css?v=15" />
 
-    <script src="./lugdurum-api.js?v=2" defer></script>
-    <script src="./vente-rapide.js?v=16" defer></script>
+    <script src="./lugdurum-api.js?v=9" defer></script>
+    <script src="./vente-rapide.js?v=18" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -52,14 +52,15 @@
       <main class="saleLayout">
         <section class="saleSummary" aria-labelledby="saleSummaryTitle">
           <div>
-            <p class="sectionKicker">Ticket en cours</p>
-            <h2 id="saleSummaryTitle">Salagnon — J2</h2>
-            <p class="missionMeta">lundi 04 mai 2026</p>
+            <p class="sectionKicker">Journée en cours</p>
+            <h2 id="saleSummaryTitle">Chargement…</h2>
+            <p class="missionMeta">Lecture du contexte journée.</p>
           </div>
 
-          <div class="ticketTotalBox">
-            <span>Total</span>
-            <strong id="ticketTotal">0 €</strong>
+          <div class="ticketTotalBox daySalesBox" aria-live="polite">
+            <span>CA jour</span>
+            <strong id="dayRevenueTotal">0 €</strong>
+            <small id="dayTicketCount">0 ticket</small>
           </div>
         </section>
 
