@@ -15,10 +15,10 @@
     <title>Lugdurum — Saisie ancienne journée</title>
 
     <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./saisie-ancienne-journee.css?v=5" />
+    <link rel="stylesheet" href="./saisie-ancienne-journee.css?v=6" />
 
     <script src="./lugdurum-api.js?v=5" defer></script>
-    <script src="./saisie-ancienne-journee.js?v=3" defer></script>
+    <script src="./saisie-ancienne-journee.js?v=4" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -166,6 +166,18 @@
               <p class="oldDayEmpty">Chargement du catalogue…</p>
             </div>
 
+            <div class="oldDayProductTotals" aria-label="Totaux par format">
+              <article>
+                <span>Total 50 cL</span>
+                <strong id="format50Total">0</strong>
+              </article>
+
+              <article>
+                <span>Total 20 cL</span>
+                <strong id="format20Total">0</strong>
+              </article>
+            </div>
+
             <div class="oldDayTotalLine">
               <span>Total catalogue estimé</span>
               <strong id="catalogueTotal">0 €</strong>
@@ -192,6 +204,7 @@
                   <option value="MATERIEL">Matériel</option>
                   <option value="COMMUNICATION">Communication</option>
                   <option value="CONSOMMABLES">Consommables</option>
+                  <option value="COMPENSATION_PERTE_SALAIRE">Compensation perte salaire</option>
                   <option value="AUTRE">Autre</option>
                 </select>
               </label>
