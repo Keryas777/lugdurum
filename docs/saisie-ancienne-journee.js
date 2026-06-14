@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Saisie ancienne journée V7 :
+    Saisie ancienne journée V8 :
     - Création OU modification d’une journée clôturée historique.
     - Mode édition via saisie-ancienne-journee.html?mode=edit&journee_id=...
     - Charge catalogue + offres depuis Google Sheets.
@@ -18,6 +18,12 @@
     - Garde-fou : si des produits sont saisis, des lignes produits doivent bien partir vers l’API.
     - Catégories de frais pilotées par EXPENSE_LABELS.
     - Ajout catégorie : Compensation perte salaire.
+    - Ordre terrain des parfums :
+      Prestige : VB, PE
+      Exception : VT, LP, FP
+      Collection : MV, AT, OC, CG, PR, VK, FF
+    - Séparations visuelles par gamme.
+    - Totaux rapides 50 cL / 20 cL au-dessus du total catalogue estimé.
     - Quantités produits :
       - affiche un placeholder 0 au lieu d’une vraie valeur 0.
       - sélectionne automatiquement la valeur au toucher/focus pour remplacer vite.
@@ -52,6 +58,52 @@
     COMPENSATION_PERTE_SALAIRE: "Compensation perte salaire",
     AUTRE: "Autre"
   };
+
+  const PRODUCT_GAMMES = [
+    {
+      key: "PRESTIGE",
+      label: "Prestige",
+      codes: ["VB", "PE"]
+    },
+    {
+      key: "EXCEPTION",
+      label: "Exception",
+      codes: ["VT", "LP", "FP"]
+    },
+    {
+      key: "COLLECTION",
+      label: "Collection",
+      codes: ["MV", "AT", "OC", "CG", "PR", "VK", "FF"]
+    }
+  ];
+
+  const PRODUCT_GAMME_LABELS = PRODUCT_GAMMES.reduce((map, gamme) => {
+    map[gamme.key] = gamme.label;
+    return map;
+  }, {});
+
+  const PRODUCT_GAMME_CLASSES = {
+    PRESTIGE: "isPrestige",
+    EXCEPTION: "isException",
+    COLLECTION: "isCollection",
+    AUTRES: "isAutres"
+  };
+
+  const PRODUCT_CODE_TO_GAMME = PRODUCT_GAMMES.reduce((map, gamme) => {
+    gamme.codes.forEach((code) => {
+      map.set(code, gamme.key);
+    });
+
+    return map;
+  }, new Map());
+
+  const PRODUCT_CODE_ORDER = PRODUCT_GAMMES.reduce((map, gamme, gammeIndex) => {
+    gamme.codes.forEach((code, codeIndex) => {
+      map.set(code, gammeIndex * 100 + codeIndex);
+    });
+
+    return map;
+  }, new Map());
 
   const PAYMENT_ROWS = [
     {
@@ -119,20 +171,27 @@
     placeInput: document.getElementById("placeInput"),
     dayLabelInput: document.getElementById("dayLabelInput"),
     noteInput: document.getElementById("noteInput"),
+
     amountCbInput: document.getElementById("amountCbInput"),
     amountCashInput: document.getElementById("amountCashInput"),
     amountCheckInput: document.getElementById("amountCheckInput"),
+
     paymentTotal: document.getElementById("paymentTotal"),
     heroRevenue: document.getElementById("heroRevenue"),
     heroBottles: document.getElementById("heroBottles"),
+
     productRows: document.getElementById("productRows"),
     clearProductsBtn: document.getElementById("clearProductsBtn"),
+    format50Total: document.getElementById("format50Total"),
+    format20Total: document.getElementById("format20Total"),
     catalogueTotal: document.getElementById("catalogueTotal"),
+
     expenseCategoryInput: document.getElementById("expenseCategoryInput"),
     expenseAmountInput: document.getElementById("expenseAmountInput"),
     expenseNoteInput: document.getElementById("expenseNoteInput"),
     addExpenseBtn: document.getElementById("addExpenseBtn"),
     expenseList: document.getElementById("expenseList"),
+
     saveOldDayBtn: document.getElementById("saveOldDayBtn"),
     oldDayStatus: document.getElementById("oldDayStatus")
   };
@@ -429,12 +488,37 @@
   const isOldOrHiddenProduct = (product) =>
     !product.actif || product.visible_webapp === false;
 
+  const normalizeGammeKey = (value) => {
+    const normalized = normalizeKey(value);
+
+    if (normalized.includes("prestige")) return "PRESTIGE";
+    if (normalized.includes("exception")) return "EXCEPTION";
+    if (normalized.includes("collection")) return "COLLECTION";
+
+    return "";
+  };
+
+  const getProductGammeKey = (product) =>
+    PRODUCT_CODE_TO_GAMME.get(product?.parfum_code) ||
+    normalizeGammeKey(product?.gamme_tarif) ||
+    "AUTRES";
+
+  const getProductOrder = (product) => {
+    const code = String(product?.parfum_code || "").trim().toUpperCase();
+
+    if (PRODUCT_CODE_ORDER.has(code)) {
+      return PRODUCT_CODE_ORDER.get(code);
+    }
+
+    return 10000 + toNumber(product?.ordre_affichage, 9999);
+  };
+
   const getGroupedCatalogue = () => {
     const products = state.catalogue
       .filter(shouldDisplayProductInHistoricalEntry)
       .sort((a, b) => {
-        const byOrder = a.ordre_affichage - b.ordre_affichage;
-        if (byOrder !== 0) return byOrder;
+        const byCustomOrder = getProductOrder(a) - getProductOrder(b);
+        if (byCustomOrder !== 0) return byCustomOrder;
 
         const byCode = a.parfum_code.localeCompare(b.parfum_code);
         if (byCode !== 0) return byCode;
@@ -449,17 +533,30 @@
         groups.set(product.parfum_code, {
           parfum_code: product.parfum_code,
           parfum_nom: product.parfum_nom,
-          ordre_affichage: product.ordre_affichage,
+          gamme_key: getProductGammeKey(product),
+          ordre_affichage: getProductOrder(product),
           products: []
         });
       }
 
-      groups.get(product.parfum_code).products.push(product);
+      const group = groups.get(product.parfum_code);
+
+      group.ordre_affichage = Math.min(
+        group.ordre_affichage,
+        getProductOrder(product)
+      );
+
+      if (group.gamme_key === "AUTRES") {
+        group.gamme_key = getProductGammeKey(product);
+      }
+
+      group.products.push(product);
     });
 
     return [...groups.values()]
       .map((group) => ({
         ...group,
+        products: group.products.sort((a, b) => b.format_cl - a.format_cl),
         isHistoricalOnly: group.products.every(isOldOrHiddenProduct),
         hasHistoricalVariant: group.products.some(isOldOrHiddenProduct)
       }))
@@ -468,6 +565,30 @@
         if (byOrder !== 0) return byOrder;
         return a.parfum_code.localeCompare(b.parfum_code);
       });
+  };
+
+  const getCatalogueSections = () => {
+    const groups = getGroupedCatalogue();
+    const sectionKeys = PRODUCT_GAMMES.map((gamme) => gamme.key);
+    const sections = PRODUCT_GAMMES
+      .map((gamme) => ({
+        key: gamme.key,
+        label: gamme.label,
+        groups: groups.filter((group) => group.gamme_key === gamme.key)
+      }))
+      .filter((section) => section.groups.length > 0);
+
+    const otherGroups = groups.filter((group) => !sectionKeys.includes(group.gamme_key));
+
+    if (otherGroups.length > 0) {
+      sections.push({
+        key: "AUTRES",
+        label: "Autres",
+        groups: otherGroups
+      });
+    }
+
+    return sections;
   };
 
   const getProductBySku = (skuId) =>
@@ -621,9 +742,10 @@
     });
 
     return lines.sort((a, b) => {
-      const byFormat = b.product.format_cl - a.product.format_cl;
-      if (byFormat !== 0) return byFormat;
-      return a.product.parfum_code.localeCompare(b.product.parfum_code);
+      const byOrder = getProductOrder(a.product) - getProductOrder(b.product);
+      if (byOrder !== 0) return byOrder;
+
+      return b.product.format_cl - a.product.format_cl;
     });
   };
 
@@ -634,6 +756,22 @@
 
   const getBottleTotal = () =>
     getProductLinesDraft().reduce((sum, line) => sum + line.quantity, 0);
+
+  const getFormatBottleTotals = () =>
+    getProductLinesDraft().reduce((totals, line) => {
+      if (line.product.format_cl === 50) {
+        totals.format50 += line.quantity;
+      }
+
+      if (line.product.format_cl === 20) {
+        totals.format20 += line.quantity;
+      }
+
+      return totals;
+    }, {
+      format50: 0,
+      format20: 0
+    });
 
   const isEmptyHistoricalDraft = () =>
     getPaymentTotal() <= 0 &&
@@ -699,53 +837,73 @@
     `;
   };
 
+  const renderProductCard = (group) => {
+    const product50 = group.products.find((product) => product.format_cl === 50);
+    const product20 = group.products.find((product) => product.format_cl === 20);
+    const imageProduct = product50 || product20;
+    const imageSrc = getProductImageSrc(imageProduct);
+
+    return `
+      <article
+        class="stockVisualCard ${group.isHistoricalOnly ? "isHistoricalProductCard" : ""}"
+        style="--stock-bg: url('${escapeAttr(imageSrc)}')"
+      >
+        <div class="stockVisualBg" aria-hidden="true"></div>
+        <div class="stockVisualShade" aria-hidden="true"></div>
+
+        <div class="stockVisualContent">
+          <div class="stockVisualTitle">
+            <strong>${escapeHtml(group.parfum_code)}</strong>
+            <span>${escapeHtml(group.parfum_nom)}</span>
+            ${
+              group.isHistoricalOnly
+                ? `<small class="oldDayHistoricalProductLabel">Ancien parfum</small>`
+                : group.hasHistoricalVariant
+                  ? `<small class="oldDayHistoricalProductLabel">Format ancien disponible</small>`
+                  : ""
+            }
+          </div>
+
+          <div class="stockGlassPanel">
+            ${renderFormatControl(product50, "50 cL")}
+            ${renderFormatControl(product20, "20 cL")}
+          </div>
+        </div>
+      </article>
+    `;
+  };
+
   const renderProducts = () => {
     if (!state.dataLoaded && state.catalogue.length === 0) {
       els.productRows.innerHTML = `<p class="oldDayEmpty">Chargement du catalogue…</p>`;
       return;
     }
 
-    const groups = getGroupedCatalogue();
+    const sections = getCatalogueSections();
 
-    if (groups.length === 0) {
+    if (sections.length === 0) {
       els.productRows.innerHTML = `<p class="oldDayEmpty">Aucun produit catalogue trouvé.</p>`;
       return;
     }
 
-    els.productRows.innerHTML = groups
-      .map((group) => {
-        const product50 = group.products.find((product) => product.format_cl === 50);
-        const product20 = group.products.find((product) => product.format_cl === 20);
-        const imageProduct = product50 || product20;
-        const imageSrc = getProductImageSrc(imageProduct);
+    els.productRows.innerHTML = sections
+      .map((section) => {
+        const sectionClass = PRODUCT_GAMME_CLASSES[section.key] || "isAutres";
+        const sectionLabel = PRODUCT_GAMME_LABELS[section.key] || section.label || "Autres";
 
         return `
-          <article
-            class="stockVisualCard ${group.isHistoricalOnly ? "isHistoricalProductCard" : ""}"
-            style="--stock-bg: url('${escapeAttr(imageSrc)}')"
-          >
-            <div class="stockVisualBg" aria-hidden="true"></div>
-            <div class="stockVisualShade" aria-hidden="true"></div>
-
-            <div class="stockVisualContent">
-              <div class="stockVisualTitle">
-                <strong>${escapeHtml(group.parfum_code)}</strong>
-                <span>${escapeHtml(group.parfum_nom)}</span>
-                ${
-                  group.isHistoricalOnly
-                    ? `<small class="oldDayHistoricalProductLabel">Ancien parfum</small>`
-                    : group.hasHistoricalVariant
-                      ? `<small class="oldDayHistoricalProductLabel">Format ancien disponible</small>`
-                      : ""
-                }
-              </div>
-
-              <div class="stockGlassPanel">
-                ${renderFormatControl(product50, "50 cL")}
-                ${renderFormatControl(product20, "20 cL")}
+          <section class="oldProductGammeGroup ${escapeAttr(sectionClass)}">
+            <div class="oldProductGammeHeader">
+              <div class="oldProductGammeTitle">
+                <span>Gamme</span>
+                <strong>${escapeHtml(sectionLabel)}</strong>
               </div>
             </div>
-          </article>
+
+            <div class="oldProductGammeCards">
+              ${section.groups.map(renderProductCard).join("")}
+            </div>
+          </section>
         `;
       })
       .join("");
@@ -775,11 +933,20 @@
     const paymentTotal = getPaymentTotal();
     const productTotal = getProductTotal();
     const bottleTotal = getBottleTotal();
+    const formatTotals = getFormatBottleTotals();
 
     els.paymentTotal.textContent = formatCurrency(paymentTotal);
     els.catalogueTotal.textContent = formatCurrency(productTotal);
     els.heroRevenue.textContent = formatCurrency(paymentTotal);
     els.heroBottles.textContent = String(bottleTotal);
+
+    if (els.format50Total) {
+      els.format50Total.textContent = String(formatTotals.format50);
+    }
+
+    if (els.format20Total) {
+      els.format20Total.textContent = String(formatTotals.format20);
+    }
   };
 
   const renderAll = () => {
