@@ -237,6 +237,41 @@
   white-space: nowrap;
 }
 
+.oldDayProductTotals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.oldDayProductTotals article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.74),
+      rgba(255, 250, 241, 0.52)
+    );
+  box-shadow: 0 8px 18px rgba(75, 48, 22, 0.06);
+}
+
+.oldDayProductTotals span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.oldDayProductTotals strong {
+  color: var(--rum);
+  font-size: 1.35rem;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
 .oldDayToolbar {
   display: flex;
   justify-content: flex-end;
@@ -251,14 +286,91 @@
 }
 
 /* ==============================
-   Tuiles visuelles produits
-   reprises de Préparation stock
+   Groupes gammes
    ============================== */
 
 .oldProductRows {
   display: grid;
+  gap: 18px;
+}
+
+.oldProductGammeGroup {
+  display: grid;
+  gap: 12px;
+}
+
+.oldProductGammeGroup + .oldProductGammeGroup {
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(86, 65, 42, 0.15);
+}
+
+.oldProductGammeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.oldProductGammeHeader::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(
+    90deg,
+    rgba(168, 143, 104, 0.34),
+    rgba(168, 143, 104, 0)
+  );
+}
+
+.oldProductGammeTitle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.oldProductGammeTitle span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.oldProductGammeTitle strong {
+  color: var(--rum);
+  font-size: 0.98rem;
+  font-weight: 950;
+  letter-spacing: -0.025em;
+}
+
+.oldProductGammeGroup.isPrestige .oldProductGammeTitle strong {
+  color: var(--rum);
+}
+
+.oldProductGammeGroup.isException .oldProductGammeTitle strong {
+  color: #7a6044;
+}
+
+.oldProductGammeGroup.isCollection .oldProductGammeTitle strong {
+  color: var(--green);
+}
+
+.oldProductGammeGroup.isAutres .oldProductGammeTitle strong {
+  color: var(--muted);
+}
+
+.oldProductGammeCards {
+  display: grid;
   gap: 14px;
 }
+
+/* ==============================
+   Tuiles visuelles produits
+   reprises de Préparation stock
+   ============================== */
 
 .stockVisualCard {
   position: relative;
@@ -346,6 +458,28 @@
   letter-spacing: -0.04em;
 }
 
+.oldDayHistoricalProductLabel,
+.oldDayHistoricalProductBadge {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 0 8px;
+  color: #fffaf1;
+  background: rgba(179, 92, 58, 0.72);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-shadow: none;
+}
+
+.oldDayHistoricalProductBadge {
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 0.62rem;
+}
+
 .stockGlassPanel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -369,6 +503,11 @@
 
 .stockGlassFormat.isUnavailable {
   opacity: 0.62;
+}
+
+.stockGlassFormat.isHistoricalProduct {
+  border-color: rgba(179, 92, 58, 0.42);
+  background: rgba(179, 92, 58, 0.2);
 }
 
 .stockGlassFormatHead {
@@ -593,7 +732,7 @@
     grid-column: 1 / -1;
   }
 
-  .oldProductRows {
+  .oldProductGammeCards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -613,6 +752,23 @@
 @media (max-width: 430px) {
   .oldDayPanel {
     padding: 14px;
+  }
+
+  .oldProductGammeHeader {
+    padding: 0 2px;
+  }
+
+  .oldProductGammeTitle {
+    gap: 6px;
+  }
+
+  .oldProductGammeTitle span {
+    font-size: 0.64rem;
+    letter-spacing: 0.14em;
+  }
+
+  .oldProductGammeTitle strong {
+    font-size: 0.92rem;
   }
 
   .stockVisualCard {
@@ -667,7 +823,8 @@
 }
 
 @media (max-width: 370px) {
-  .oldDayHeroStats {
+  .oldDayHeroStats,
+  .oldDayProductTotals {
     grid-template-columns: 1fr;
   }
 
