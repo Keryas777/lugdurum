@@ -73,7 +73,7 @@
     {
       key: "COLLECTION",
       label: "Collection",
-      codes: ["MV", "AT", "OC", "CG", "PR", "VK", "FF"]
+      codes: ["MV", "AT", "OC", "CG", "PR", "VK", "FF", "OCC", "CCV"]
     }
   ];
 
