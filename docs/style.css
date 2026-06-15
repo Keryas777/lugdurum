@@ -426,6 +426,10 @@ video {
   padding: 18px;
 }
 
+.watchPanel {
+  overflow: hidden;
+}
+
 .sectionHeader {
   display: flex;
   align-items: flex-end;
@@ -1080,7 +1084,13 @@ video {
   min-height: 82px;
 }
 
+/* ===== Contrôle rapide / à surveiller ===== */
+
+#watchList,
 .watchList {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   list-style: none;
   display: grid;
   gap: 10px;
@@ -1089,7 +1099,10 @@ video {
   color: var(--muted);
 }
 
+#watchList li,
 .watchList li {
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -1098,10 +1111,23 @@ video {
   padding: 12px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(255, 250, 241, 0.5));
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
+#watchList li *,
+.watchList li * {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#watchList li::before,
 .watchList li::before {
   content: "•";
+  flex: 0 0 auto;
   color: var(--rum);
   font-weight: 950;
 }
