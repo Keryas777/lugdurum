@@ -2,18 +2,25 @@
   "use strict";
 
   /*
-    Vente rapide V18 :
-    - Catalogue chargé depuis Google Sheets via lugdurum-api.js.
-    - Offres de vente chargées depuis Google Sheets via lugdurum-api.js.
-    - Fallback cache localStorage conservé uniquement pour catalogue / offres.
-    - Contexte journée lu depuis lugdurum_preparation_context / active ids.
-    - Aucun fallback de test : aucune vente possible sans mission_id + journee_id.
-    - Enregistrement des tickets via LugdurumAPI.saveTransaction().
-    - Écriture complémentaire des sorties de stock dans mouvements_stock.
+    Vente rapide V19 :
+    - Catalogue + offres chargés en une seule lecture réseau quand possible :
+      LugdurumAPI.getVenteRapideData() si disponible,
+      sinon LugdurumAPI.getCoreData(["catalogue", "offresVente"]),
+      sinon fallback legacy getCatalogue() + getOffresVente().
+    - Ne charge plus mouvements_stock au démarrage.
+    - Contexte journée + résumé CA chargés en une seule lecture réseau quand possible :
+      missionsStock + journees + transactions via getCoreData().
     - CA jour affiché en haut :
-      lecture réseau uniquement via getTransactions().
-      aucun calcul depuis lugdurum_transactions_backup ou cache local.
-    - Total ticket affiché uniquement dans le panier.
+      calculé uniquement depuis l’onglet transactions lu par réseau,
+      jamais depuis lugdurum_transactions_backup ni cache local.
+    - Total ticket affiché dans le panier.
+    - Enregistrement optimisé :
+      transaction + ventes_lignes + mouvements_stock via saveVenteRapideBundle
+      quand disponible côté API / Apps Script.
+    - Fallback conservé :
+      saveTransaction(), puis batchUpsert() des mouvements_stock.
+    - Aucun fallback de test :
+      aucune vente possible sans mission_id + journee_id.
     - La file d’attente offline est gérée dans lugdurum-api.js.
     - SumUp V1 :
       - CB → bouton “Encaisser avec SumUp”.
@@ -70,6 +77,14 @@
       box_size: 6,
       offer_id: "COFFRET_6_20"
     }
+  };
+
+  const CORE_ALIASES = {
+    catalogue: ["catalogue"],
+    offresVente: ["offresVente", "offres_vente"],
+    missionsStock: ["missionsStock", "missions_stock"],
+    journees: ["journees", "journees_vente"],
+    transactions: ["transactions"]
   };
 
   const STORAGE_KEYS = {
@@ -186,7 +201,9 @@
       .trim()
       .toLowerCase()
       .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[-\s]+/g, "_")
+      .replace(/[^a-z0-9_]/g, "");
 
   const toNumber = (value, fallback = 0) => {
     if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -308,6 +325,24 @@
 
   const writeCachedArray = (key, value) => {
     writeJson(key, value);
+  };
+
+  const getCoreArray = (result, tableKey) => {
+    const aliases = CORE_ALIASES[tableKey] || [tableKey];
+    const sources = [
+      result,
+      result?.tables,
+      result?.data,
+      result?.data?.tables
+    ].filter(Boolean);
+
+    for (const source of sources) {
+      for (const alias of aliases) {
+        if (Array.isArray(source[alias])) return source[alias];
+      }
+    }
+
+    return [];
   };
 
   const setStatus = (message, type = "") => {
@@ -488,6 +523,23 @@
     };
   };
 
+  const setDaySummaryFromTransactions = (transactions = []) => {
+    const summary = computeDaySummaryFromTransactions(transactions);
+
+    state.daySummary = {
+      isLoading: false,
+      isLoaded: true,
+      revenue: summary.revenue,
+      tickets: summary.tickets,
+      lastLoadedAt: new Date().toISOString(),
+      lastError: ""
+    };
+
+    renderDaySummary();
+
+    return state.daySummary;
+  };
+
   const renderDaySummary = () => {
     if (!els.dayRevenueTotal || !els.dayTicketCount) return;
 
@@ -514,6 +566,24 @@
       `${state.daySummary.tickets} ticket${state.daySummary.tickets > 1 ? "s" : ""}`;
   };
 
+  const loadTransactionsFromNetwork = async () => {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    if (typeof api().getCoreData === "function") {
+      const result = await api().getCoreData(["transactions"]);
+      return getCoreArray(result, "transactions");
+    }
+
+    if (typeof api().getTransactions === "function") {
+      const transactions = await api().getTransactions();
+      return Array.isArray(transactions) ? transactions : [];
+    }
+
+    throw new Error("Aucune méthode de lecture transactions disponible.");
+  };
+
   const loadDaySummaryFromNetwork = async ({ silent = false } = {}) => {
     if (!hasActiveSalesContext()) {
       state.daySummary = {
@@ -528,22 +598,6 @@
       return state.daySummary;
     }
 
-    if (!hasApi() || typeof api().getTransactions !== "function") {
-      state.daySummary = {
-        ...state.daySummary,
-        isLoading: false,
-        isLoaded: false,
-        lastError: "LugdurumAPI.getTransactions() est indisponible."
-      };
-      renderDaySummary();
-
-      if (!silent) {
-        setStatus("Résumé journée indisponible : getTransactions() est introuvable.", "isError");
-      }
-
-      return state.daySummary;
-    }
-
     state.daySummary = {
       ...state.daySummary,
       isLoading: true,
@@ -553,23 +607,8 @@
     renderDaySummary();
 
     try {
-      const transactions = await api().getTransactions();
-      const summary = computeDaySummaryFromTransactions(
-        Array.isArray(transactions) ? transactions : []
-      );
-
-      state.daySummary = {
-        isLoading: false,
-        isLoaded: true,
-        revenue: summary.revenue,
-        tickets: summary.tickets,
-        lastLoadedAt: new Date().toISOString(),
-        lastError: ""
-      };
-
-      renderDaySummary();
-
-      return state.daySummary;
+      const transactions = await loadTransactionsFromNetwork();
+      return setDaySummaryFromTransactions(transactions);
     } catch (error) {
       state.daySummary = {
         ...state.daySummary,
@@ -1307,17 +1346,69 @@
     return transaction;
   };
 
+  const saveVenteRapideBundleToApi = async (transaction, movements) => {
+    const payload = {
+      transaction,
+      mouvements_stock: movements,
+      mouvementsStock: movements
+    };
+
+    if (typeof api().saveVenteRapideBundle === "function") {
+      return api().saveVenteRapideBundle(payload);
+    }
+
+    if (typeof api().post === "function") {
+      return api().post("saveVenteRapideBundle", payload);
+    }
+
+    throw new Error("saveVenteRapideBundle indisponible.");
+  };
+
   const saveTransactionToApi = async (transaction) => {
     if (!transactionHasValidContext(transaction)) {
       throw new Error("Transaction bloquée : mission_id ou journee_id manquant.");
     }
 
-    if (!hasApi() || typeof api().saveTransaction !== "function") {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    const movements = buildStockMovementsFromTransaction(transaction);
+
+    if (transaction.statut === "validee") {
+      try {
+        const result = await saveVenteRapideBundleToApi(transaction, movements);
+
+        upsertLocalMouvementsStock(movements);
+        saveLocalTransactionBackup(transaction);
+
+        return {
+          transaction: result,
+          mouvements_stock_count: movements.length,
+          bundle: true
+        };
+      } catch (error) {
+        const message = String(error?.message || "");
+
+        if (
+          !message.includes("Action POST inconnue") &&
+          !message.includes("saveVenteRapideBundle indisponible")
+        ) {
+          throw error;
+        }
+
+        console.warn(
+          "saveVenteRapideBundle indisponible, fallback saveTransaction + batchUpsert utilisé.",
+          error
+        );
+      }
+    }
+
+    if (typeof api().saveTransaction !== "function") {
       throw new Error("LugdurumAPI.saveTransaction() est indisponible.");
     }
 
     const result = await api().saveTransaction(transaction);
-    const movements = buildStockMovementsFromTransaction(transaction);
 
     if (transaction.statut === "validee") {
       await saveStockMovementsToApi(movements);
@@ -1327,7 +1418,8 @@
 
     return {
       transaction: result,
-      mouvements_stock_count: movements.length
+      mouvements_stock_count: movements.length,
+      bundle: false
     };
   };
 
@@ -1654,6 +1746,57 @@
     }
   };
 
+  const loadRemoteContextBundle = async () => {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    if (typeof api().getVenteRapideContextData === "function") {
+      const result = await api().getVenteRapideContextData({
+        stock_mission_id: state.journeeActive.mission_id,
+        journee_id: state.journeeActive.journee_id
+      });
+
+      return {
+        missionsStock: getCoreArray(result, "missionsStock"),
+        journees: getCoreArray(result, "journees"),
+        transactions: getCoreArray(result, "transactions")
+      };
+    }
+
+    if (typeof api().getCoreData === "function") {
+      const result = await api().getCoreData([
+        "missionsStock",
+        "journees",
+        "transactions"
+      ]);
+
+      return {
+        missionsStock: getCoreArray(result, "missionsStock"),
+        journees: getCoreArray(result, "journees"),
+        transactions: getCoreArray(result, "transactions")
+      };
+    }
+
+    const [missionsStock, journees, transactions] = await Promise.all([
+      typeof api().getMissionsStock === "function"
+        ? api().getMissionsStock()
+        : Promise.resolve([]),
+      typeof api().getJournees === "function"
+        ? api().getJournees()
+        : Promise.resolve([]),
+      typeof api().getTransactions === "function"
+        ? api().getTransactions()
+        : Promise.resolve([])
+    ]);
+
+    return {
+      missionsStock: Array.isArray(missionsStock) ? missionsStock : [],
+      journees: Array.isArray(journees) ? journees : [],
+      transactions: Array.isArray(transactions) ? transactions : []
+    };
+  };
+
   const loadContext = async () => {
     const context = readJson(STORAGE_KEYS.preparationContext, null);
 
@@ -1688,19 +1831,19 @@
       date_label: "Contexte local chargé"
     };
 
+    state.daySummary = {
+      ...state.daySummary,
+      isLoading: true,
+      lastError: ""
+    };
+
     renderAll();
-    loadDaySummaryFromNetwork({ silent: true });
 
     try {
-      if (!hasApi()) return;
+      const remote = await loadRemoteContextBundle();
 
-      const [missionsStock, journees] = await Promise.all([
-        api().getMissionsStock(),
-        api().getJournees()
-      ]);
-
-      state.missionsStock = Array.isArray(missionsStock) ? missionsStock : [];
-      state.journees = Array.isArray(journees) ? journees : [];
+      state.missionsStock = remote.missionsStock;
+      state.journees = remote.journees;
 
       const mission = state.missionsStock.find(
         (item) => String(item.mission_id || "") === String(stockMissionId || "")
@@ -1721,45 +1864,76 @@
           mission_id: stockMissionId,
           journee_id: journeeId
         };
-
-        renderAll();
-        loadDaySummaryFromNetwork({ silent: true });
       }
+
+      setDaySummaryFromTransactions(remote.transactions);
+      renderAll();
     } catch (error) {
       console.warn("Contexte journée non chargé depuis Sheets.", error);
+
+      state.daySummary = {
+        ...state.daySummary,
+        isLoading: false,
+        isLoaded: false,
+        lastError: error.message || "Lecture réseau impossible."
+      };
+
+      renderDaySummary();
     } finally {
       state.contextLoaded = true;
       renderAll();
     }
   };
 
+  const loadVenteRapideData = async () => {
+    if (!hasApi()) {
+      throw new Error("lugdurum-api.js n’est pas chargé.");
+    }
+
+    if (typeof api().getVenteRapideData === "function") {
+      const result = await api().getVenteRapideData();
+
+      return {
+        catalogueRows: getCoreArray(result, "catalogue"),
+        offresRows: getCoreArray(result, "offresVente")
+      };
+    }
+
+    if (typeof api().getCoreData === "function") {
+      const result = await api().getCoreData([
+        "catalogue",
+        "offresVente"
+      ]);
+
+      return {
+        catalogueRows: getCoreArray(result, "catalogue"),
+        offresRows: getCoreArray(result, "offresVente")
+      };
+    }
+
+    if (
+      typeof api().getCatalogue !== "function" ||
+      typeof api().getOffresVente !== "function"
+    ) {
+      throw new Error("Méthodes catalogue / offres introuvables dans lugdurum-api.js.");
+    }
+
+    const [catalogueRows, offresRows] = await Promise.all([
+      api().getCatalogue(),
+      api().getOffresVente()
+    ]);
+
+    return {
+      catalogueRows: Array.isArray(catalogueRows) ? catalogueRows : [],
+      offresRows: Array.isArray(offresRows) ? offresRows : []
+    };
+  };
+
   const loadData = async () => {
     renderProducts();
 
     try {
-      if (!hasApi()) {
-        throw new Error("lugdurum-api.js n’est pas chargé.");
-      }
-
-      if (typeof api().getCatalogue !== "function") {
-        throw new Error("getCatalogue() est introuvable dans lugdurum-api.js.");
-      }
-
-      if (typeof api().getOffresVente !== "function") {
-        throw new Error("getOffresVente() est introuvable dans lugdurum-api.js.");
-      }
-
-      const [
-        catalogueRows,
-        offresRows,
-        mouvementsRows
-      ] = await Promise.all([
-        api().getCatalogue(),
-        api().getOffresVente(),
-        typeof api().getMouvementsStock === "function"
-          ? api().getMouvementsStock()
-          : Promise.resolve([])
-      ]);
+      const { catalogueRows, offresRows } = await loadVenteRapideData();
 
       state.catalogue = catalogueRows
         .map((row, index) => normalizeProduct(row, index))
@@ -1769,13 +1943,11 @@
         .map((row, index) => normalizeOffer(row, index))
         .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
 
-      state.mouvementsStock = Array.isArray(mouvementsRows) ? mouvementsRows : [];
-
+      state.mouvementsStock = [];
       state.dataLoaded = true;
 
       writeCachedArray(STORAGE_KEYS.catalogueCache, state.catalogue);
       writeCachedArray(STORAGE_KEYS.offresVenteCache, state.offresVente);
-      writeCachedArray(STORAGE_KEYS.mouvementsStock, state.mouvementsStock);
 
       if (state.offresVente.length === 0) {
         setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
@@ -1787,15 +1959,17 @@
     } catch (error) {
       const cachedCatalogue = readCachedArray(STORAGE_KEYS.catalogueCache);
       const cachedOffres = readCachedArray(STORAGE_KEYS.offresVenteCache);
-      const cachedMouvements = readCachedArray(STORAGE_KEYS.mouvementsStock);
 
       if (cachedCatalogue.length > 0 || cachedOffres.length > 0) {
         state.catalogue = cachedCatalogue.map((row, index) => normalizeProduct(row, index));
         state.offresVente = cachedOffres.map((row, index) => normalizeOffer(row, index));
-        state.mouvementsStock = cachedMouvements;
+        state.mouvementsStock = [];
         state.dataLoaded = true;
 
-        setStatus("Données chargées depuis le cache local. Le CA jour reste basé uniquement sur la lecture réseau.", "isError");
+        setStatus(
+          "Catalogue chargé depuis le cache local. Le CA jour reste basé uniquement sur la lecture réseau.",
+          "isError"
+        );
         renderAll({ refreshProducts: true });
         return;
       }
