@@ -2,52 +2,29 @@
   "use strict";
 
   /*
-    Lugdurum API V17 HOME EVENT SELECTOR + RECETTES DATA + PRO TABLES + FRONT QUEUE + JSONP GET
+    Lugdurum API V18 — VENTE RAPIDE SINGLE ACTION + JSONP GET
 
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
-    - getHomeData(params) transmet désormais :
+    - getHomeData(params) transmet :
       user_id / current_user_id,
       selected_type,
       selected_id,
       activeStockMissionId,
       activeJourneeId.
-    - Le dernier évènement sélectionné n’est pas utilisé comme défaut durable.
-      La sélection durable par défaut reste calculée côté Apps Script :
-      1) prochain évènement lié à l’utilisateur,
-      2) sinon prochain évènement global.
-    - L’URL peut imposer temporairement un contexte :
-      ?selected_type=mission&selected_id=...
-      ?selected_type=inscription&selected_id=...
-      ?mission_vente_id=...
-      ?evenement_id=...
-      ?inscription_id=...
-    - Ajout méthode rapide getHomeData() pour l’accueil.
-    - Ajout méthode rapide getRecettesData(view) pour le module recettes :
-      dashboard, historique, production, matieres.
-    - getHomeData() ne bloque pas le rendu sur la synchronisation de la file.
+    - Ajout getVenteRapideData() :
+      charge catalogue + offres_vente en un seul appel getCoreData,
+      sans charger mouvements_stock au démarrage.
+    - Ajout saveVenteRapideBundle(payload) :
+      écrit transaction + lignes + mouvements_stock en UNE SEULE action Apps Script.
     - Écritures POST avec file d’attente offline officielle : lugdurum_pending_writes.
     - Rejeu automatique au retour réseau, au focus, à la visibilité et au chargement.
     - Rejeu par paquets via batchActions.
     - Nettoyage robuste de la file après succès batch.
-    - Nettoyage des anciennes transactions locales legacy : lugdurum_pending_transactions.
-    - Évènement global lugdurum:sync-status pour rafraîchir l’UI.
     - État données permanent : local / actualisation / en ligne.
-    - Corrige la pastille :
-      après toute lecture JSONP réussie, l’état passe explicitement en ligne.
     - Compatible avec une pastille déjà présente dans le HTML ou créée dynamiquement.
-    - Évite les doublons d’écriture ventes_lignes quand Apps Script sauvegarde déjà les lignes dans les bundles.
-    - Helpers pro :
-      clients, commandes_pro, commandes_lignes, documents, referentiels.
-    - Helpers recettes :
-      recettes, recettes_ingredients, ingredients, cuvees, cuvees_ingredients_reels,
-      matieres_premieres, matieres_lots, cuvees_matieres_consommees, mouvements_matieres.
-    - Ajoute alias compatibles :
-      getCommandesLignes() + getCommandesProLignes()
-      saveCommandeLigne() + saveCommandeProLigne()
-      saveCommandeLignes() + saveCommandeProLignes()
-      getReferentiels() + getReferentiel()
-      list() + upsert() + post() + request() + call()
+    - Évite les doublons ventes_lignes quand Apps Script sauvegarde déjà les lignes.
+    - Helpers pro, recettes, stock, historique, clôture.
   */
 
   const API_URL =
@@ -68,10 +45,20 @@
   };
 
   const SHEET_UPSERT_CONFIG = {
+    transactions: {
+      sheetKey: "transactions",
+      sheetName: "transactions",
+      keyField: "transaction_id"
+    },
     ventesLignes: {
       sheetKey: "ventesLignes",
       sheetName: "ventes_lignes",
       keyField: "ligne_id"
+    },
+    mouvementsStock: {
+      sheetKey: "mouvementsStock",
+      sheetName: "mouvements_stock",
+      keyField: "mouvement_stock_id"
     },
 
     clients: {
@@ -1464,10 +1451,33 @@
       .flatMap(getTransactionLines)
       .filter((line) => String(line.ligne_id || "").trim());
 
+  const getBundleLines = (payload = {}) =>
+    [
+      ...getTransactionLines(payload.transaction || {}),
+      ...toArray(payload.lignes),
+      ...toArray(payload.lines),
+      ...toArray(payload.ventes_lignes),
+      ...toArray(payload.ventesLignes)
+    ].filter((line) => line && typeof line === "object");
+
+  const getBundleMouvementsStock = (payload = {}) =>
+    [
+      ...toArray(payload.mouvements_stock),
+      ...toArray(payload.mouvementsStock),
+      ...toArray(payload.stock_movements),
+      ...toArray(payload.stockMovements),
+      ...toArray(payload.movements)
+    ].filter((movement) => movement && typeof movement === "object");
+
   const buildVenteLigneOperations = (lines = []) =>
     toArray(lines)
       .filter((line) => String(line.ligne_id || "").trim())
       .map((line) => buildConfiguredUpsertOperation("ventesLignes", line));
+
+  const buildMouvementStockOperations = (movements = []) =>
+    toArray(movements)
+      .filter((movement) => String(movement.mouvement_stock_id || "").trim())
+      .map((movement) => buildConfiguredUpsertOperation("mouvementsStock", movement));
 
   const getSavedLinesCount = (result) => {
     if (!result || typeof result !== "object") return 0;
@@ -1476,9 +1486,24 @@
       result.lignes_count ??
       result.lines_count ??
       result.ventes_lignes_count ??
+      result.ventesLignes_count ??
       (
         Array.isArray(result.lignes)
           ? result.lignes.length
+          : 0
+      )
+    ) || 0;
+  };
+
+  const getSavedMouvementsStockCount = (result) => {
+    if (!result || typeof result !== "object") return 0;
+
+    return Number(
+      result.mouvements_stock_count ??
+      result.mouvementsStock_count ??
+      (
+        Array.isArray(result.mouvements_stock)
+          ? result.mouvements_stock.length
           : 0
       )
     ) || 0;
@@ -1492,6 +1517,22 @@
         ok: true,
         skipped: true,
         lignes_count: 0
+      };
+    }
+
+    return requestQueuedPost("batchUpsert", {
+      operations
+    });
+  };
+
+  const ensureMouvementsStock = async (movements = []) => {
+    const operations = buildMouvementStockOperations(movements);
+
+    if (operations.length === 0) {
+      return {
+        ok: true,
+        skipped: true,
+        mouvements_stock_count: 0
       };
     }
 
@@ -1573,6 +1614,29 @@
     requestGet("getHomeData", buildHomeDataParams(params), {
       flushBeforeRead: false
     });
+
+  const getVenteRapideData = async (params = {}) => {
+    const result = await requestGet(
+      "getCoreData",
+      {
+        ...params,
+        tables: normalizeCoreTablesParam(["catalogue", "offresVente"])
+      },
+      {
+        flushBeforeRead: params.flushBeforeRead === true,
+        timeoutMs: params.timeoutMs || 15000
+      }
+    );
+
+    return {
+      api_mode: "getVenteRapideData",
+      generated_at: result.generated_at || nowIso(),
+      duration_ms: result.duration_ms || 0,
+      catalogue: getCoreArrayFromResult(result, "catalogue"),
+      offresVente: getCoreArrayFromResult(result, "offresVente"),
+      raw: result
+    };
+  };
 
   const getRecettesData = (view = "dashboard", params = {}) => {
     const safeView =
@@ -1726,6 +1790,90 @@
     };
   };
 
+  const saveVenteRapideBundleFallback = async (payload = {}) => {
+    const movements = getBundleMouvementsStock(payload);
+    const results = {
+      fallback: true,
+      transaction: null,
+      mouvements_stock: null,
+      journee: null,
+      mission_stock: null,
+      cloture: null
+    };
+
+    if (payload.transaction) {
+      results.transaction = await saveTransaction(payload.transaction);
+    }
+
+    if (movements.length > 0) {
+      results.mouvements_stock = await ensureMouvementsStock(movements);
+    }
+
+    if (payload.journee) {
+      results.journee = await saveJournee(payload.journee);
+    }
+
+    if (payload.mission_stock || payload.missionStock) {
+      results.mission_stock = await saveMissionStock(
+        payload.mission_stock || payload.missionStock
+      );
+    }
+
+    if (payload.cloture) {
+      results.cloture = await saveCloture(payload.cloture);
+    }
+
+    results.lignes_count = getBundleLines(payload).length;
+    results.ventes_lignes_count = results.lignes_count;
+    results.mouvements_stock_count = movements.length;
+    results.mouvementsStock_count = movements.length;
+
+    return results;
+  };
+
+  const saveVenteRapideBundle = async (payload = {}) => {
+    const lines = getBundleLines(payload);
+    const movements = getBundleMouvementsStock(payload);
+
+    try {
+      const result = await requestQueuedPost("saveVenteRapideBundle", payload);
+
+      if (result?.queued) {
+        return {
+          ...(result && typeof result === "object" ? result : { result }),
+          lignes_count: lines.length,
+          ventes_lignes_count: lines.length,
+          mouvements_stock_count: movements.length,
+          mouvementsStock_count: movements.length,
+          single_action: true
+        };
+      }
+
+      const savedLinesCount = getSavedLinesCount(result);
+      const savedMovementsCount = getSavedMouvementsStockCount(result);
+
+      return {
+        ...(result && typeof result === "object" ? result : { result }),
+        lignes_count: savedLinesCount || lines.length,
+        ventes_lignes_count: savedLinesCount || lines.length,
+        mouvements_stock_count: savedMovementsCount || movements.length,
+        mouvementsStock_count: savedMovementsCount || movements.length,
+        single_action: true
+      };
+    } catch (error) {
+      if (isUnknownPostActionError(error, "saveVenteRapideBundle")) {
+        console.warn(
+          "saveVenteRapideBundle indisponible côté Apps Script, fallback détaillé utilisé.",
+          error
+        );
+
+        return saveVenteRapideBundleFallback(payload);
+      }
+
+      throw error;
+    }
+  };
+
   const saveVenteLigne = (line) =>
     requestQueuedPost("batchUpsert", {
       operations: [
@@ -1863,14 +2011,18 @@
       operations
     });
 
-  const getCoreTable = async (tableName) => {
+  const getCoreTable = async (tableName, options = {}) => {
     const key = resolveCoreTableKey(tableName);
 
     if (!key) return [];
 
-    const result = await requestGet("getCoreData", {
-      tables: [key]
-    });
+    const result = await requestGet(
+      "getCoreData",
+      {
+        tables: [key]
+      },
+      options
+    );
 
     return getCoreArrayFromResult(result, key);
   };
@@ -2199,6 +2351,7 @@
     getCurrentUserId: () => getCurrentUserIdFromRuntime(),
 
     getHomeData,
+    getVenteRapideData,
 
     getRecettesData,
     getRecettesDashboardData,
@@ -2206,10 +2359,14 @@
     getRecettesProductionData,
     getRecettesMatieresData,
 
-    getCoreData(tables = []) {
-      return requestGet("getCoreData", {
-        tables: normalizeCoreTablesParam(tables)
-      });
+    getCoreData(tables = [], options = {}) {
+      return requestGet(
+        "getCoreData",
+        {
+          tables: normalizeCoreTablesParam(tables)
+        },
+        options
+      );
     },
 
     getCoreTable,
@@ -2305,6 +2462,7 @@
     },
 
     saveTransaction,
+    saveVenteRapideBundle,
     saveVenteLigne,
     saveVentesLignes,
 
@@ -2355,6 +2513,7 @@
 
     batchUpsert,
     ensureVentesLignes,
+    ensureMouvementsStock,
 
     getPendingWrites,
     getPendingWritesCount,
