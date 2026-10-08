@@ -222,12 +222,15 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
   const original = fs.readFileSync(
     path.join(__dirname, "..", "docs", "vente-rapide.js"), "utf8"
   );
-  // Activer la verification uniquement dans cette simulation (PAS dans la PWA livree).
+  // La production est maintenant en mode verification pour tous.
+  // Les essais du parcours manuel conservent une simulation locale OFF.
   const enabled = verificationEnabled
-    ? original.replace("verificationEnabled: false,", "verificationEnabled: true,")
-    : original;
-  if (verificationEnabled) {
-    assert.notEqual(enabled, original, "Flag pilote attendu absent du frontend");
+    ? original
+    : original.replace("verificationEnabled: true,", "verificationEnabled: false,");
+  if (!verificationEnabled) {
+    assert.notEqual(enabled, original, "Flag SumUp global attendu absent du frontend");
+  } else {
+    assert.ok(original.includes("verificationEnabled: true,"), "Verification globale attendue");
   }
   const start = [
     "  handleSumupCallbackParams();",
@@ -364,27 +367,25 @@ test("PWA pilote activee : reference UUID pour la verification API", () => {
 });
 
 
-test("pilote de production : inactif par defaut sur les autres telephones", () => {
-  const h = createSumupFrontendHarness({}, false);
-  assert.equal(h.app.sumupPilotEnabled, false);
-  assert.equal(h.memory.get("lugdurum_sumup_pilot_enabled"), undefined);
+test("production : verification SumUp identique et activee sur deux vendeurs", () => {
+  const vendeurA = createSumupFrontendHarness({}, true);
+  const vendeurB = createSumupFrontendHarness({}, true);
+  assert.equal(vendeurA.app.sumupPilotEnabled, true);
+  assert.equal(vendeurB.app.sumupPilotEnabled, true);
+  assert.match(vendeurA.app.buildForeignTxId(), /^LUG_[0-9]{13}_[0-9A-F]{8}-/);
+  assert.match(vendeurB.app.buildForeignTxId(), /^LUG_[0-9]{13}_[0-9A-F]{8}-/);
 });
 
-test("pilote de production : lien opt-in active cet appareil uniquement", () => {
-  const h = createSumupFrontendHarness({}, false, {
-    url: "https://example.test/vente-rapide.html?sumup_pilot=1"
-  });
-  assert.equal(h.app.sumupPilotEnabled, true);
-  assert.equal(h.memory.get("lugdurum_sumup_pilot_enabled"), "1");
-  assert.match(h.app.buildForeignTxId(), /^LUG_[0-9]{13}_[0-9A-F]{8}-/);
-});
-
-test("pilote de production : lien opt-out restaure le mode manuel", () => {
-  const h = createSumupFrontendHarness({}, false, {
+test("production : anciens liens et stockage pilote ne peuvent desactiver l'API", () => {
+  const h = createSumupFrontendHarness({}, true, {
     previouslyEnabled: true,
     url: "https://example.test/vente-rapide.html?sumup_pilot=0"
   });
-  assert.equal(h.app.sumupPilotEnabled, false);
-  assert.equal(h.memory.get("lugdurum_sumup_pilot_enabled"), undefined);
+  assert.equal(h.app.sumupPilotEnabled, true);
+  assert.match(h.app.buildForeignTxId(), /^LUG_[0-9]{13}_[0-9A-F]{8}-/);
+});
+
+test("secours : parcours manuel conserve des references courtes en mode OFF simule", () => {
+  const h = createSumupFrontendHarness({}, false);
   assert.match(h.app.buildForeignTxId(), /^LUG_[0-9]{13}_[A-Z0-9]{6}$/);
 });
