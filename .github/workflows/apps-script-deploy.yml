@@ -1,0 +1,75 @@
+name: Deploiement Apps Script - manuel
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Saisir DEPLOYER_LUGDURUM pour confirmer"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lugdurum-apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirmation == 'DEPLOYER_LUGDURUM' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Installer clasp
+        run: npm install -g @google/clasp@3.4.1
+
+      - name: Configurer Google Apps Script
+        env:
+          CLASP_CREDENTIALS_JSON: ${{ secrets.CLASP_CREDENTIALS_JSON }}
+          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+        run: |
+          test -n "$CLASP_CREDENTIALS_JSON"
+          test -n "$APPS_SCRIPT_ID"
+
+          printf '%s' "$CLASP_CREDENTIALS_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+          node -e '
+            require("fs").writeFileSync(".clasp.json", JSON.stringify({
+              scriptId: process.env.APPS_SCRIPT_ID,
+              rootDir: "apps-script"
+            }));
+          '
+
+      - name: Identifier le deploiement existant
+        run: |
+          DEPLOYMENT_ID=$(node -e '
+            const fs = require("fs");
+            const source = fs.readFileSync("docs/lugdurum-api.js", "utf8");
+            const match = source.match(/https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec/);
+            if (!match) process.exit(1);
+            process.stdout.write(match[1]);
+          ')
+
+          clasp list-deployments | grep -F "$DEPLOYMENT_ID" > /dev/null
+
+          echo "DEPLOYMENT_ID=$DEPLOYMENT_ID" >> "$GITHUB_ENV"
+          echo "Deploiement existant verifie"
+
+      - name: Envoyer le code vers Apps Script
+        run: clasp push --force
+
+      - name: Actualiser le deploiement existant
+        run: |
+          clasp create-deployment \
+            --deploymentId "$DEPLOYMENT_ID" \
+            --description "GitHub ${GITHUB_SHA:0:7}"
