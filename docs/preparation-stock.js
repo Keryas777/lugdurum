@@ -1140,6 +1140,12 @@
 
     if (Number(detail.pending_count || 0) > 0) {
       setStatus(`${detail.pending_count} écriture(s) en attente de synchronisation.`, "isError");
+    } else if (
+      detail.status === "synced" &&
+      els.stockStatus?.textContent?.includes("en attente de synchronisation")
+    ) {
+      // Ne pas laisser un message d'attente périmé après le succès du rejeu.
+      setStatus("Toutes les écritures ont été synchronisées.", "isSuccess");
     }
   });
 
