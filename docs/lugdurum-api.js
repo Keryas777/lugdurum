@@ -2453,6 +2453,15 @@
     saveStockPreparationLine,
     saveStockPreparationWithLines,
 
+    // Vérification SumUp : lecture serveur seule, jamais de clé API dans la PWA.
+    verifySumupPayment({ foreignTxId, amount, currency = "EUR" } = {}) {
+      return requestGet(
+        "getSumupPaymentStatus",
+        { foreign_tx_id: foreignTxId, amount, currency },
+        { flushBeforeRead: false, timeoutMs: 10000 }
+      );
+    },
+
     getTransactions() {
       return requestGet("getTransactions");
     },

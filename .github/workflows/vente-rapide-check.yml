@@ -5,14 +5,23 @@ on:
     paths:
       - "docs/vente-rapide.js"
       - "docs/vente-rapide.html"
+      - "docs/lugdurum-api.js"
+      - "apps-script/01_http_router.js"
+      - "apps-script/10_sumup_verification.gs"
+      - "tests/sumup-verification.test.cjs"
       - "tests/vente-rapide.test.cjs"
       - ".github/workflows/vente-rapide-check.yml"
   push:
     branches:
       - audit-gerzat-vente-rapide-v20
+      - feature/sumup-verification-pilot
     paths:
       - "docs/vente-rapide.js"
       - "docs/vente-rapide.html"
+      - "docs/lugdurum-api.js"
+      - "apps-script/01_http_router.js"
+      - "apps-script/10_sumup_verification.gs"
+      - "tests/sumup-verification.test.cjs"
       - "tests/vente-rapide.test.cjs"
       - ".github/workflows/vente-rapide-check.yml"
 
@@ -31,3 +40,5 @@ jobs:
         run: node --check docs/vente-rapide.js
       - name: Tester la vente rapide en simulation
         run: node --test tests/vente-rapide.test.cjs
+      - name: Tester le routeur et la verification SumUp (simulation)
+        run: node --test tests/sumup-verification.test.cjs

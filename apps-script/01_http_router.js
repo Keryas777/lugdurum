@@ -195,6 +195,12 @@ function invokeGetAction_(action, params) {
     return callRequiredFunction_("getRecettesData_", view, params);
   }
 
+  // Statut SumUp (lecture seule). L'API SumUp est appelee exclusivement cote serveur.
+  // normalizeActionResult_ conserve le contrat HTTP {ok, action, data, ...}.
+  if (action === "getSumupPaymentStatus") {
+    return callRequiredFunction_("lugdurumGetSumupPaymentStatus", params);
+  }
+
   if (Object.prototype.hasOwnProperty.call(GET_ACTIONS, action)) {
     return callRequiredFunction_("readSheetRows_", GET_ACTIONS[action]);
   }
