@@ -181,7 +181,7 @@ function buildUpcomingItemsHomeData_(tables, context) {
       const eventId = getEventIdHomeData_(eventItem);
       const stockMission = findStockMissionForEventHomeData_(
         eventId,
-        tables.stockMissions
+        tables.stockMissions, tables.journees
       );
 
       return {
@@ -325,7 +325,7 @@ function buildActiveContextHomeData_(tables, selectedItem) {
 
     stockMission = findStockMissionForEventHomeData_(
       selectedId,
-      tables.stockMissions
+      tables.stockMissions, tables.journees
     );
   }
 
@@ -359,7 +359,7 @@ function buildActiveContextHomeData_(tables, selectedItem) {
   if (!stockMission && eventItem) {
     stockMission = findStockMissionForEventHomeData_(
       getEventIdHomeData_(eventItem),
-      tables.stockMissions
+      tables.stockMissions, tables.journees
     );
   }
 
@@ -842,16 +842,34 @@ function getStockMissionEventIdHomeData_(mission) {
   ).trim();
 }
 
-function findStockMissionForEventHomeData_(eventId, stockMissions) {
+function findStockMissionForEventHomeData_(eventId, stockMissions, journees) {
   const id = String(eventId || "").trim();
-
   if (!id) return null;
 
+  const candidates = (stockMissions || []).filter(function (mission) {
+    return !isCancelledStatusHomeData_(mission);
+  });
+  const linkedStockIds = (journees || [])
+    .filter(function (day) {
+      return (
+        String(day.mission_id || day.evenement_id || "").trim() === id &&
+        !isCancelledStatusHomeData_(day)
+      );
+    })
+    .map(function (day) {
+      return String(day.stock_mission_id || day.mission_stock_id || "").trim();
+    })
+    .filter(Boolean);
+
+  // La relation journees_vente.stock_mission_id prime sur l'ordre des lignes Sheets.
   return (
-    stockMissions.find(function (mission) {
+    candidates.find(function (mission) {
+      return linkedStockIds.indexOf(getStockMissionIdHomeData_(mission)) >= 0;
+    }) ||
+    candidates.find(function (mission) {
       return getStockMissionIdHomeData_(mission) === id;
     }) ||
-    stockMissions.find(function (mission) {
+    candidates.find(function (mission) {
       return getStockMissionEventIdHomeData_(mission) === id;
     }) ||
     null
