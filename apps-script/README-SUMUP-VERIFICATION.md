@@ -1,6 +1,6 @@
 # Pilote de vérification des paiements SumUp — Lugdurum
 
-**État : pilote de production opt-in par appareil ; désactivé par défaut pour les autres vendeurs. Ne pas activer globalement avant la recette d'un paiement réel.**
+**État : vérification activée pour tous les vendeurs à la demande du propriétaire ; confirmation manuelle toujours disponible en secours. Premier paiement réel encore à valider.**
 
 ## Objectif et limites
 
@@ -70,12 +70,11 @@ la conversation. Les secrets GitHub utilisés pour l'authentification
    `MISMATCH` sans jamais valider automatiquement un statut non confirmé.
 4. Vérifier sur iPhone que Payment Switch transmet réellement
    `foreign-tx-id` et que son application renvoie bien au premier plan.
-5. Une fois ces essais réussis, et seulement alors, changer
-   la propriété `verificationEnabled` de `SUMUP_CONFIG` à `true` dans
-   `docs/vente-rapide.js`.
+5. Contrôler en production la première transaction réelle et prévoir le
+   retour au mode manuel global si la vérification présente une anomalie.
 
-La vérification automatique reste **désactivée par défaut**. La confirmation
-manuelle du paiement SumUp est conservée, même si le backend est configuré.
+Depuis la mise en production globale, la vérification automatique est **activée pour tous** ;
+la confirmation manuelle du paiement SumUp est toujours conservée en secours.
 
 ## Sécurité et limitation d'accès
 
@@ -121,44 +120,44 @@ un paiement trouvé avec mauvais montant et une coupure réseau. Confirmer
 l'absence de doublon dans `transactions`, `ventes_lignes`,
 `mouvements_stock`. Rester sur le classeur TEST pendant ces essais.
 
-**Non testé :** autorisation réelle de la clé sur le compte marchand, propagation
-du `foreign-tx-id` par le Payment Switch iOS, déploiement Apps Script effectif.
+**Déjà validé :** autorisations Google, déploiement Apps Script, réponse `NOT_FOUND`
+sur une référence fictive. **Encore à confirmer :** paiement `SUCCESSFUL` réel,
+reprise iPhone/PWA et écritures Sheets complètes.
 
 
-## Pilote de production opt-in (octobre 2026)
+## Mise en production globale — octobre 2026
 
-Le backend est déployé. L'interrogation d'une transaction inventée a renvoyé
-`NOT_FOUND` après autorisation Google, mais **aucun paiement réel n'a encore
-été reconnu comme `SUCCESSFUL` par le circuit complet**.
+La route Apps Script et les permissions Google ont été déployées ; l'interrogation
+d'un identifiant fictif a retourné `NOT_FOUND` via SumUp. Le propriétaire a
+explicitement demandé d'activer la même vérification sur les deux vendeurs,
+sans option par appareil.
 
-Pour expérimenter sur un seul appareil, ouvrir **depuis le même conteneur PWA/Safari** :
+- Dans `docs/vente-rapide.js`, `SUMUP_CONFIG.verificationEnabled: true` est
+  désormais commun à tous les téléphones et navigateurs chargés avec la nouvelle version.
+- Les paramètres historiques `?sumup_pilot=1` et `?sumup_pilot=0` sont sans effet.
+- Un paiement lancé en mode CB génère une référence `LUG_<timestamp>_<UUID>`
+  envoyée à SumUp via `foreign-tx-id`. À la reprise de la PWA, jusqu'à cinq
+  interrogations API espacées de 1,8 s sont effectuées.
+- **La confirmation automatique n'intervient qu'après `SUCCESSFUL` et concordance
+  stricte de la référence, du compte marchand, de la devise et du montant.**
+- Sinon le ticket reste en attente et peut être confirmé **manuellement après
+  vérification du paiement dans l'application SumUp** ; pas de vente auto sur
+  `NOT_FOUND`, `PENDING`, `FAILED`, `MISMATCH`, timeout ou hors-ligne.
+- La PWA et Safari peuvent conserver des données locales distinctes ; s'assurer
+  que la journée active est correctement chargée sur chaque appareil.
+- **Un succès réel n'a pas encore été observé avec ce parcours**, et la remontée
+  de `foreign-tx-id` sur un vrai encaissement iOS doit être confirmée.
+- En cas de problème terrain, rétablir `verificationEnabled: false` par un
+  correctif GitHub/PWA ; ne pas changer la référence d'un ticket déjà lancé.
 
-- `vente-rapide.html?sumup_pilot=1` : enregistrer l'activation uniquement
-  dans son localStorage ; les prochains tickets CB de cet appareil utilisent des
-  identifiants UUID et interrogent l'API SumUp au retour.
-- `vente-rapide.html?sumup_pilot=0` : retirer immédiatement l'activation
-  locale et conserver le parcours manuel historique pour les futurs tickets.
-- Sans activation locale, tous les autres vendeurs utilisent les références
-  historiques courtes et valident manuellement leurs paiements.
+### Recette d'encaissement
 
-**Important :** le paramètre est mémorisé par appareil/stockage navigateur.
-Sur iPhone, Safari et la PWA installée peuvent avoir des stockages distincts :
-faire l'essai depuis le contexte qui possède la journée de vente active.
-Un paiement en cours conserve sa référence d'origine ; ne pas changer de mode
-avant d'avoir réglé le ticket en attente.
+Pour un test en production, il faut utiliser un paiement réel, identifier la
+transaction dans SumUp, puis comparer le résultat au ticket Lugdurum et vérifier
+`transactions`, `ventes_lignes`, `mouvements_stock` pour détecter doublons
+et écarts. Toute opération remboursée doit être tracée correctement dans la
+comptabilité et ne doit pas créer de vente/stock fictif. Le remboursement
+est une opération distincte de l'enregistrement initial de la vente dans Lugdurum.
 
-Ne pas effectuer un encaissement avec sa propre carte dans le but de s'auto-financer.
-Demander plutôt à un tiers de réaliser **un véritable achat** dont le montant
-correspond au ticket. Tout encaissement réel est soumis aux frais SumUp et doit
-être comptabilisé ; un test artificiel à 1 € avec un produit vendu plus cher
-ne doit pas créer une vente/consommation de stock fictive dans le Google Sheet.
-
-Après un vrai paiement, vérifier la présence de la référence `foreign_tx_id`
-chez SumUp, le statut renvoyé, la présence d'un seul ticket et des mouvements de
-stock correspondants. Si contrôle automatique indisponible, ne jamais considérer
-le lancement de SumUp comme une confirmation de paiement : vérifier le reçu dans
-SumUp avant toute confirmation manuelle.
-
-La bascule globale (`SUMUP_CONFIG.verificationEnabled: true`) reste une **étape
-séparée** qui nécessite validation de cette recette terrain et des données
-comptables. Les clés API restent dans les propriétés du script.
+L'API SumUp est en lecture seule ; cette intégration n'initie jamais de
+remboursement. Les identifiants privés restent dans les propriétés Apps Script.
