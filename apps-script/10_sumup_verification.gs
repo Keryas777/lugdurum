@@ -1,13 +1,8 @@
 /**
- * Lugdurum — module serveur SumUp (pilote, non déployé).
- * À placer dans le projet Apps Script : 10_sumup_verification.gs
+ * Lugdurum — module serveur SumUp (pilote, désactivé côté PWA).
+ * Versionné dans apps-script/ ; route GET dans 01_http_router.js.
  * Nécessite SUMUP_API_KEY et SUMUP_MERCHANT_CODE dans les propriétés DU SCRIPT.
- *
- * Route à ajouter à doGet(e), avant GET_ACTIONS :
- * if (action === "getSumupPaymentStatus") {
- *   return reply({ok:true, version:API_VERSION, duration_ms:Date.now()-startedAt,
- *     data: lugdurumGetSumupPaymentStatus(e?.parameter || {})});
- * }
+ * Aucun secret SumUp dans le dépôt ou dans le navigateur.
  *
  * Ne jamais renvoyer la clé ni la réponse brute de SumUp au navigateur.
  * GET JSONP = publiquement accessible dans le déploiement actuel :
@@ -62,6 +57,7 @@ function lugdurumGetSumupPaymentStatus(params) {
   const code = response.getResponseCode();
   // Une transaction peut mettre un peu de temps à apparaître dans l'API.
   if (code === 404) return { verified: false, status: "NOT_FOUND", retryable: true };
+  if (code === 401 || code === 403) return { verified: false, status: "NOT_AUTHORIZED" };
   if (code !== 200) return { verified: false, status: "UNAVAILABLE", retryable: code >= 500 };
 
   let tx;
@@ -87,12 +83,11 @@ function lugdurumGetSumupPaymentStatus(params) {
   const paymentStatus = String(tx.status || "").toUpperCase();
   const simpleStatus = String(tx.simple_status || "").toUpperCase();
 
-  // Un remboursement/chargeback éventuel prévaut toujours sur un ancien succès.
-  if (["REFUNDED", "CHARGEBACK", "CANCELLED", "FAILED"].includes(simpleStatus) ||
-      ["REFUNDED", "CANCELLED", "FAILED"].includes(paymentStatus)) {
+  // Remboursement / chargeback prevaut toujours sur un ancien succes.
+  const invalidStatuses = ["REFUNDED", "CHARGEBACK", "CHARGE_BACK", "CANCELLED", "FAILED", "NON_COLLECTION"];
+  if (invalidStatuses.includes(simpleStatus) || invalidStatuses.includes(paymentStatus)) {
     return { verified: false,
-      status: ["REFUNDED", "CHARGEBACK", "CANCELLED", "FAILED"].includes(simpleStatus)
-        ? simpleStatus : paymentStatus };
+      status: invalidStatuses.includes(simpleStatus) ? simpleStatus : paymentStatus };
   }
 
   if (paymentStatus === "SUCCESSFUL" &&
