@@ -27,3 +27,7 @@ jobs:
       - name: Verifier le manifeste Apps Script
         run: |
           node -e 'JSON.parse(require("node:fs").readFileSync("apps-script/appsscript.json", "utf8"))'
+
+      - name: Verifier les autorisations Sheets et SumUp
+        run: |
+          node -e 'const m = require("./apps-script/appsscript.json"); const required = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/script.external_request"]; for (const scope of required) { if (!m.oauthScopes?.includes(scope)) { console.error("Autorisation manquante:", scope); process.exitCode = 1; } }'
