@@ -218,7 +218,7 @@ test("route HTTP GET : status SumUp au format JSON de Lugdurum", () => {
 });
 
 
-function createSumupFrontendHarness(verifiedResult, verificationEnabled = true) {
+function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, options = {}) {
   const original = fs.readFileSync(
     path.join(__dirname, "..", "docs", "vente-rapide.js"), "utf8"
   );
@@ -240,9 +240,10 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true) 
   assert.ok(enabled.includes(start), "Demarrage du frontend non reconnu");
   const source = enabled.replace(
     start,
-    "  window.__test = { state, els, verifyPendingSumup, buildTransaction, buildForeignTxId };\n})();"
+    "  window.__test = { state, els, verifyPendingSumup, buildTransaction, buildForeignTxId, sumupPilotEnabled: SUMUP_CONFIG.verificationEnabled };\n})();"
   );
   const memory = new Map();
+  if (options.previouslyEnabled) memory.set("lugdurum_sumup_pilot_enabled", "1");
   const elements = new Map();
   const saved = [];
   const timers = [];
@@ -266,7 +267,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true) 
   };
   const window = {
     crypto: { randomUUID: () => "123E4567-E89B-12D3-A456-426614174000" },
-    location: { href: "https://example.test/vente-rapide.html" },
+    location: { href: options.url || "https://example.test/vente-rapide.html" },
     history: { replaceState() {} },
     setTimeout(callback) { timers.push(callback); return timers.length; },
     clearTimeout() {},
@@ -360,4 +361,30 @@ test("PWA pilote activee : reference UUID pour la verification API", () => {
   const active = createSumupFrontendHarness({});
   const ref = active.app.buildForeignTxId();
   assert.match(ref, /^LUG_[0-9]{13}_[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/);
+});
+
+
+test("pilote de production : inactif par defaut sur les autres telephones", () => {
+  const h = createSumupFrontendHarness({}, false);
+  assert.equal(h.app.sumupPilotEnabled, false);
+  assert.equal(h.memory.get("lugdurum_sumup_pilot_enabled"), undefined);
+});
+
+test("pilote de production : lien opt-in active cet appareil uniquement", () => {
+  const h = createSumupFrontendHarness({}, false, {
+    url: "https://example.test/vente-rapide.html?sumup_pilot=1"
+  });
+  assert.equal(h.app.sumupPilotEnabled, true);
+  assert.equal(h.memory.get("lugdurum_sumup_pilot_enabled"), "1");
+  assert.match(h.app.buildForeignTxId(), /^LUG_[0-9]{13}_[0-9A-F]{8}-/);
+});
+
+test("pilote de production : lien opt-out restaure le mode manuel", () => {
+  const h = createSumupFrontendHarness({}, false, {
+    previouslyEnabled: true,
+    url: "https://example.test/vente-rapide.html?sumup_pilot=0"
+  });
+  assert.equal(h.app.sumupPilotEnabled, false);
+  assert.equal(h.memory.get("lugdurum_sumup_pilot_enabled"), undefined);
+  assert.match(h.app.buildForeignTxId(), /^LUG_[0-9]{13}_[A-Z0-9]{6}$/);
 });

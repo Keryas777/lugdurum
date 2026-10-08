@@ -61,6 +61,21 @@
     verificationMaxAttempts: 5
   };
 
+  // Pilote de production : desactive pour tous les appareils par defaut.
+  // ?sumup_pilot=1 autorise la verification uniquement sur cet appareil.
+  // ?sumup_pilot=0 restaure immediatement la confirmation manuelle.
+  // Ne jamais activer globalement avant un vrai paiement de recette.
+  const SUMUP_PILOT_STORAGE_KEY = "lugdurum_sumup_pilot_enabled";
+  const sumupPilotParam = new URL(window.location.href).searchParams.get("sumup_pilot");
+  if (sumupPilotParam === "1") {
+    localStorage.setItem(SUMUP_PILOT_STORAGE_KEY, "1");
+  } else if (sumupPilotParam === "0") {
+    localStorage.removeItem(SUMUP_PILOT_STORAGE_KEY);
+  }
+  SUMUP_CONFIG.verificationEnabled =
+    SUMUP_CONFIG.verificationEnabled ||
+    localStorage.getItem(SUMUP_PILOT_STORAGE_KEY) === "1";
+
   const SALE_MODES = {
     BOTTLE_50: {
       label: "50 cL",
@@ -1754,7 +1769,12 @@
       updated_at: new Date().toISOString()
     });
 
-    setStatus("Ouverture de SumUp… Confirme le paiement au retour.", "isSuccess");
+    setStatus(
+      SUMUP_CONFIG.verificationEnabled
+        ? "Ouverture de SumUp… Contrôle API pilote actif sur cet appareil. Confirmation manuelle toujours possible."
+        : "Ouverture de SumUp… Confirme le paiement au retour.",
+      "isSuccess"
+    );
     showSumupConfirm(getPendingSumup());
 
     window.location.href = sumupUrl;
