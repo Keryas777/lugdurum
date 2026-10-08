@@ -1656,14 +1656,23 @@
     return candidates[0] || null;
   };
 
-  const findStockMissionForEvent = (eventId, stockMissions) => {
+  const findStockMissionForEvent = (eventId, stockMissions, journees = []) => {
     const id = String(eventId || "").trim();
-
     if (!id) return null;
 
+    const candidates = stockMissions.filter((mission) => !isCancelledStatus(mission));
+    const linkedStockIds = new Set(
+      journees
+        .filter((day) => getDayEventId(day) === id && !isCancelledStatus(day))
+        .map((day) => getDayStockMissionId(day))
+        .filter(Boolean)
+    );
+
+    // Source de vérité : le stock lié aux journées, et non le premier doublon.
     return (
-      stockMissions.find((mission) => getStockMissionId(mission) === id) ||
-      stockMissions.find((mission) => getStockMissionEventId(mission) === id) ||
+      candidates.find((mission) => linkedStockIds.has(getStockMissionId(mission))) ||
+      candidates.find((mission) => getStockMissionId(mission) === id) ||
+      candidates.find((mission) => getStockMissionEventId(mission) === id) ||
       null
     );
   };
@@ -1885,7 +1894,7 @@
       .filter(isUpcomingOrCurrent)
       .map((eventItem) => {
         const eventId = getEventId(eventItem);
-        const stockMission = findStockMissionForEvent(eventId, data.stockMissions);
+        const stockMission = findStockMissionForEvent(eventId, data.stockMissions, data.journees);
 
         return {
           ...eventItem,
@@ -2211,11 +2220,11 @@
       if (itemType === "stock") {
         mission = data.stockMissions.find((item) => getStockMissionId(item) === itemId) || null;
       } else if (itemType === "mission" || itemType === "event" || itemType === "evenement") {
-        mission = findStockMissionForEvent(itemId, data.stockMissions);
+        mission = findStockMissionForEvent(itemId, data.stockMissions, data.journees);
       }
 
       if (!mission && selectedEvent) {
-        mission = findStockMissionForEvent(getEventId(selectedEvent), data.stockMissions);
+        mission = findStockMissionForEvent(getEventId(selectedEvent), data.stockMissions, data.journees);
       }
 
       if (!mission && selectedItem.stock_mission_id) {
@@ -2228,6 +2237,16 @@
     if (!mission && !selectedItem) {
       mission = findFallbackActiveStockMission(data.stockMissions);
     }
+
+    // L'API peut encore renvoyer une ancienne mission avant redéploiement Apps Script.
+    // Priorité au lien réellement enregistré dans journees_vente.
+    if (selectedEvent) {
+      const linkedMission = findStockMissionForEvent(
+        getEventId(selectedEvent), data.stockMissions, data.journees
+      );
+      if (linkedMission) mission = linkedMission;
+    }
+    if (mission && isCancelledStatus(mission)) mission = null;
 
     let journee = null;
 
@@ -2314,7 +2333,11 @@
   const getUiState = (homeState) => {
     const serverUi = state.runtime.ui;
 
-    if (serverUi && (serverUi.title || serverUi.code || serverUi.step)) {
+    if (
+      serverUi &&
+      (serverUi.title || serverUi.code || serverUi.step) &&
+      !(homeState.mission && homeState.journee && homeState.stockPrepared && normalizeStep(serverUi.step) === "stock")
+    ) {
       return {
         code: serverUi.code || "selected",
         step: normalizeStep(serverUi.step || serverUi.current_step || "inscriptions"),
@@ -2937,7 +2960,11 @@
 
     const homeState = buildHomeState();
     const uiState = getUiState(homeState);
-    const progress = normalizeProgress(state.runtime.progress, uiState);
+    const serverStep = normalizeStep(state.runtime.ui?.step || "");
+    const progress = normalizeProgress(
+      serverStep && serverStep !== normalizeStep(uiState.step) ? [] : state.runtime.progress,
+      uiState
+    );
 
     renderEventSelector(homeState);
     renderHero(homeState, uiState);
