@@ -55,26 +55,12 @@
     currency: "EUR",
     titlePrefix: "Lugdurum",
     callbackEnabled: false,
-    // Uniquement après installation du module Apps Script et essais de bout en bout.
-    verificationEnabled: false,
+    // Verification SumUp commune a tous les vendeurs, avec confirmation
+    // manuelle en secours si le paiement n'est pas confirme par l'API.
+    verificationEnabled: true,
     verificationRetryMs: 1800,
     verificationMaxAttempts: 5
   };
-
-  // Pilote de production : desactive pour tous les appareils par defaut.
-  // ?sumup_pilot=1 autorise la verification uniquement sur cet appareil.
-  // ?sumup_pilot=0 restaure immediatement la confirmation manuelle.
-  // Ne jamais activer globalement avant un vrai paiement de recette.
-  const SUMUP_PILOT_STORAGE_KEY = "lugdurum_sumup_pilot_enabled";
-  const sumupPilotParam = new URL(window.location.href).searchParams.get("sumup_pilot");
-  if (sumupPilotParam === "1") {
-    localStorage.setItem(SUMUP_PILOT_STORAGE_KEY, "1");
-  } else if (sumupPilotParam === "0") {
-    localStorage.removeItem(SUMUP_PILOT_STORAGE_KEY);
-  }
-  SUMUP_CONFIG.verificationEnabled =
-    SUMUP_CONFIG.verificationEnabled ||
-    localStorage.getItem(SUMUP_PILOT_STORAGE_KEY) === "1";
 
   const SALE_MODES = {
     BOTTLE_50: {
