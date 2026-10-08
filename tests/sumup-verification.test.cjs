@@ -218,16 +218,17 @@ test("route HTTP GET : status SumUp au format JSON de Lugdurum", () => {
 });
 
 
-function createSumupFrontendHarness(verifiedResult) {
+function createSumupFrontendHarness(verifiedResult, verificationEnabled = true) {
   const original = fs.readFileSync(
     path.join(__dirname, "..", "docs", "vente-rapide.js"), "utf8"
   );
   // Activer la verification uniquement dans cette simulation (PAS dans la PWA livree).
-  const enabled = original.replace(
-    "verificationEnabled: false,",
-    "verificationEnabled: true,"
-  );
-  assert.notEqual(enabled, original, "Flag pilote attendu absent du frontend");
+  const enabled = verificationEnabled
+    ? original.replace("verificationEnabled: false,", "verificationEnabled: true,")
+    : original;
+  if (verificationEnabled) {
+    assert.notEqual(enabled, original, "Flag pilote attendu absent du frontend");
+  }
   const start = [
     "  handleSumupCallbackParams();",
     "  renderAll();",
@@ -239,7 +240,7 @@ function createSumupFrontendHarness(verifiedResult) {
   assert.ok(enabled.includes(start), "Demarrage du frontend non reconnu");
   const source = enabled.replace(
     start,
-    "  window.__test = { state, els, verifyPendingSumup, buildTransaction };\n})();"
+    "  window.__test = { state, els, verifyPendingSumup, buildTransaction, buildForeignTxId };\n})();"
   );
   const memory = new Map();
   const elements = new Map();
@@ -346,4 +347,17 @@ test("PWA pilote : NOT_FOUND ne valide rien et planifie une nouvelle lecture", a
   assert.equal(h.saved.length, 0);
   assert.ok(h.timers.length > 0);
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("PWA pilote desactivee : le Payment Switch conserve les references courtes actuelles", () => {
+  const inactive = createSumupFrontendHarness({}, false);
+  const ref = inactive.app.buildForeignTxId();
+  assert.match(ref, /^LUG_[0-9]{13}_[A-Z0-9]{6}$/);
+  assert.ok(!ref.includes("123E4567-E89B-12D3-A456-426614174000"));
+});
+
+test("PWA pilote activee : reference UUID pour la verification API", () => {
+  const active = createSumupFrontendHarness({});
+  const ref = active.app.buildForeignTxId();
+  assert.match(ref, /^LUG_[0-9]{13}_[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/);
 });
