@@ -1,6 +1,6 @@
 # Pilote de vérification des paiements SumUp — Lugdurum
 
-**État : expérimental et désactivé par défaut. Ne pas activer pour Gerzat sans validation.**
+**État : pilote de production opt-in par appareil ; désactivé par défaut pour les autres vendeurs. Ne pas activer globalement avant la recette d'un paiement réel.**
 
 ## Objectif et limites
 
@@ -123,3 +123,42 @@ l'absence de doublon dans `transactions`, `ventes_lignes`,
 
 **Non testé :** autorisation réelle de la clé sur le compte marchand, propagation
 du `foreign-tx-id` par le Payment Switch iOS, déploiement Apps Script effectif.
+
+
+## Pilote de production opt-in (octobre 2026)
+
+Le backend est déployé. L'interrogation d'une transaction inventée a renvoyé
+`NOT_FOUND` après autorisation Google, mais **aucun paiement réel n'a encore
+été reconnu comme `SUCCESSFUL` par le circuit complet**.
+
+Pour expérimenter sur un seul appareil, ouvrir **depuis le même conteneur PWA/Safari** :
+
+- `vente-rapide.html?sumup_pilot=1` : enregistrer l'activation uniquement
+  dans son localStorage ; les prochains tickets CB de cet appareil utilisent des
+  identifiants UUID et interrogent l'API SumUp au retour.
+- `vente-rapide.html?sumup_pilot=0` : retirer immédiatement l'activation
+  locale et conserver le parcours manuel historique pour les futurs tickets.
+- Sans activation locale, tous les autres vendeurs utilisent les références
+  historiques courtes et valident manuellement leurs paiements.
+
+**Important :** le paramètre est mémorisé par appareil/stockage navigateur.
+Sur iPhone, Safari et la PWA installée peuvent avoir des stockages distincts :
+faire l'essai depuis le contexte qui possède la journée de vente active.
+Un paiement en cours conserve sa référence d'origine ; ne pas changer de mode
+avant d'avoir réglé le ticket en attente.
+
+Ne pas effectuer un encaissement avec sa propre carte dans le but de s'auto-financer.
+Demander plutôt à un tiers de réaliser **un véritable achat** dont le montant
+correspond au ticket. Tout encaissement réel est soumis aux frais SumUp et doit
+être comptabilisé ; un test artificiel à 1 € avec un produit vendu plus cher
+ne doit pas créer une vente/consommation de stock fictive dans le Google Sheet.
+
+Après un vrai paiement, vérifier la présence de la référence `foreign_tx_id`
+chez SumUp, le statut renvoyé, la présence d'un seul ticket et des mouvements de
+stock correspondants. Si contrôle automatique indisponible, ne jamais considérer
+le lancement de SumUp comme une confirmation de paiement : vérifier le reçu dans
+SumUp avant toute confirmation manuelle.
+
+La bascule globale (`SUMUP_CONFIG.verificationEnabled: true`) reste une **étape
+séparée** qui nécessite validation de cette recette terrain et des données
+comptables. Les clés API restent dans les propriétés du script.
