@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Vente rapide V20 :
+    Vente rapide V21 :
     - Catalogue + offres chargés en une seule lecture réseau quand possible :
       LugdurumAPI.getVenteRapideData() si disponible,
       sinon LugdurumAPI.getCoreData(["catalogue", "offresVente"]),
@@ -54,7 +54,11 @@
     affiliateKey: "sup_afk_XKnrqZNyKlv6T1c29eBSYdrco9uwKz0j",
     currency: "EUR",
     titlePrefix: "Lugdurum",
-    callbackEnabled: false
+    callbackEnabled: false,
+    // Uniquement après installation du module Apps Script et essais de bout en bout.
+    verificationEnabled: false,
+    verificationRetryMs: 1800,
+    verificationMaxAttempts: 5
   };
 
   const SALE_MODES = {
@@ -1459,7 +1463,12 @@
   };
 
   const buildForeignTxId = () => {
-    return `LUG_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    // UUID : la référence sert aussi de capacité d'accès au statut minimal.
+    // Sans crypto, paiement manuel conservé et vérification automatique indisponible.
+    const cryptoId = window.crypto && typeof window.crypto.randomUUID === "function"
+      ? window.crypto.randomUUID().toUpperCase()
+      : Math.random().toString(36).slice(2, 8).toUpperCase();
+    return `LUG_${Date.now()}_${cryptoId}`;
   };
 
   const buildCallbackUrl = (status, foreignTxId) => {
@@ -1498,10 +1507,14 @@
 
   const clearPendingSumup = () => {
     localStorage.removeItem(STORAGE_KEYS.sumupPending);
+    resetSumupVerification();
   };
 
   const showSumupConfirm = (pending, message = "") => {
     if (!pending || !pending.transaction || !els.sumupConfirmOverlay) return;
+    if (SUMUP_CONFIG.verificationEnabled && els.sumupConfirmSuccessBtn) {
+      els.sumupConfirmSuccessBtn.textContent = "Confirmer manuellement";
+    }
 
     els.sumupPendingAmount.textContent = formatCurrency(pending.transaction.total_encaisse_ttc);
     els.sumupPendingReference.textContent =
@@ -1535,12 +1548,115 @@
     els.amountPaidInput.value = formatAmountInput(transaction.total_encaisse_ttc || 0);
   };
 
+  let sumupVerificationTimer = null;
+  let sumupVerificationPromise = null;
+  let sumupVerificationAttempts = 0;
+  let sumupVerificationCurrentId = "";
+  let sumupVerificationStopped = false;
+
+  const resetSumupVerification = () => {
+    if (sumupVerificationTimer) window.clearTimeout(sumupVerificationTimer);
+    sumupVerificationTimer = null;
+    sumupVerificationAttempts = 0;
+    sumupVerificationCurrentId = "";
+    sumupVerificationStopped = false;
+  };
+
+  const scheduleSumupVerification = () => {
+    if (sumupVerificationTimer || sumupVerificationStopped ||
+        sumupVerificationAttempts >= SUMUP_CONFIG.verificationMaxAttempts) return;
+    sumupVerificationTimer = window.setTimeout(() => {
+      sumupVerificationTimer = null;
+      verifyPendingSumup();
+    }, SUMUP_CONFIG.verificationRetryMs);
+  };
+
+  const verifyPendingSumup = async () => {
+    if (!SUMUP_CONFIG.verificationEnabled || state.saveInProgress ||
+        navigator.onLine === false ||
+        document.visibilityState === "hidden" ||
+        !hasApi() || typeof api().verifySumupPayment !== "function") return;
+    if (sumupVerificationPromise || sumupVerificationStopped) return;
+
+    const pending = getPendingSumup();
+    if (!pending?.transaction || !pending.foreign_tx_id) return;
+    if (!/^LUG_[0-9]{13}_[0-9A-F]{8}-[0-9A-F-]{27}$/.test(pending.foreign_tx_id)) {
+      showSumupConfirm(pending, "Ancienne référence SumUp : utilise la confirmation manuelle.");
+      return;
+    }
+
+    if (sumupVerificationCurrentId !== pending.foreign_tx_id) {
+      resetSumupVerification();
+      sumupVerificationCurrentId = pending.foreign_tx_id;
+    }
+    if (sumupVerificationAttempts >= SUMUP_CONFIG.verificationMaxAttempts) return;
+
+    sumupVerificationAttempts++;
+    const expectedId = pending.foreign_tx_id;
+    showSumupConfirm(pending, "Vérification du paiement auprès de SumUp… (" +
+      sumupVerificationAttempts + "/" + SUMUP_CONFIG.verificationMaxAttempts +
+      "). La confirmation manuelle reste disponible.");
+
+    sumupVerificationPromise = api().verifySumupPayment({
+      foreignTxId: expectedId,
+      amount: pending.transaction.total_encaisse_ttc,
+      currency: SUMUP_CONFIG.currency
+    });
+
+    try {
+      const result = await sumupVerificationPromise;
+      const current = getPendingSumup();
+      if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress) return;
+
+      if (result?.verified === true && result?.status === "SUCCESSFUL" &&
+          result?.foreign_tx_id === expectedId) {
+        sumupVerificationStopped = true;
+        showSumupConfirm(current, "Paiement confirmé par SumUp. Enregistrement du ticket…");
+        await confirmSumupSuccess(result);
+        return;
+      }
+
+      const status = String(result?.status || "").toUpperCase();
+      if (status === "MISMATCH") {
+        sumupVerificationStopped = true;
+        showSumupConfirm(current, "Attention : montant, devise, compte ou référence incohérents. " +
+          "Aucun ticket automatique créé. Vérifie dans SumUp avant toute confirmation.");
+      } else if (["FAILED", "CANCELLED", "REFUNDED", "CHARGEBACK"].includes(status)) {
+        sumupVerificationStopped = true;
+        showSumupConfirm(current, "SumUp signale : " + status +
+          ". Aucune vente automatique enregistrée.");
+      } else if (status === "UNSUPPORTED_ID" || status === "INVALID_REQUEST") {
+        sumupVerificationStopped = true;
+        showSumupConfirm(current, "Vérification impossible avec cette référence ; " +
+          "confirmation manuelle disponible.");
+      } else if (sumupVerificationAttempts < SUMUP_CONFIG.verificationMaxAttempts) {
+        showSumupConfirm(current, "SumUp n'a pas encore confirmé ce paiement (" +
+          (status || "en attente") + "). Nouvelle vérification automatique…");
+        scheduleSumupVerification();
+      } else {
+        showSumupConfirm(current, "Statut SumUp non confirmé automatiquement. " +
+          "Vérifie le paiement dans SumUp puis utilise la confirmation manuelle.");
+      }
+    } catch (error) {
+      const current = getPendingSumup();
+      if (current?.foreign_tx_id === expectedId) {
+        showSumupConfirm(current, "Contrôle SumUp indisponible (" +
+          String(error?.message || "réseau") + "). Le paiement n'est pas annulé ; " +
+          "confirmation manuelle possible après vérification dans SumUp.");
+        scheduleSumupVerification();
+      }
+    } finally {
+      sumupVerificationPromise = null;
+    }
+  };
+
   const checkPendingSumup = (message = "") => {
     const pending = getPendingSumup();
-
     if (!pending) return;
-
     showSumupConfirm(pending, message);
+    if (SUMUP_CONFIG.verificationEnabled && !message) {
+      verifyPendingSumup();
+    }
   };
 
   const handleSumupCallbackParams = () => {
@@ -1612,6 +1728,7 @@
       return;
     }
 
+    resetSumupVerification();
     const foreignTxId = buildForeignTxId();
     const transaction = buildTransaction({
       provider: "SUMUP",
@@ -1636,7 +1753,7 @@
     window.location.href = sumupUrl;
   };
 
-  const confirmSumupSuccess = async () => {
+  const confirmSumupSuccess = async (verification = null) => {
     if (state.saveInProgress) return;
     const pending = getPendingSumup();
 
@@ -1645,6 +1762,9 @@
       return;
     }
 
+    const isApiVerified = verification?.verified === true &&
+      verification?.status === "SUCCESSFUL" &&
+      verification?.foreign_tx_id === pending.foreign_tx_id;
     const transaction = {
       ...pending.transaction,
       statut: "validee",
@@ -1652,7 +1772,10 @@
       updated_at: new Date().toISOString(),
       note: [
         pending.transaction.note || "",
-        pending.callback_status ? `Retour SumUp : ${pending.callback_status}` : ""
+        pending.callback_status ? `Retour SumUp : ${pending.callback_status}` : "",
+        isApiVerified
+          ? `Vérifié par API SumUp · ${String(verification.transaction_code || "")}`
+          : "Paiement confirmé manuellement dans Lugdurum"
       ].filter(Boolean).join("\n")
     };
 
@@ -1699,6 +1822,7 @@
   };
 
   const confirmSumupFailure = () => {
+    if (state.saveInProgress) return;
     const pending = getPendingSumup();
 
     if (pending?.transaction) {
@@ -1717,6 +1841,7 @@
   };
 
   const reopenSumup = () => {
+    if (state.saveInProgress) return;
     const pending = getPendingSumup();
 
     if (!pending?.sumup_url) {
@@ -2118,7 +2243,9 @@
   els.saveTicketBtn.addEventListener("click", saveTicket);
 
   if (els.sumupConfirmSuccessBtn) {
-    els.sumupConfirmSuccessBtn.addEventListener("click", confirmSumupSuccess);
+    els.sumupConfirmSuccessBtn.addEventListener("click", () => {
+      confirmSumupSuccess();
+    });
   }
 
   if (els.sumupConfirmFailBtn) {
