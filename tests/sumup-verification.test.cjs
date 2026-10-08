@@ -216,3 +216,134 @@ test("route HTTP GET : status SumUp au format JSON de Lugdurum", () => {
   const jsonp = JSON.parse(jsonpOutput.text.slice("lugdurumTestCallback(".length, -2));
   assert.equal(jsonp.data.verified, true);
 });
+
+
+function createSumupFrontendHarness(verifiedResult) {
+  const original = fs.readFileSync(
+    path.join(__dirname, "..", "docs", "vente-rapide.js"), "utf8"
+  );
+  // Activer la verification uniquement dans cette simulation (PAS dans la PWA livree).
+  const enabled = original.replace(
+    "verificationEnabled: false,",
+    "verificationEnabled: true,"
+  );
+  assert.notEqual(enabled, original, "Flag pilote attendu absent du frontend");
+  const start = [
+    "  handleSumupCallbackParams();",
+    "  renderAll();",
+    "  loadContext();",
+    "  loadData();",
+    "  checkPendingSumup();",
+    "})();"
+  ].join("\n");
+  assert.ok(enabled.includes(start), "Demarrage du frontend non reconnu");
+  const source = enabled.replace(
+    start,
+    "  window.__test = { state, els, verifyPendingSumup, buildTransaction };\n})();"
+  );
+  const memory = new Map();
+  const elements = new Map();
+  const saved = [];
+  const timers = [];
+  const fakeElement = () => ({
+    value: "", textContent: "", innerHTML: "", hidden: true, disabled: false,
+    dataset: {}, children: [], style: {},
+    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    addEventListener() {}, querySelector() { return null; },
+    querySelectorAll() { return []; }
+  });
+  const document = {
+    visibilityState: "visible",
+    title: "Test",
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, fakeElement());
+      return elements.get(id);
+    },
+    querySelector: fakeElement,
+    querySelectorAll() { return []; },
+    addEventListener() {}
+  };
+  const window = {
+    crypto: { randomUUID: () => "123E4567-E89B-12D3-A456-426614174000" },
+    location: { href: "https://example.test/vente-rapide.html" },
+    history: { replaceState() {} },
+    setTimeout(callback) { timers.push(callback); return timers.length; },
+    clearTimeout() {},
+    addEventListener() {},
+    LugdurumAPI: {
+      async verifySumupPayment() { return verifiedResult; },
+      async saveVenteRapideBundle(payload) {
+        saved.push(payload);
+        return { ok: true };
+      },
+      async getTransactions() { return []; },
+      getPendingWritesCount() { return 0; }
+    }
+  };
+  const localStorage = {
+    getItem(key) { return memory.get(key) || null; },
+    setItem(key, value) { memory.set(key, String(value)); },
+    removeItem(key) { memory.delete(key); }
+  };
+  vm.runInNewContext(source, {
+    window, document, localStorage, navigator: { onLine: true },
+    URL, URLSearchParams, console
+  }, { filename: "vente-rapide.js" });
+  const app = window.__test;
+  app.state.journeeActive = {
+    mission_id: "MS_TEST", journee_id: "JV_TEST", user_id: "U_TEST"
+  };
+  app.state.ticketItems = [{
+    item_id: "1", type: "bottle", sku_id: "S", parfum_code: "P",
+    parfum_nom: "TEST", format_cl: 50, quantite: 1,
+    prix_unitaire_ttc: 34.90, prix_unitaire_ht: 34.90
+  }];
+  app.state.paymentMode = "CB";
+  app.els.amountPaidInput.value = "34.90";
+  const transaction = app.buildTransaction({
+    provider: "SUMUP",
+    paymentStatus: "SUMUP_LANCE",
+    status: "paiement_en_attente",
+    foreignTxId: ID
+  });
+  memory.set("lugdurum_pending_sumup_ticket", JSON.stringify({
+    foreign_tx_id: ID,
+    sumup_url: "sumupmerchant://pay/1.0",
+    transaction
+  }));
+  return { app, memory, saved, timers };
+}
+
+test("PWA pilote : paiement API SUCCESSFUL => un ticket valide et panier vide", async () => {
+  const h = createSumupFrontendHarness({
+    verified: true,
+    status: "SUCCESSFUL",
+    foreign_tx_id: ID,
+    transaction_code: "TEST123"
+  });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.saved[0].transaction.statut, "validee");
+  assert.equal(h.saved[0].transaction.paiement_statut, "PAYE");
+  assert.equal(h.saved[0].transaction.transaction_id, ID);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+});
+
+test("PWA pilote : MISMATCH ne doit jamais enregistrer la vente", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "MISMATCH" });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.app.state.ticketItems.length, 1);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("PWA pilote : NOT_FOUND ne valide rien et planifie une nouvelle lecture", async () => {
+  const h = createSumupFrontendHarness({
+    verified: false, status: "NOT_FOUND", retryable: true
+  });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.saved.length, 0);
+  assert.ok(h.timers.length > 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
