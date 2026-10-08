@@ -2137,6 +2137,12 @@
     const server = state.runtime.selectedSummary;
 
     if (!fallback) return null;
+    // Ne pas afficher "Stock à faire" sur une mission validée lorsque
+    // l'API Apps Script n'a pas encore reçu son correctif.
+    if (homeState.mission && homeState.journee && homeState.stockPrepared &&
+        normalizeStep(state.runtime.ui?.step || "") === "stock") {
+      return fallback;
+    }
     if (!server || typeof server !== "object") return fallback;
 
     const label1 = pickFirst(server, ["statOneLabel", "one_label", "label_1", "stat_one_label", "stat1_label"]);
@@ -2176,6 +2182,21 @@
 
     const upcomingItems = runtimeItems
       .filter((item) => getUpcomingItemId(item))
+      .map((item) => {
+        if (getUpcomingItemType(item) !== "mission") return item;
+        const stockMission = findStockMissionForEvent(
+          getUpcomingItemId(item), data.stockMissions, data.journees
+        );
+        if (!stockMission) return item;
+        return {
+          ...item,
+          stock_mission_id: getStockMissionId(stockMission),
+          statut: stockMission.statut,
+          status_label: isStockPrepared(stockMission, data.mouvementsStock)
+            ? "Stock prêt"
+            : getUpcomingItemStatusLabel(stockMission)
+        };
+      })
       .sort((a, b) => {
         const byDate = String(a.date_debut || "").localeCompare(String(b.date_debut || ""));
         if (byDate !== 0) return byDate;
