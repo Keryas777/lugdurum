@@ -90,7 +90,9 @@ function lugdurumGetSumupPaymentStatus(params) {
   // Un remboursement/chargeback éventuel prévaut toujours sur un ancien succès.
   if (["REFUNDED", "CHARGEBACK", "CANCELLED", "FAILED"].includes(simpleStatus) ||
       ["REFUNDED", "CANCELLED", "FAILED"].includes(paymentStatus)) {
-    return { verified: false, status: paymentStatus || simpleStatus || "FAILED" };
+    return { verified: false,
+      status: ["REFUNDED", "CHARGEBACK", "CANCELLED", "FAILED"].includes(simpleStatus)
+        ? simpleStatus : paymentStatus };
   }
 
   if (paymentStatus === "SUCCESSFUL" &&
