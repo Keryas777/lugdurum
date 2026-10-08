@@ -66,7 +66,9 @@
     mouvementsStock: [],
     quantities: new Map(),
     dataLoaded: false,
-    isSaving: false
+    isSaving: false,
+    isStarting: false,
+    isValidated: false
   };
 
   const els = {
@@ -211,8 +213,11 @@
     }
   };
 
+  // Un verrou commun protège les deux validations, le brouillon et le démarrage.
+  // On conserve le verrou pendant toute la navigation vers la vente rapide.
   const setSaving = (isSaving) => {
     state.isSaving = isSaving;
+    const locked = state.isSaving || state.isStarting;
 
     [
       els.clearStockBtn,
@@ -220,7 +225,12 @@
       els.validateStockBtn,
       els.startDayBtn
     ].forEach((button) => {
-      if (button) button.disabled = isSaving;
+      if (!button) return;
+      const disabled = locked || (button === els.validateStockBtn && state.isValidated);
+      button.disabled = disabled;
+      button.style.filter = disabled ? "grayscale(1)" : "";
+      button.style.opacity = disabled ? "0.5" : "";
+      button.setAttribute("aria-busy", locked ? "true" : "false");
     });
   };
 
@@ -291,6 +301,12 @@
 
   const setQuantity = (skuId, quantity) => {
     const safeQuantity = Math.max(0, Math.floor(toNumber(quantity, 0)));
+
+    // Une modification explicite du stock autorise une nouvelle validation.
+    if (state.isValidated && !state.isSaving && !state.isStarting) {
+      state.isValidated = false;
+      setSaving(false);
+    }
 
     if (safeQuantity > 0) {
       state.quantities.set(skuId, safeQuantity);
@@ -729,8 +745,8 @@
     }
   };
 
-  const savePreparation = async (status = "brouillon") => {
-    if (state.isSaving) return null;
+  const savePreparation = async (status = "brouillon", { fromStart = false } = {}) => {
+    if (state.isSaving || (state.isStarting && !fromStart)) return null;
 
     const payload = buildPreparationMovements(status);
 
@@ -762,6 +778,9 @@
       }
 
       const pendingCount = getPendingWritesCount();
+      if (status === "valide") {
+        state.isValidated = true;
+      }
 
       setStatus(
         pendingCount > 0
@@ -821,36 +840,51 @@
   };
 
   const startDay = async () => {
-    const preparation = await savePreparation("valide");
-
-    if (!preparation) return;
-
-    const missionId = state.stockMission.mission_id;
-    const preferredDayId = getActiveJourneeId();
-
-    const firstOpenDay =
-      state.missionJournees.find((journee) => journee.journee_id === preferredDayId) ||
-      state.missionJournees.find((journee) => journee.statut !== "cloture" && journee.statut !== "annule") ||
-      state.missionJournees[0];
-
-    if (!firstOpenDay) {
-      setStatus("Impossible de trouver une journée à démarrer.", "isError");
-      return;
-    }
-
-    const startedPatch = markDayStartedLocal(firstOpenDay.journee_id);
-
-    setSaving(true);
-    setStatus("Démarrage de la journée...");
+    // S'applique immédiatement, avant le premier await : un double appui est ignoré.
+    if (state.isSaving || state.isStarting) return;
+    state.isStarting = true;
+    setSaving(false);
 
     try {
+      const preparation = await savePreparation("valide", { fromStart: true });
+      if (!preparation) {
+        state.isStarting = false;
+        setSaving(false);
+        return;
+      }
+
+      const missionId = state.stockMission.mission_id;
+      const preferredDayId = getActiveJourneeId();
+      const firstOpenDay =
+        state.missionJournees.find((journee) => journee.journee_id === preferredDayId && journee.statut !== "cloture") ||
+        state.missionJournees.find((journee) => journee.statut !== "cloture" && journee.statut !== "annule") ||
+        state.missionJournees[0];
+
+      if (!firstOpenDay) {
+        setStatus("Stock validé, mais aucune journée à démarrer.", "isError");
+        state.isStarting = false;
+        setSaving(false);
+        return;
+      }
+
+      // La préparation peut être terminée plusieurs jours avant la foire.
+      // Ne pas avancer artificiellement la date de démarrage de la journée.
+      const today = new Date();
+      const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      if (String(firstOpenDay.date || "").slice(0, 10) > todayLocal) {
+        setStatus("Stock validé. La journée sera démarrée à la date de la vente.", "isSuccess");
+        window.location.href = "./index.html";
+        return;
+      }
+
+      const startedPatch = markDayStartedLocal(firstOpenDay.journee_id);
+      setStatus("Démarrage de la journée...");
       await saveStockMissionToApi(startedPatch.mission);
       await saveJourneesToApi(startedPatch.journees);
 
       localStorage.setItem(STORAGE_KEYS.activeMissionId, missionId);
       localStorage.setItem(STORAGE_KEYS.activeStockMissionId, missionId);
       localStorage.setItem(STORAGE_KEYS.activeJourneeId, firstOpenDay.journee_id);
-
       writeJson(STORAGE_KEYS.preparationContext, {
         mission_id: missionId,
         stock_mission_id: missionId,
@@ -862,11 +896,12 @@
       window.location.href = "./vente-rapide.html";
     } catch (error) {
       setStatus(`Stock validé, mais démarrage incomplet : ${error.message}`, "isError");
-    } finally {
+      state.isStarting = false;
       setSaving(false);
     }
+    // Si une navigation a été demandée, le verrou reste actif jusqu'au changement de page.
+    // En cas de validation refusée, on déverrouille pour permettre la correction.
   };
-
   const renderMissionContext = () => {
     if (!state.stockMission) {
       els.stockMissionMeta.textContent =
@@ -1119,6 +1154,9 @@
   });
 
   els.clearStockBtn.addEventListener("click", () => {
+    if (state.isSaving || state.isStarting) return;
+    state.isValidated = false;
+    setSaving(false);
     state.quantities = new Map();
     updateAllStockInputs();
     setStatus("");
@@ -1134,6 +1172,12 @@
   });
 
   els.startDayBtn.addEventListener("click", startDay);
+
+  els.stockNoteInput?.addEventListener("input", () => {
+    if (state.isSaving || state.isStarting) return;
+    state.isValidated = false;
+    setSaving(false);
+  });
 
   window.addEventListener("lugdurum:sync-status", (event) => {
     const detail = event.detail || {};
