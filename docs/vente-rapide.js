@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Vente rapide V19 :
+    Vente rapide V20 :
     - Catalogue + offres chargés en une seule lecture réseau quand possible :
       LugdurumAPI.getVenteRapideData() si disponible,
       sinon LugdurumAPI.getCoreData(["catalogue", "offresVente"]),
@@ -114,6 +114,8 @@
     mouvementsStock: [],
     dataLoaded: false,
     contextLoaded: false,
+    saveInProgress: false,
+    failedTicket: null,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
     daySummary: {
       isLoading: false,
@@ -584,6 +586,8 @@
     throw new Error("Aucune méthode de lecture transactions disponible.");
   };
 
+  let currentSummaryRequest = 0;
+
   const loadDaySummaryFromNetwork = async ({ silent = false } = {}) => {
     if (!hasActiveSalesContext()) {
       state.daySummary = {
@@ -598,6 +602,8 @@
       return state.daySummary;
     }
 
+    const requestId = ++currentSummaryRequest;
+    const journeeId = state.journeeActive.journee_id;
     state.daySummary = {
       ...state.daySummary,
       isLoading: true,
@@ -608,8 +614,14 @@
 
     try {
       const transactions = await loadTransactionsFromNetwork();
+      if (requestId !== currentSummaryRequest || journeeId !== state.journeeActive.journee_id) {
+        return state.daySummary;
+      }
       return setDaySummaryFromTransactions(transactions);
     } catch (error) {
+      if (requestId !== currentSummaryRequest || journeeId !== state.journeeActive.journee_id) {
+        return state.daySummary;
+      }
       state.daySummary = {
         ...state.daySummary,
         isLoading: false,
@@ -626,8 +638,14 @@
     }
   };
 
-  const refreshDaySummaryAfterSale = async () => {
-    await loadDaySummaryFromNetwork({ silent: true });
+  // La lecture complète des statistiques ne doit jamais bloquer le ticket suivant.
+  let summaryRefreshTimer = null;
+  const refreshDaySummaryAfterSale = () => {
+    if (summaryRefreshTimer) window.clearTimeout(summaryRefreshTimer);
+    summaryRefreshTimer = window.setTimeout(() => {
+      summaryRefreshTimer = null;
+      loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    }, 700);
   };
 
   const getVisibleProducts = () => {
@@ -945,7 +963,9 @@
 
     els.saveTicketBtn.classList.toggle("isSumupButton", isCb);
 
-    els.saveTicketBtn.disabled = !hasActiveSalesContext();
+    if (state.saveInProgress) els.saveTicketBtn.textContent = "Enregistrement…";
+    els.saveTicketBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
+    els.amountPaidInput.disabled = state.saveInProgress;
   };
 
   const renderAll = ({ refreshProducts = false } = {}) => {
@@ -1300,13 +1320,20 @@
     return result;
   };
 
+  const createLocalTransactionId = () => {
+    const unique = window.crypto && typeof window.crypto.randomUUID === "function"
+      ? window.crypto.randomUUID()
+      : Math.random().toString(36).slice(2, 12);
+    return `TX_${Date.now()}_${unique}`;
+  };
+
   const buildTransaction = ({
     provider = "",
     paymentStatus = "PAYE",
     status = "validee",
     foreignTxId = ""
   } = {}) => {
-    const transactionId = foreignTxId || `TX_${Date.now()}`;
+    const transactionId = foreignTxId || createLocalTransactionId();
     const totalCatalogue = getTicketTotal();
     const amountInput = Number(String(els.amountPaidInput.value).replace(",", "."));
     const totalEncaisse =
@@ -1610,6 +1637,7 @@
   };
 
   const confirmSumupSuccess = async () => {
+    if (state.saveInProgress) return;
     const pending = getPendingSumup();
 
     if (!pending || !pending.transaction) {
@@ -1636,9 +1664,11 @@
       return;
     }
 
+    state.saveInProgress = true;
+    renderPayment();
+
     try {
       await saveTransactionToApi(transaction);
-      await refreshDaySummaryAfterSale();
 
       clearPendingSumup();
       hideSumupConfirm();
@@ -1659,8 +1689,12 @@
       els.amountPaidInput.value = "";
       state.amountManuallyEdited = false;
       renderAll();
+      refreshDaySummaryAfterSale();
     } catch (error) {
-      setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}`, "isError");
+      setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}. Réessaie le même ticket après vérification.`, "isError");
+    } finally {
+      state.saveInProgress = false;
+      renderPayment();
     }
   };
 
@@ -1694,7 +1728,16 @@
     window.location.href = pending.sumup_url;
   };
 
+  const getTicketFingerprint = () => JSON.stringify({
+    mission_id: state.journeeActive.mission_id,
+    journee_id: state.journeeActive.journee_id,
+    payment: state.paymentMode,
+    amount: els.amountPaidInput.value,
+    items: state.ticketItems
+  });
+
   const saveTicket = async () => {
+    if (state.saveInProgress) return;
     if (!hasActiveSalesContext()) {
       showMissingContextStatus();
       return;
@@ -1715,16 +1758,24 @@
       return;
     }
 
-    const transaction = buildTransaction({
-      provider: "",
-      paymentStatus: "PAYE",
-      status: "validee"
-    });
+    const fingerprint = getTicketFingerprint();
+    const transaction = state.failedTicket?.fingerprint === fingerprint
+      ? state.failedTicket.transaction
+      : buildTransaction({
+          provider: "",
+          paymentStatus: "PAYE",
+          status: "validee"
+        });
+
+    // Une tentative rejouée sur le même panier garde son transaction_id.
+    state.failedTicket = { fingerprint, transaction };
+    state.saveInProgress = true;
+    renderPayment();
 
     try {
       await saveTransactionToApi(transaction);
-      await refreshDaySummaryAfterSale();
 
+      state.failedTicket = null;
       const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
         ? api().getPendingWritesCount()
         : 0;
@@ -1732,7 +1783,7 @@
       setStatus(
         pendingCount > 0
           ? `Ticket + sortie stock conservés dans la file d’attente · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
-          : `Ticket enregistré + stock décrémenté · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
+          : `Ticket enregistré + sortie de stock enregistrée · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
 
@@ -1741,8 +1792,12 @@
       els.amountPaidInput.value = "";
       state.amountManuallyEdited = false;
       renderAll();
+      refreshDaySummaryAfterSale();
     } catch (error) {
-      setStatus(`Erreur enregistrement ticket : ${error.message}`, "isError");
+      setStatus(`Enregistrement incertain : ${error.message}. Réessaie SANS modifier le panier pour conserver le même ID et éviter un doublon.`, "isError");
+    } finally {
+      state.saveInProgress = false;
+      renderPayment();
     }
   };
 
@@ -1812,8 +1867,13 @@
       localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
       "";
 
+    const currentUserId = hasApi() && typeof api().getCurrentUserId === "function"
+      ? api().getCurrentUserId()
+      : "";
+
     state.journeeActive = {
       ...EMPTY_JOURNEE_ACTIVE,
+      user_id: currentUserId || EMPTY_JOURNEE_ACTIVE.user_id,
       mission_id: stockMissionId,
       journee_id: journeeId
     };
@@ -1985,6 +2045,7 @@
   };
 
   document.addEventListener("click", (event) => {
+    if (state.saveInProgress) return;
     const draftRemoveButton = event.target.closest("[data-remove-draft-code]");
     if (draftRemoveButton) {
       removeOneDraftProduct(draftRemoveButton.dataset.removeDraftCode);
@@ -2045,14 +2106,15 @@
   });
 
   els.clearDraftPackBtn.addEventListener("click", () => {
+    if (state.saveInProgress) return;
     state.draftPack = [];
     setStatus("");
     renderAll();
   });
 
-  els.addPackBtn.addEventListener("click", addPackToTicket);
-  els.clearTicketBtn.addEventListener("click", clearTicket);
-  els.undoBtn.addEventListener("click", undoLast);
+  els.addPackBtn.addEventListener("click", () => { if (!state.saveInProgress) addPackToTicket(); });
+  els.clearTicketBtn.addEventListener("click", () => { if (!state.saveInProgress) clearTicket(); });
+  els.undoBtn.addEventListener("click", () => { if (!state.saveInProgress) undoLast(); });
   els.saveTicketBtn.addEventListener("click", saveTicket);
 
   if (els.sumupConfirmSuccessBtn) {
