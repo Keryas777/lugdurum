@@ -33,51 +33,49 @@ Liens :
 Aucun onglet ni aucune colonne Google Sheets modifiés. Les identifiants de la feuille
 `transactions` et du tableau `ventes_lignes` restent inchangés.
 
-## Installation côté Apps Script (une fois les tests préparés)
+## Intégration serveur avec le dépôt GitHub
 
-1. **Utiliser en premier une copie TEST** du classeur et du projet Apps Script,
-   pas le déploiement de production.
-2. Copier le contenu de `apps-script/10_sumup_verification.gs` dans un **nouveau fichier**
-   `10_sumup_verification.gs` du projet Apps Script.
-3. Dans le routeur `01_http_router.gs`, **dans doGet(e)** et avant le dispatch
-   des actions GET habituelles, ajouter exactement :
+La PR #3 a importé les **11 modules Apps Script réels** dans `apps-script/`.
+La PR #2 a désormais **déjà raccordé** la route `getSumupPaymentStatus`
+dans `apps-script/01_http_router.js`, via `invokeGetAction_` et
+`callRequiredFunction_("lugdurumGetSumupPaymentStatus", params)`.
+Le module `apps-script/10_sumup_verification.gs` est versionné au même endroit.
 
-```javascript
-if (action === "getSumupPaymentStatus") {
-  return reply({
-    ok: true,
-    version: API_VERSION,
-    duration_ms: Date.now() - startedAt,
-    data: lugdurumGetSumupPaymentStatus(e?.parameter || {})
-  });
-}
-```
+**Ne pas recopier manuellement les fichiers dans l'éditeur Apps Script** :
+la chaîne `GitHub Actions → clasp` assure l'envoi du code et la mise à jour
+du déploiement existant **lorsque le workflow manuel est déclenché**.
+Cette PR ne déclenche aucun déploiement automatiquement.
 
-   Ne pas mettre cette lecture dans `doPost`, ni dans une zone couverte par
-   `LockService` : il n'y a **aucune écriture Google Sheets** dans cette action.
+### Configuration privée à effectuer par le propriétaire
 
-4. Dans **Paramètres du projet → Propriétés du script**, renseigner :
-   - `SUMUP_API_KEY` : une **clé API secrète** obtenue dans
-     SumUp → Settings → For Developers → Toolkit → API Keys.
-   - `SUMUP_MERCHANT_CODE` : le code commerçant SumUp.
-   
-   **Ne pas** partager ces valeurs dans cette conversation, GitHub, les logs ou le JS.
-   Vérifier que la clé donne effectivement la permission `transactions.history`
-   ou `transactions.read`, ainsi que le droit Apps Script de faire un appel HTTP
-   externe (`UrlFetchApp`).
-5. Faire un **nouveau déploiement Apps Script de test** ; ne pas écraser celui de
-   production par inadvertance. Avec une URL de déploiement TEST, la webapp de test
-   devra aussi utiliser cette URL.
-6. Après vérification des retours serveur (404 temporaire, PENDING, SUCCESSFUL,
-   FAILED, REFUNDED et MISMATCH), modifier **sur une branche de test seulement** :
+Dans l'éditeur du projet Apps Script concerné, ouvrir
+**Paramètres du projet → Propriétés du script**, puis ajouter :
 
-```javascript
-// docs/vente-rapide.js
-SUMUP_CONFIG.verificationEnabled = true
-```
+- `SUMUP_API_KEY` : clé API secrète SumUp donnant accès à
+  `transactions.history` ou `transactions.read` ;
+- `SUMUP_MERCHANT_CODE` : code marchand SumUp associé au compte.
 
-   Dans le code source, cette valeur est une propriété de l'objet `SUMUP_CONFIG`
-   (et non une instruction à exécuter telle quelle dans la console).
+Ces propriétés sont conservées côté Apps Script. **Ne jamais** les
+ajouter à GitHub, dans le HTML/JS du frontend, dans les logs ou dans
+la conversation. Les secrets GitHub utilisés pour l'authentification
+`clasp` ne remplacent pas ces propriétés SumUp.
+
+### Recette préalable
+
+1. Exécuter les tests en CI (routeur JSON/JSONP et statuts du paiement).
+2. Faire les essais de paiement sur un environnement TEST et une PWA de test,
+   **sans écritures dans le classeur de production**.
+3. Vérifier les réponses du backend `NOT_CONFIGURED`, `NOT_AUTHORIZED`,
+   `NOT_FOUND`, `PENDING`, `SUCCESSFUL`, `FAILED`, `REFUNDED` et
+   `MISMATCH` sans jamais valider automatiquement un statut non confirmé.
+4. Vérifier sur iPhone que Payment Switch transmet réellement
+   `foreign-tx-id` et que son application renvoie bien au premier plan.
+5. Une fois ces essais réussis, et seulement alors, changer
+   la propriété `verificationEnabled` de `SUMUP_CONFIG` à `true` dans
+   `docs/vente-rapide.js`.
+
+La vérification automatique reste **désactivée par défaut**. La confirmation
+manuelle du paiement SumUp est conservée, même si le backend est configuré.
 
 ## Sécurité et limitation d'accès
 
