@@ -127,3 +127,92 @@ test("montant avec plus de deux décimales rejeté", () => {
   assert.equal(response.status, "INVALID_REQUEST");
   assert.equal(requests.length, 0);
 });
+
+
+test("cle SumUp refusee : statut neutre sans donnees sensibles", () => {
+  for (const httpCode of [401, 403]) {
+    const { response } = runSumup({ httpCode });
+    assert.equal(response.status, "NOT_AUTHORIZED");
+    assert.equal(response.verified, false);
+    assert.equal(response.transaction_code, undefined);
+  }
+});
+
+test("chargeback et non-collection bloquent la validation", () => {
+  for (const simple_status of ["CHARGEBACK", "CHARGE_BACK", "NON_COLLECTION"]) {
+    const { response } = runSumup({
+      tx: { ...BASE, simple_status }
+    });
+    assert.equal(response.verified, false);
+    assert.equal(response.status, simple_status);
+  }
+});
+
+test("route HTTP GET : status SumUp au format JSON de Lugdurum", () => {
+  const routerSource = fs.readFileSync(
+    path.join(__dirname, "..", "apps-script", "01_http_router.js"), "utf8"
+  );
+  const moduleSource = fs.readFileSync(
+    path.join(__dirname, "..", "apps-script", "10_sumup_verification.gs"), "utf8"
+  );
+  const context = {
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (name) => name === "SUMUP_API_KEY" ? "FAKE_TEST_KEY" : "MH000001"
+      })
+    },
+    UrlFetchApp: {
+      fetch: () => ({
+        getResponseCode: () => 200,
+        getContentText: () => JSON.stringify(BASE)
+      })
+    },
+    ContentService: {
+      MimeType: { JSON: "JSON", JAVASCRIPT: "JAVASCRIPT" },
+      createTextOutput(value) {
+        return {
+          text: value, mime: null,
+          setMimeType(type) { this.mime = type; return this; }
+        };
+      }
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(routerSource, context, { filename: "01_http_router.js" });
+  vm.runInContext(moduleSource, context, { filename: "10_sumup_verification.gs" });
+
+  const output = context.doGet({
+    parameter: {
+      action: "getSumupPaymentStatus",
+      foreign_tx_id: ID,
+      amount: "34.90",
+      currency: "EUR"
+    }
+  });
+
+  const result = JSON.parse(output.text);
+  assert.equal(output.mime, "JSON");
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "getSumupPaymentStatus");
+  assert.equal(result.data.verified, true);
+  assert.equal(result.data.status, "SUCCESSFUL");
+  assert.equal(result.data.foreign_tx_id, ID);
+  assert.equal(result.data.transaction_code, "TEST123");
+  assert.ok(!Object.hasOwn(result, "SUMUP_API_KEY"));
+  assert.ok(!Object.hasOwn(result.data, "merchant_code"));
+
+  // La couche de lecture PWA emploie JSONP (callback).
+  const jsonpOutput = context.doGet({
+    parameter: {
+      action: "getSumupPaymentStatus",
+      foreign_tx_id: ID,
+      amount: "34.90",
+      currency: "EUR",
+      callback: "lugdurumTestCallback"
+    }
+  });
+  assert.equal(jsonpOutput.mime, "JAVASCRIPT");
+  assert.ok(jsonpOutput.text.startsWith("lugdurumTestCallback("));
+  const jsonp = JSON.parse(jsonpOutput.text.slice("lugdurumTestCallback(".length, -2));
+  assert.equal(jsonp.data.verified, true);
+});
