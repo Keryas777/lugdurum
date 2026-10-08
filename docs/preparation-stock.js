@@ -232,6 +232,10 @@
       button.style.opacity = disabled ? "0.5" : "";
       button.setAttribute("aria-busy", locked ? "true" : "false");
     });
+    document.querySelectorAll("[data-stock-input]").forEach((input) => {
+      input.disabled = locked;
+    });
+    if (els.stockNoteInput) els.stockNoteInput.disabled = locked;
   };
 
   const selectQuantityInput = (input) => {
@@ -1060,6 +1064,8 @@
     renderDays();
     renderStockRows();
     renderTotals();
+    // La grille peut être recréée alors qu'un POST est toujours en cours.
+    setSaving(state.isSaving);
   };
 
   const loadRemoteData = async () => {
