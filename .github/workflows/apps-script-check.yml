@@ -1,0 +1,29 @@
+name: Verification Apps Script
+
+on:
+  pull_request:
+    paths:
+      - "apps-script/**"
+      - ".github/workflows/apps-script-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Verifier la syntaxe JavaScript
+        run: |
+          for file in apps-script/*.js; do
+            node --check "$file"
+          done
+
+      - name: Verifier le manifeste Apps Script
+        run: |
+          node -e 'JSON.parse(require("node:fs").readFileSync("apps-script/appsscript.json", "utf8"))'

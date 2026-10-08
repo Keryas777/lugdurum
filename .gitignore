@@ -1,0 +1,10 @@
+
+# Google Apps Script - identifiants locaux
+.clasprc.json
+.clasp.json
+client_secret*.json
+credentials.json
+
+# Secrets locaux
+.env
+.env.*
