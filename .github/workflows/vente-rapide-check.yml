@@ -1,0 +1,33 @@
+name: Verification vente rapide
+
+on:
+  pull_request:
+    paths:
+      - "docs/vente-rapide.js"
+      - "docs/vente-rapide.html"
+      - "tests/vente-rapide.test.cjs"
+      - ".github/workflows/vente-rapide-check.yml"
+  push:
+    branches:
+      - audit-gerzat-vente-rapide-v20
+    paths:
+      - "docs/vente-rapide.js"
+      - "docs/vente-rapide.html"
+      - "tests/vente-rapide.test.cjs"
+      - ".github/workflows/vente-rapide-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Verifier la syntaxe
+        run: node --check docs/vente-rapide.js
+      - name: Tester la vente rapide en simulation
+        run: node --test tests/vente-rapide.test.cjs
