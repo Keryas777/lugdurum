@@ -1466,12 +1466,16 @@
   };
 
   const buildForeignTxId = () => {
-    // UUID : la référence sert aussi de capacité d'accès au statut minimal.
-    // Sans crypto, paiement manuel conservé et vérification automatique indisponible.
-    const cryptoId = window.crypto && typeof window.crypto.randomUUID === "function"
-      ? window.crypto.randomUUID().toUpperCase()
-      : Math.random().toString(36).slice(2, 8).toUpperCase();
-    return `LUG_${Date.now()}_${cryptoId}`;
+    // Conserver le format deja utilise par SumUp tant que la verification
+    // automatique n'est pas activee. Evite de changer le Payment Switch
+    // historique simplement en livrant le pilote desactive.
+    if (!SUMUP_CONFIG.verificationEnabled ||
+        !window.crypto || typeof window.crypto.randomUUID !== "function") {
+      return `LUG_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    }
+
+    // Seul le mode de verification API emploie la reference UUID longue.
+    return `LUG_${Date.now()}_${window.crypto.randomUUID().toUpperCase()}`;
   };
 
   const buildCallbackUrl = (status, foreignTxId) => {
