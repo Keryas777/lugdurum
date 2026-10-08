@@ -966,6 +966,10 @@
     if (state.saveInProgress) els.saveTicketBtn.textContent = "Enregistrement…";
     els.saveTicketBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
     els.amountPaidInput.disabled = state.saveInProgress;
+    // Ne pas permettre d'annuler ou de relancer SumUp pendant l'ecriture du ticket.
+    if (els.sumupConfirmSuccessBtn) els.sumupConfirmSuccessBtn.disabled = state.saveInProgress;
+    if (els.sumupConfirmFailBtn) els.sumupConfirmFailBtn.disabled = state.saveInProgress;
+    if (els.sumupReturnBtn) els.sumupReturnBtn.disabled = state.saveInProgress;
   };
 
   const renderAll = ({ refreshProducts = false } = {}) => {
@@ -1699,6 +1703,7 @@
   };
 
   const confirmSumupFailure = () => {
+    if (state.saveInProgress) return;
     const pending = getPendingSumup();
 
     if (pending?.transaction) {
@@ -1717,6 +1722,7 @@
   };
 
   const reopenSumup = () => {
+    if (state.saveInProgress) return;
     const pending = getPendingSumup();
 
     if (!pending?.sumup_url) {
