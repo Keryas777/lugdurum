@@ -970,6 +970,9 @@
     if (state.saveInProgress) els.saveTicketBtn.textContent = "Enregistrement…";
     els.saveTicketBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
     els.amountPaidInput.disabled = state.saveInProgress;
+    if (els.sumupConfirmSuccessBtn) els.sumupConfirmSuccessBtn.disabled = state.saveInProgress;
+    if (els.sumupConfirmFailBtn) els.sumupConfirmFailBtn.disabled = state.saveInProgress;
+    if (els.sumupReturnBtn) els.sumupReturnBtn.disabled = state.saveInProgress;
   };
 
   const renderAll = ({ refreshProducts = false } = {}) => {
@@ -1625,7 +1628,7 @@
         sumupVerificationStopped = true;
         showSumupConfirm(current, "SumUp signale : " + status +
           ". Aucune vente automatique enregistrée.");
-      } else if (status === "UNSUPPORTED_ID" || status === "INVALID_REQUEST") {
+      } else if (["UNSUPPORTED_ID", "INVALID_REQUEST", "NOT_CONFIGURED", "NOT_AUTHORIZED"].includes(status)) {
         sumupVerificationStopped = true;
         showSumupConfirm(current, "Vérification impossible avec cette référence ; " +
           "confirmation manuelle disponible.");
