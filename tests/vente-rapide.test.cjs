@@ -11,14 +11,8 @@ const source = fs.readFileSync(
   path.join(__dirname, "..", "docs", "vente-rapide.js"),
   "utf8"
 );
-const startup = [
-  "  handleSumupCallbackParams();",
-  "  renderAll();",
-  "  loadContext();",
-  "  loadData();",
-  "  checkPendingSumup();",
-  "})();"
-].join("\n");
+// Le bootstrap évolue avec le mode cache-first et la reprise SumUp.
+const startup = source.slice(source.lastIndexOf("  handleSumupCallbackParams();"));
 
 assert.ok(source.includes(startup), "Point d'injection du banc de test introuvable");
 const code = source.replace(
