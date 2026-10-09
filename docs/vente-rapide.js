@@ -2356,22 +2356,27 @@
     els.sumupReturnBtn.addEventListener("click", reopenSumup);
   }
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      checkPendingSumup();
+  // Sur iOS, focus et visibilitychange arrivent souvent ensemble au retour
+  // de SumUp. Une seule lecture des transactions suffit.
+  let resumeSummaryTimer = null;
+  const refreshSummaryOnResume = () => {
+    if (!hasActiveSalesContext()) return;
+    if (resumeSummaryTimer) window.clearTimeout(resumeSummaryTimer);
+    resumeSummaryTimer = window.setTimeout(() => {
+      resumeSummaryTimer = null;
+      loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    }, 350);
+  };
 
-      if (hasActiveSalesContext()) {
-        loadDaySummaryFromNetwork({ silent: true });
-      }
-    }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    checkPendingSumup();
+    refreshSummaryOnResume();
   });
 
   window.addEventListener("focus", () => {
     checkPendingSumup();
-
-    if (hasActiveSalesContext()) {
-      loadDaySummaryFromNetwork({ silent: true });
-    }
+    refreshSummaryOnResume();
   });
 
   window.addEventListener("lugdurum:sync-status", (event) => {
