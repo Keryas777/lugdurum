@@ -243,6 +243,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
   if (options.previouslyEnabled) memory.set("lugdurum_sumup_pilot_enabled", "1");
   const elements = new Map();
   const saved = [];
+  const queued = [];
   const timers = [];
   const fakeElement = () => ({
     value: "", textContent: "", innerHTML: "", hidden: true, disabled: false,
@@ -275,6 +276,10 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
         saved.push(payload);
         return { ok: true };
       },
+      queueVerifiedSumupSale: options.fastQueue ? (payload) => {
+        queued.push(payload);
+        return { queued: true, pending_count: 1 };
+      } : undefined,
       async getTransactions() { return []; },
       getPendingWritesCount() { return 0; }
     }
@@ -310,7 +315,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
     sumup_url: "sumupmerchant://pay/1.0",
     transaction
   }));
-  return { app, memory, saved, timers };
+  return { app, memory, saved, queued, timers };
 }
 
 test("PWA pilote : paiement API SUCCESSFUL => un ticket valide et panier vide", async () => {
@@ -382,4 +387,33 @@ test("production : anciens liens et stockage pilote ne peuvent desactiver l'API"
 test("secours : parcours manuel conserve des references courtes en mode OFF simule", () => {
   const h = createSumupFrontendHarness({}, false);
   assert.match(h.app.buildForeignTxId(), /^LUG_[0-9]{13}_[A-Z0-9]{6}$/);
+});
+
+test("PWA rapide : SumUp confirmé => ticket en file sans attendre Sheets", async () => {
+  const h = createSumupFrontendHarness({
+    verified: true,
+    status: "SUCCESSFUL",
+    foreign_tx_id: ID,
+    transaction_code: "TEST123"
+  }, true, { fastQueue: true });
+
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.saved.length, 0, "Aucun POST direct dans le chemin critique");
+  assert.equal(h.queued[0].transaction.transaction_id, ID);
+  assert.equal(h.queued[0].transaction.statut, "validee");
+  assert.equal(h.queued[0].mouvements_stock.length, 1);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+  assert.equal(h.app.state.lastQueuedVerifiedSumupId, ID);
+});
+
+test("PWA rapide : MISMATCH SumUp ne met jamais de ticket payé en file", async () => {
+  const h = createSumupFrontendHarness(
+    { verified: false, status: "MISMATCH" }, true, { fastQueue: true }
+  );
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
 });
