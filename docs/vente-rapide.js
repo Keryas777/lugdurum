@@ -124,6 +124,8 @@
     pendingCatalogueUpdate: null,
     saveInProgress: false,
     failedTicket: null,
+    lastQueuedVerifiedSumupId: "",
+    deferredLoadForSumup: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
     daySummary: {
       isLoading: false,
@@ -1859,7 +1861,27 @@
     renderPayment();
 
     try {
-      await saveTransactionToApi(transaction);
+      // Après preuve API positive de SumUp : écrire durablement l'opération
+      // dans la file locale, puis libérer la caisse sans attendre Google Sheets.
+      // Confirmation manuelle : garder le chemin d'écriture existant.
+      const queueFastPath = isApiVerified &&
+        typeof api()?.queueVerifiedSumupSale === "function";
+      if (queueFastPath) {
+        const movements = buildStockMovementsFromTransaction(transaction);
+        const result = api().queueVerifiedSumupSale({
+          transaction,
+          mouvements_stock: movements,
+          mouvementsStock: movements
+        });
+        if (!result?.queued) {
+          throw new Error("Le ticket n'a pas pu être conservé localement.");
+        }
+        upsertLocalMouvementsStock(movements);
+        saveLocalTransactionBackup(transaction);
+        state.lastQueuedVerifiedSumupId = transaction.transaction_id;
+      } else {
+        await saveTransactionToApi(transaction);
+      }
 
       clearPendingSumup();
       hideSumupConfirm();
@@ -1869,10 +1891,12 @@
         : 0;
 
       setStatus(
-        pendingCount > 0
-          ? `Paiement SumUp validé · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
-          : `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
-        pendingCount > 0 ? "isError" : "isSuccess"
+        queueFastPath
+          ? `Paiement confirmé par SumUp · ticket sauvegardé sur cet appareil · synchronisation en cours (${pendingCount} en attente) · ${formatCurrency(transaction.total_encaisse_ttc)}`
+          : pendingCount > 0
+            ? `Paiement SumUp validé · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
+            : `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
+        queueFastPath || pendingCount > 0 ? "isError" : "isSuccess"
       );
 
       state.ticketItems = [];
@@ -1880,7 +1904,8 @@
       els.amountPaidInput.value = "";
       state.amountManuallyEdited = false;
       renderAll();
-      refreshDaySummaryAfterSale();
+      if (!queueFastPath) refreshDaySummaryAfterSale();
+      if (state.deferredLoadForSumup) schedulePostSumupDataLoad();
     } catch (error) {
       setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}. Réessaie le même ticket après vérification.`, "isError");
     } finally {
@@ -1909,6 +1934,7 @@
       "Paiement SumUp non validé. Le panier est conservé : tu peux réessayer ou changer le paiement.",
       "isError"
     );
+    if (state.deferredLoadForSumup) schedulePostSumupDataLoad();
 
     renderAll({ refreshProducts: true });
   };
@@ -2396,7 +2422,9 @@
   // de SumUp. Une seule lecture des transactions suffit.
   let resumeSummaryTimer = null;
   const refreshSummaryOnResume = () => {
-    if (!hasActiveSalesContext()) return;
+    // Vérification du paiement prioritaire : ne pas lancer une lecture
+    // de toutes les transactions au même moment qu'un retour SumUp.
+    if (!hasActiveSalesContext() || getPendingSumup() || state.saveInProgress) return;
     if (resumeSummaryTimer) window.clearTimeout(resumeSummaryTimer);
     resumeSummaryTimer = window.setTimeout(() => {
       resumeSummaryTimer = null;
@@ -2417,17 +2445,62 @@
 
   window.addEventListener("lugdurum:sync-status", (event) => {
     const detail = event.detail || {};
+    const pendingCount = Number(detail.pending_count || 0);
 
-    if (Number(detail.pending_count || 0) > 0 && state.ticketItems.length === 0) {
-      setStatus(`${detail.pending_count} écriture(s) en attente de synchronisation.`, "isError");
+    if (state.lastQueuedVerifiedSumupId) {
+      if (pendingCount === 0 && ["synced", "idle"].includes(detail.status)) {
+        state.lastQueuedVerifiedSumupId = "";
+        setStatus("Ticket SumUp et sorties de stock synchronisés avec Google Sheets.", "isSuccess");
+        refreshDaySummaryAfterSale();
+      } else if (detail.status === "error") {
+        setStatus(
+          `Paiement SumUp confirmé, mais synchronisation en erreur (${pendingCount} en attente). Conserve les données locales et consulte le diagnostic synchro.`,
+          "isError"
+        );
+      }
+      return;
+    }
+
+    if (pendingCount > 0 && state.ticketItems.length === 0 && !getPendingSumup()) {
+      setStatus(`${pendingCount} écriture(s) en attente de synchronisation.`, "isError");
     }
   });
 
+  // Une PWA relancée au retour de SumUp ne doit pas concurrencer la
+  // vérification du paiement avec getCoreData (parfois plusieurs secondes).
+  let postSumupLoadTimer = null;
+  const schedulePostSumupDataLoad = () => {
+    if (!state.deferredLoadForSumup || postSumupLoadTimer) return;
+    state.deferredLoadForSumup = false;
+    postSumupLoadTimer = window.setTimeout(() => {
+      postSumupLoadTimer = null;
+      loadContext();
+      loadData();
+    }, 2500);
+  };
+
   handleSumupCallbackParams();
-  if (!hydrateCatalogueFromCache()) {
+  if (!hydrateCatalogueFromCache()) renderAll();
+
+  const waitingSumup = getPendingSumup();
+  if (waitingSumup?.transaction) {
+    // Contexte local fiable du ticket sauvegardé AVANT d'ouvrir SumUp.
+    // Aucun chargement des transactions Sheets avant vérification.
+    state.deferredLoadForSumup = true;
+    const transaction = waitingSumup.transaction;
+    state.journeeActive = {
+      ...state.journeeActive,
+      mission_id: transaction.stock_mission_id || transaction.mission_id || "",
+      journee_id: transaction.journee_id || "",
+      user_id: transaction.user_id || state.journeeActive.user_id,
+      label: "Journée active",
+      date_label: "Contexte local chargé"
+    };
     renderAll();
+    checkPendingSumup();
+  } else {
+    loadContext();
+    loadData();
+    checkPendingSumup();
   }
-  loadContext();
-  loadData();
-  checkPendingSumup();
 })();
