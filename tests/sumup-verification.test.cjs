@@ -232,14 +232,8 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
   } else {
     assert.ok(original.includes("verificationEnabled: true,"), "Verification globale attendue");
   }
-  const start = [
-    "  handleSumupCallbackParams();",
-    "  renderAll();",
-    "  loadContext();",
-    "  loadData();",
-    "  checkPendingSumup();",
-    "})();"
-  ].join("\n");
+  // Neutraliser uniquement le bootstrap : les tests contrôlent le contexte.
+  const start = enabled.slice(enabled.lastIndexOf("  handleSumupCallbackParams();"));
   assert.ok(enabled.includes(start), "Demarrage du frontend non reconnu");
   const source = enabled.replace(
     start,
