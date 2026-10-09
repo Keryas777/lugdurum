@@ -1010,16 +1010,18 @@
     if (els.sumupReturnBtn) els.sumupReturnBtn.disabled = state.saveInProgress;
   };
 
-  const renderAll = ({ refreshProducts = false } = {}) => {
+  const renderAll = ({ refreshProducts = false, deferProductRefresh = false } = {}) => {
     renderContext();
     renderModes();
     renderPackComposer();
 
-    const mayRefresh = state.ticketItems.length === 0 && state.draftPack.length === 0;
-    if (refreshProducts && !mayRefresh) state.pendingProductRefresh = true;
+    const mayRefreshInBackground = state.ticketItems.length === 0 && state.draftPack.length === 0;
+    if (refreshProducts && deferProductRefresh && !mayRefreshInBackground) {
+      state.pendingProductRefresh = true;
+    }
 
-    if ((refreshProducts && mayRefresh) ||
-        (state.pendingProductRefresh && mayRefresh) ||
+    if ((refreshProducts && (!deferProductRefresh || mayRefreshInBackground)) ||
+        (state.pendingProductRefresh && mayRefreshInBackground) ||
         els.productGrid.children.length === 0) {
       state.pendingProductRefresh = false;
       renderProducts();
@@ -2236,7 +2238,7 @@
         setStatus("");
       }
 
-      renderAll({ refreshProducts: tilesChanged });
+      renderAll({ refreshProducts: tilesChanged, deferProductRefresh: true });
     } catch (error) {
       const cachedCatalogue = readCachedArray(STORAGE_KEYS.catalogueCache);
       const cachedOffres = readCachedArray(STORAGE_KEYS.offresVenteCache);
