@@ -843,11 +843,44 @@
     };
   };
 
+  const confirmEarlyStart = () => {
+    const preferredDayId = getActiveJourneeId();
+    const journee =
+      state.missionJournees.find((day) => day.journee_id === preferredDayId && !["cloture", "annule"].includes(String(day.statut || "").toLowerCase())) ||
+      state.missionJournees.find((day) => !["cloture", "annule"].includes(String(day.statut || "").toLowerCase()));
+
+    if (!journee || String(journee.statut || "").toLowerCase() === "en_cours") return true;
+
+    const isoDate = String(journee.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return true;
+
+    const [year, month, day] = isoDate.split("-").map(Number);
+    const today = new Date();
+    const startUtc = Date.UTC(year, month - 1, day);
+    const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+    const daysUntil = Math.round((startUtc - todayUtc) / 86400000);
+    if (daysUntil <= 0) return true;
+
+    const label = daysUntil === 1 ? "1 jour" : `${daysUntil} jours`;
+    const dayName = String(journee.jour_label || "Journée de vente").trim();
+    return window.confirm(
+      `La journée ${dayName} est prévue le ${formatDisplayDate(isoDate)}, dans ${label}.\n\nSouhaites-tu vraiment démarrer les ventes dès maintenant ?`
+    );
+  };
+
   const startDay = async () => {
-    // S'applique immédiatement, avant le premier await : un double appui est ignoré.
+    // Verrou avant tout appel réseau, y compris pendant la confirmation.
     if (state.isSaving || state.isStarting) return;
     state.isStarting = true;
     setSaving(false);
+
+    // Annuler ne doit déclencher aucune écriture, ni modifier la journée.
+    if (!confirmEarlyStart()) {
+      state.isStarting = false;
+      setSaving(false);
+      setStatus("Démarrage annulé : aucune modification enregistrée.");
+      return;
+    }
 
     try {
       const preparation = await savePreparation("valide", { fromStart: true });
@@ -868,16 +901,6 @@
         setStatus("Stock validé, mais aucune journée à démarrer.", "isError");
         state.isStarting = false;
         setSaving(false);
-        return;
-      }
-
-      // La préparation peut être terminée plusieurs jours avant la foire.
-      // Ne pas avancer artificiellement la date de démarrage de la journée.
-      const today = new Date();
-      const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      if (String(firstOpenDay.date || "").slice(0, 10) > todayLocal) {
-        setStatus("Stock validé. La journée sera démarrée à la date de la vente.", "isSuccess");
-        window.location.href = "./index.html";
         return;
       }
 
