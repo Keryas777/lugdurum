@@ -119,6 +119,9 @@
     mouvementsStock: [],
     dataLoaded: false,
     contextLoaded: false,
+    catalogueSource: "loading",
+    pendingProductRefresh: false,
+    pendingCatalogueUpdate: null,
     saveInProgress: false,
     failedTicket: null,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
@@ -725,6 +728,37 @@
     });
   };
 
+  // Les images hors écran ne doivent pas ralentir les premiers produits.
+  // Les tuiles (texte et prix) restent immédiatement utilisables.
+  let productImageObserver = null;
+  const revealProductImage = (button) => {
+    const src = button.dataset.imageSrc;
+    if (!src) return;
+    const safeUrl = src.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    button.style.setProperty("--product-bg", `url("${safeUrl}")`);
+    delete button.dataset.imageSrc;
+  };
+
+  const observeProductImages = () => {
+    if (productImageObserver) productImageObserver.disconnect();
+
+    const buttons = els.productGrid.querySelectorAll(".productBtn[data-image-src]");
+    if (!("IntersectionObserver" in window)) {
+      buttons.forEach(revealProductImage);
+      return;
+    }
+
+    productImageObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        revealProductImage(entry.target);
+        productImageObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: "350px 0px", threshold: 0 });
+
+    buttons.forEach((button) => productImageObserver.observe(button));
+  };
+
   const renderProducts = () => {
     const draftCounts = getDraftCounts();
     const lightTextCodes = ["MV", "PE"];
@@ -774,7 +808,7 @@
             type="button"
             data-sku="${escapeAttr(product.sku_id)}"
             data-parfum="${escapeAttr(product.parfum_code)}"
-            style="--product-bg: url('${escapeAttr(getProductImageSrc(product))}')"
+            data-image-src="${escapeAttr(getProductImageSrc(product))}"
           >
             <span class="productCode">${escapeHtml(product.parfum_code)}</span>
             <span class="productName">${escapeHtml(product.parfum_nom)}</span>
@@ -786,6 +820,7 @@
         `;
       })
       .join("");
+    observeProductImages();
   };
 
   const updateProductQuantities = () => {
@@ -976,12 +1011,32 @@
     if (els.sumupReturnBtn) els.sumupReturnBtn.disabled = state.saveInProgress;
   };
 
-  const renderAll = ({ refreshProducts = false } = {}) => {
+  const renderAll = ({ refreshProducts = false, deferProductRefresh = false } = {}) => {
+    // Ne jamais changer les prix du catalogue au milieu d'un ticket.
+    // Le nouveau catalogue sera appliqué seulement après ce ticket.
+    if (state.pendingCatalogueUpdate &&
+        state.ticketItems.length === 0 &&
+        state.draftPack.length === 0 &&
+        !state.saveInProgress) {
+      state.catalogue = state.pendingCatalogueUpdate.catalogue;
+      state.offresVente = state.pendingCatalogueUpdate.offresVente;
+      lastTilesSignature = state.pendingCatalogueUpdate.signature;
+      state.pendingCatalogueUpdate = null;
+      state.pendingProductRefresh = true;
+    }
     renderContext();
     renderModes();
     renderPackComposer();
 
-    if (refreshProducts || els.productGrid.children.length === 0) {
+    const mayRefreshInBackground = state.ticketItems.length === 0 && state.draftPack.length === 0;
+    if (refreshProducts && deferProductRefresh && !mayRefreshInBackground) {
+      state.pendingProductRefresh = true;
+    }
+
+    if ((refreshProducts && (!deferProductRefresh || mayRefreshInBackground)) ||
+        (state.pendingProductRefresh && mayRefreshInBackground) ||
+        els.productGrid.children.length === 0) {
+      state.pendingProductRefresh = false;
       renderProducts();
     } else {
       updateProductQuantities();
@@ -1830,7 +1885,12 @@
       setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}. Réessaie le même ticket après vérification.`, "isError");
     } finally {
       state.saveInProgress = false;
-      renderPayment();
+      if (state.pendingCatalogueUpdate &&
+          state.ticketItems.length === 0 && state.draftPack.length === 0) {
+        renderAll();
+      } else {
+        renderPayment();
+      }
     }
   };
 
@@ -1935,7 +1995,12 @@
       setStatus(`Enregistrement incertain : ${error.message}. Réessaie SANS modifier le panier pour conserver le même ID et éviter un doublon.`, "isError");
     } finally {
       state.saveInProgress = false;
-      renderPayment();
+      if (state.pendingCatalogueUpdate &&
+          state.ticketItems.length === 0 && state.draftPack.length === 0) {
+        renderAll();
+      } else {
+        renderPayment();
+      }
     }
   };
 
@@ -2127,33 +2192,89 @@
     };
   };
 
+  // Signature de l'affichage : recharger les mêmes offres ne remplace pas les
+  // boutons (important pour éviter de perdre un tap pendant la synchronisation).
+  const getTilesSignature = (catalogue = state.catalogue, offresVente = state.offresVente) => JSON.stringify([
+    catalogue.map((product) => [
+      product.sku_id, product.parfum_nom, product.format_cl, product.actif,
+      product.visible_webapp, product.vendable_seul, product.composable_coffret,
+      product.ordre_affichage, product.gamme_tarif, product.image_src
+    ]),
+    offresVente.map((offer) => [
+      offer.offre_id, offer.actif, offer.type_offre, offer.format_cl,
+      offer.gamme_tarif, offer.prix_ttc, offer.prix_ht, offer.quantite_bouteilles
+    ])
+  ]);
+  let lastTilesSignature = "";
+
+  // Affichage instantané depuis les dernières données connues, sans requête.
+  // Les caches ne sont JAMAIS utilisés pour dédupliquer les ventes : les tickets
+  // conservent leur transaction_id et leur file d'attente API indépendants.
+  const hydrateCatalogueFromCache = () => {
+    const catalogueRows = readCachedArray(STORAGE_KEYS.catalogueCache);
+    const offresRows = readCachedArray(STORAGE_KEYS.offresVenteCache);
+    if (!catalogueRows.length || !offresRows.length) return false;
+
+    state.catalogue = catalogueRows
+      .map((row, index) => normalizeProduct(row, index))
+      .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
+    state.offresVente = offresRows
+      .map((row, index) => normalizeOffer(row, index))
+      .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
+    if (!state.catalogue.length || !state.offresVente.length) return false;
+
+    state.dataLoaded = true;
+    state.catalogueSource = "cache";
+    lastTilesSignature = getTilesSignature();
+    renderAll({ refreshProducts: true });
+    setStatus("Produits disponibles (cache local) · vérification des tarifs en cours.");
+    return true;
+  };
+
   const loadData = async () => {
-    renderProducts();
+    if (state.catalogue.length === 0) renderProducts();
 
     try {
       const { catalogueRows, offresRows } = await loadVenteRapideData();
 
-      state.catalogue = catalogueRows
+      const catalogue = catalogueRows
         .map((row, index) => normalizeProduct(row, index))
         .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
-
-      state.offresVente = offresRows
+      const offresVente = offresRows
         .map((row, index) => normalizeOffer(row, index))
         .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
 
+      const signature = getTilesSignature(catalogue, offresVente);
+      const tilesChanged = signature !== lastTilesSignature;
+      const hasActiveTicket = state.ticketItems.length > 0 ||
+        state.draftPack.length > 0 || state.saveInProgress;
+
       state.mouvementsStock = [];
       state.dataLoaded = true;
+      state.catalogueSource = "online";
 
-      writeCachedArray(STORAGE_KEYS.catalogueCache, state.catalogue);
-      writeCachedArray(STORAGE_KEYS.offresVenteCache, state.offresVente);
+      if (tilesChanged && hasActiveTicket && state.catalogue.length > 0) {
+        // Ne pas afficher un prix cache tout en utilisant un prix réseau différent.
+        state.pendingCatalogueUpdate = { catalogue, offresVente, signature };
+      } else {
+        state.catalogue = catalogue;
+        state.offresVente = offresVente;
+        lastTilesSignature = signature;
+        state.pendingCatalogueUpdate = null;
+      }
 
-      if (state.offresVente.length === 0) {
+      writeCachedArray(STORAGE_KEYS.catalogueCache, catalogue);
+      writeCachedArray(STORAGE_KEYS.offresVenteCache, offresVente);
+
+      if (offresVente.length === 0) {
         setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
+      } else if (state.pendingCatalogueUpdate) {
+        setStatus("Tarifs mis à jour : ils seront appliqués après le ticket en cours.");
       } else if (hasActiveSalesContext()) {
         setStatus("");
       }
 
-      renderAll({ refreshProducts: true });
+      renderAll({ refreshProducts: tilesChanged && !state.pendingCatalogueUpdate, deferProductRefresh: true });
     } catch (error) {
       const cachedCatalogue = readCachedArray(STORAGE_KEYS.catalogueCache);
       const cachedOffres = readCachedArray(STORAGE_KEYS.offresVenteCache);
@@ -2163,16 +2284,18 @@
         state.offresVente = cachedOffres.map((row, index) => normalizeOffer(row, index));
         state.mouvementsStock = [];
         state.dataLoaded = true;
+        state.catalogueSource = "cache";
 
         setStatus(
-          "Catalogue chargé depuis le cache local. Le CA jour reste basé uniquement sur la lecture réseau.",
+          "Connexion catalogue indisponible · produits et tarifs du cache local.",
           "isError"
         );
-        renderAll({ refreshProducts: true });
+        renderAll({ refreshProducts: state.pendingProductRefresh });
         return;
       }
 
       state.dataLoaded = true;
+      state.catalogueSource = "error";
       state.catalogue = [];
       state.offresVente = [];
       state.mouvementsStock = [];
@@ -2269,22 +2392,27 @@
     els.sumupReturnBtn.addEventListener("click", reopenSumup);
   }
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      checkPendingSumup();
+  // Sur iOS, focus et visibilitychange arrivent souvent ensemble au retour
+  // de SumUp. Une seule lecture des transactions suffit.
+  let resumeSummaryTimer = null;
+  const refreshSummaryOnResume = () => {
+    if (!hasActiveSalesContext()) return;
+    if (resumeSummaryTimer) window.clearTimeout(resumeSummaryTimer);
+    resumeSummaryTimer = window.setTimeout(() => {
+      resumeSummaryTimer = null;
+      loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    }, 350);
+  };
 
-      if (hasActiveSalesContext()) {
-        loadDaySummaryFromNetwork({ silent: true });
-      }
-    }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    checkPendingSumup();
+    refreshSummaryOnResume();
   });
 
   window.addEventListener("focus", () => {
     checkPendingSumup();
-
-    if (hasActiveSalesContext()) {
-      loadDaySummaryFromNetwork({ silent: true });
-    }
+    refreshSummaryOnResume();
   });
 
   window.addEventListener("lugdurum:sync-status", (event) => {
@@ -2296,7 +2424,9 @@
   });
 
   handleSumupCallbackParams();
-  renderAll();
+  if (!hydrateCatalogueFromCache()) {
+    renderAll();
+  }
   loadContext();
   loadData();
   checkPendingSumup();

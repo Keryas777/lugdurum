@@ -62,6 +62,16 @@
   backdrop-filter: blur(18px);
 }
 
+/* iOS : éviter un flou temps réel sur chaque panneau pendant le défilement.
+   Les dégradés conservent l'aspect clair/premium sans coût de backdrop-filter. */
+@media (max-width: 780px) {
+  .page-sale .saleSummary,
+  .page-sale .salePanel {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 .saleSummary {
   display: flex;
   justify-content: space-between;
@@ -114,6 +124,7 @@
 }
 
 .saleModeBtn {
+  touch-action: manipulation;
   min-height: 54px;
   display: grid;
   place-items: center;
@@ -157,6 +168,7 @@
 }
 
 .paymentBtn {
+  touch-action: manipulation;
   min-height: var(--tap);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -280,6 +292,8 @@
 }
 
 .productBtn {
+  touch-action: manipulation;
+  background-color: #ede1ce;
   position: relative;
   min-height: 108px;
   display: grid;
