@@ -2167,6 +2167,21 @@
     };
   };
 
+  // Signature de l'affichage : recharger les mêmes offres ne remplace pas les
+  // boutons (important pour éviter de perdre un tap pendant la synchronisation).
+  const getTilesSignature = () => JSON.stringify([
+    state.catalogue.map((product) => [
+      product.sku_id, product.parfum_nom, product.format_cl, product.actif,
+      product.visible_webapp, product.vendable_seul, product.composable_coffret,
+      product.ordre_affichage, product.gamme_tarif, product.image_src
+    ]),
+    state.offresVente.map((offer) => [
+      offer.offre_id, offer.actif, offer.type_offre, offer.format_cl,
+      offer.gamme_tarif, offer.prix_ttc, offer.prix_ht, offer.quantite_bouteilles
+    ])
+  ]);
+  let lastTilesSignature = "";
+
   // Affichage instantané depuis les dernières données connues, sans requête.
   // Les caches ne sont JAMAIS utilisés pour dédupliquer les ventes : les tickets
   // conservent leur transaction_id et leur file d'attente API indépendants.
@@ -2185,6 +2200,7 @@
 
     state.dataLoaded = true;
     state.catalogueSource = "cache";
+    lastTilesSignature = getTilesSignature();
     renderAll({ refreshProducts: true });
     setStatus("Produits disponibles (cache local) · vérification des tarifs en cours.");
     return true;
@@ -2207,10 +2223,7 @@
       state.mouvementsStock = [];
       state.dataLoaded = true;
       state.catalogueSource = "online";
-      const nextTilesSignature = JSON.stringify([
-        state.catalogue.map((product) => [product.sku_id, product.parfum_nom, product.format_cl, product.actif, product.visible_webapp, product.vendable_seul, product.composable_coffret, product.ordre_affichage, product.gamme_tarif, product.image_src]),
-        state.offresVente.map((offer) => [offer.offre_id, offer.actif, offer.type_offre, offer.format_cl, offer.gamme_tarif, offer.prix_ttc, offer.prix_ht, offer.quantite_bouteilles])
-      ]);
+      const nextTilesSignature = getTilesSignature();
       const tilesChanged = nextTilesSignature !== lastTilesSignature;
       lastTilesSignature = nextTilesSignature;
 
@@ -2253,10 +2266,6 @@
       renderAll({ refreshProducts: true });
     }
   };
-
-  // Signature des seules propriétés qui influent sur les tuiles.
-  // Une réponse API identique ne remonte pas/recrée pas les boutons sous le doigt.
-  let lastTilesSignature = "";
 
   document.addEventListener("click", (event) => {
     if (state.saveInProgress) return;
