@@ -1711,7 +1711,7 @@
     try {
       const result = await sumupVerificationPromise;
       const current = getPendingSumup();
-      if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress) return;
+      if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress || sumupVerificationStopped) return;
 
       if (result?.verified === true && result?.status === "SUCCESSFUL" &&
           result?.foreign_tx_id === expectedId) {
@@ -1746,7 +1746,7 @@
       }
     } catch (error) {
       const current = getPendingSumup();
-      if (current?.foreign_tx_id === expectedId) {
+      if (current?.foreign_tx_id === expectedId && !sumupVerificationStopped) {
         showSumupConfirm(current, "Contrôle SumUp indisponible (" +
           String(error?.message || "réseau") + "). Le paiement n'est pas annulé ; " +
           "confirmation manuelle possible après vérification dans SumUp.");
