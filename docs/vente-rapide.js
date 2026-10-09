@@ -1717,6 +1717,14 @@
     try {
       const result = await sumupVerificationPromise;
       const requestMs = Date.now() - requestStartedAt;
+      const timing = result?.timing || null;
+      const sumupMs = Number(timing?.sumup_fetch_ms);
+      const backendMs = Number(timing?.apps_script_ms);
+      const backendTiming = timing && timing.sumup_fetch_ms !== null &&
+        Number.isFinite(sumupMs) && Number.isFinite(backendMs)
+          ? " (SumUp " + (sumupMs / 1000).toFixed(1).replace(".", ",") +
+            " s, Apps Script " + (backendMs / 1000).toFixed(1).replace(".", ",") + " s)"
+          : "";
       const current = getPendingSumup();
       if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress || sumupVerificationStopped) return;
 
@@ -1756,7 +1764,7 @@
           reason + " (tentative " + sumupVerificationAttempts + "/" +
           SUMUP_CONFIG.verificationMaxAttempts + ", " +
           (requestMs / 1000).toFixed(1).replace(".", ",") +
-          " s). Nouvelle tentative automatique… Tu peux confirmer manuellement si SumUp affiche déjà le règlement comme validé."
+          " s)" + backendTiming + ". Nouvelle tentative automatique… Tu peux confirmer manuellement si SumUp affiche déjà le règlement comme validé."
         );
         // Retenter vite après NOT_FOUND (indexation retardée), un peu plus
         // prudemment après erreur du serveur. Ne jamais valider sans SUCCESSFUL.
@@ -1769,7 +1777,7 @@
           "Vérification automatique terminée sans succès (dernier statut : " +
           (status || "INCONNU") + ", en " +
           ((Date.now() - sumupVerificationStartedAt) / 1000).toFixed(1).replace(".", ",") +
-          " s). Vérifie le résultat dans SumUp avant toute confirmation manuelle."
+          " s)" + backendTiming + ". Vérifie le résultat dans SumUp avant toute confirmation manuelle."
         );
       }
     } catch (error) {
