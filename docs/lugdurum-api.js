@@ -2320,6 +2320,45 @@
   const enqueueAction = (action, payload = {}) =>
     requestQueuedPost(action, payload);
 
+  // Les paiements déjà vérifiés par l'API SumUp peuvent être conservés
+  // durablement sur l'appareil sans attendre la réponse lente de Sheets.
+  // Ne pas exposer ceci comme une confirmation bancaire : le paiement doit
+  // avoir été vérifié AVANT l'appel par le parcours vente rapide.
+  const queueVerifiedSumupSale = (payload = {}) => {
+    const transaction = payload.transaction || {};
+    const transactionId = String(transaction.transaction_id || "").trim();
+    if (!transactionId ||
+        String(transaction.paiement_statut || "") !== "PAYE" ||
+        String(transaction.statut || "") !== "validee" ||
+        String(transaction.paiement_provider || "").toUpperCase() !== "SUMUP") {
+      throw new Error("Ticket SumUp vérifié invalide : impossible de mettre en file.");
+    }
+
+    const existing = getPendingWrites().find((item) =>
+      item.action === "saveVenteRapideBundle" &&
+      String(item.payload?.transaction?.transaction_id || "") === transactionId
+    );
+    if (existing) {
+      scheduleFlush(250);
+      return {
+        queued: true,
+        duplicate: true,
+        queue_id: existing.id,
+        pending_count: getPendingWritesCount()
+      };
+    }
+
+    const result = enqueueWrite(
+      "saveVenteRapideBundle",
+      payload,
+      "Paiement SumUp confirmé : synchronisation Google Sheets à effectuer."
+    );
+    // La file est écrite dans localStorage avant de retourner au vendeur.
+    // Le replay existant est idempotent via transaction_id et mouvement_stock_id.
+    scheduleFlush(250);
+    return result;
+  };
+
   window.LugdurumDataState = {
     set: setDataState,
     get: getDataState
@@ -2343,6 +2382,7 @@
     call,
     queueAction,
     enqueueAction,
+    queueVerifiedSumupSale,
 
     list,
     upsert,
