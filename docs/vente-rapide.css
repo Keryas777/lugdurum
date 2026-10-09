@@ -62,6 +62,16 @@
   backdrop-filter: blur(18px);
 }
 
+/* iOS : éviter un flou temps réel sur chaque panneau pendant le défilement.
+   Les dégradés conservent l'aspect clair/premium sans coût de backdrop-filter. */
+@media (max-width: 780px) {
+  .page-sale .saleSummary,
+  .page-sale .salePanel {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 .saleSummary {
   display: flex;
   justify-content: space-between;
