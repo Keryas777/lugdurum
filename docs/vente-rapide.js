@@ -121,6 +121,7 @@
     contextLoaded: false,
     catalogueSource: "loading",
     pendingProductRefresh: false,
+    pendingCatalogueUpdate: null,
     saveInProgress: false,
     failedTicket: null,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
@@ -1011,6 +1012,18 @@
   };
 
   const renderAll = ({ refreshProducts = false, deferProductRefresh = false } = {}) => {
+    // Ne jamais changer les prix du catalogue au milieu d'un ticket.
+    // Le nouveau catalogue sera appliqué seulement après ce ticket.
+    if (state.pendingCatalogueUpdate &&
+        state.ticketItems.length === 0 &&
+        state.draftPack.length === 0 &&
+        !state.saveInProgress) {
+      state.catalogue = state.pendingCatalogueUpdate.catalogue;
+      state.offresVente = state.pendingCatalogueUpdate.offresVente;
+      lastTilesSignature = state.pendingCatalogueUpdate.signature;
+      state.pendingCatalogueUpdate = null;
+      state.pendingProductRefresh = true;
+    }
     renderContext();
     renderModes();
     renderPackComposer();
@@ -2171,13 +2184,13 @@
 
   // Signature de l'affichage : recharger les mêmes offres ne remplace pas les
   // boutons (important pour éviter de perdre un tap pendant la synchronisation).
-  const getTilesSignature = () => JSON.stringify([
-    state.catalogue.map((product) => [
+  const getTilesSignature = (catalogue = state.catalogue, offresVente = state.offresVente) => JSON.stringify([
+    catalogue.map((product) => [
       product.sku_id, product.parfum_nom, product.format_cl, product.actif,
       product.visible_webapp, product.vendable_seul, product.composable_coffret,
       product.ordre_affichage, product.gamme_tarif, product.image_src
     ]),
-    state.offresVente.map((offer) => [
+    offresVente.map((offer) => [
       offer.offre_id, offer.actif, offer.type_offre, offer.format_cl,
       offer.gamme_tarif, offer.prix_ttc, offer.prix_ht, offer.quantite_bouteilles
     ])
@@ -2214,31 +2227,44 @@
     try {
       const { catalogueRows, offresRows } = await loadVenteRapideData();
 
-      state.catalogue = catalogueRows
+      const catalogue = catalogueRows
         .map((row, index) => normalizeProduct(row, index))
         .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
-
-      state.offresVente = offresRows
+      const offresVente = offresRows
         .map((row, index) => normalizeOffer(row, index))
         .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
+
+      const signature = getTilesSignature(catalogue, offresVente);
+      const tilesChanged = signature !== lastTilesSignature;
+      const hasActiveTicket = state.ticketItems.length > 0 ||
+        state.draftPack.length > 0 || state.saveInProgress;
 
       state.mouvementsStock = [];
       state.dataLoaded = true;
       state.catalogueSource = "online";
-      const nextTilesSignature = getTilesSignature();
-      const tilesChanged = nextTilesSignature !== lastTilesSignature;
-      lastTilesSignature = nextTilesSignature;
 
-      writeCachedArray(STORAGE_KEYS.catalogueCache, state.catalogue);
-      writeCachedArray(STORAGE_KEYS.offresVenteCache, state.offresVente);
+      if (tilesChanged && hasActiveTicket && state.catalogue.length > 0) {
+        // Ne pas afficher un prix cache tout en utilisant un prix réseau différent.
+        state.pendingCatalogueUpdate = { catalogue, offresVente, signature };
+      } else {
+        state.catalogue = catalogue;
+        state.offresVente = offresVente;
+        lastTilesSignature = signature;
+        state.pendingCatalogueUpdate = null;
+      }
 
-      if (state.offresVente.length === 0) {
+      writeCachedArray(STORAGE_KEYS.catalogueCache, catalogue);
+      writeCachedArray(STORAGE_KEYS.offresVenteCache, offresVente);
+
+      if (offresVente.length === 0) {
         setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
+      } else if (state.pendingCatalogueUpdate) {
+        setStatus("Tarifs mis à jour : ils seront appliqués après le ticket en cours.");
       } else if (hasActiveSalesContext()) {
         setStatus("");
       }
 
-      renderAll({ refreshProducts: tilesChanged, deferProductRefresh: true });
+      renderAll({ refreshProducts: tilesChanged && !state.pendingCatalogueUpdate, deferProductRefresh: true });
     } catch (error) {
       const cachedCatalogue = readCachedArray(STORAGE_KEYS.catalogueCache);
       const cachedOffres = readCachedArray(STORAGE_KEYS.offresVenteCache);
