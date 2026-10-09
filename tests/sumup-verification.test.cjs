@@ -22,7 +22,7 @@ const BASE = {
   transaction_code: "TEST123"
 };
 
-function runSumup({ tx = BASE, httpCode = 200, hasKey = true, params = {} } = {}) {
+function runSumup({ tx = BASE, httpCode = 200, hasKey = true, params = {}, fetchError = false } = {}) {
   const requests = [];
   const context = {
     PropertiesService: {
@@ -38,6 +38,7 @@ function runSumup({ tx = BASE, httpCode = 200, hasKey = true, params = {} } = {}
     UrlFetchApp: {
       fetch(url, opts) {
         requests.push({ url, opts });
+        if (fetchError) throw new Error("Timeout test");
         return {
           getResponseCode() { return httpCode; },
           getContentText() { return JSON.stringify(tx); }
@@ -64,6 +65,30 @@ test("paiement réussi, même référence/marchand/montant/devise", () => {
   assert.equal(requests.length, 1);
   assert.ok(requests[0].url.includes("foreign_transaction_id="));
   assert.equal(requests[0].opts.headers.Authorization, "Bearer FAKE_TEST_KEY");
+  assert.equal(requests[0].opts.timeoutSeconds, 6);
+  assert.equal(typeof response.timing.apps_script_ms, "number");
+  assert.equal(typeof response.timing.sumup_fetch_ms, "number");
+  assert.ok(!JSON.stringify(response).includes("FAKE_TEST_KEY"));
+});
+
+test("timing interne exposé sans secret et sans faux succès", () => {
+  const timeout = runSumup({ fetchError: true });
+  assert.equal(timeout.response.verified, false);
+  assert.equal(timeout.response.status, "UNAVAILABLE");
+  assert.equal(timeout.response.retryable, true);
+  assert.equal(timeout.response.timing.apps_script_ms >= 0, true);
+  assert.equal(timeout.response.timing.sumup_fetch_ms >= 0, true);
+  assert.equal(timeout.requests[0].opts.timeoutSeconds, 6);
+
+  const invalid = runSumup({ params: { foreign_tx_id: "REFERENCE_FAIBLE" } });
+  assert.equal(invalid.response.verified, false);
+  assert.equal(invalid.response.timing.sumup_fetch_ms, null);
+  assert.equal(invalid.requests.length, 0);
+
+  const notFound = runSumup({ httpCode: 404 });
+  assert.equal(notFound.response.verified, false);
+  assert.equal(notFound.response.status, "NOT_FOUND");
+  assert.equal(typeof notFound.response.timing.sumup_fetch_ms, "number");
 });
 
 test("transaction non encore disponible", () => {
