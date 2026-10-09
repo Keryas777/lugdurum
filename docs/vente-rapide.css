@@ -593,6 +593,79 @@
   display: none;
 }
 
+/* Succes : lisible d'un coup d'oeil, proche de la confirmation SumUp,
+   sans confondre paiement bancaire et synchronisation Google Sheets. */
+.sumupSuccessHero[hidden],
+.sumupActions[hidden],
+.sumupSuccessActions[hidden] {
+  display: none;
+}
+
+.sumupSuccessHero {
+  display: grid;
+  place-items: center;
+  margin: 8px 0 0;
+}
+
+.sumupSuccessCheck {
+  display: grid;
+  place-items: center;
+  width: 126px;
+  height: 126px;
+  border: 12px solid rgba(20, 196, 147, 0.2);
+  border-radius: 50%;
+  background: #16c79a;
+  color: #fff;
+  box-shadow: 0 12px 32px rgba(22, 160, 117, 0.2);
+  font-family: system-ui, sans-serif;
+  font-size: 76px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.sumupOverlay.isConfirmed .sumupDialog {
+  border-color: rgba(63, 111, 79, 0.42);
+  background: linear-gradient(165deg, #e2f7ea, #f6f1e8 82%);
+}
+
+.sumupOverlay.isConfirmed .sumupDialogHeader {
+  text-align: center;
+}
+
+.sumupOverlay.isConfirmed .sumupDialogHeader h2 {
+  color: #235e3c;
+}
+
+.sumupOverlay.isConfirmed .sumupDialogHeader p:last-child {
+  color: #345c45;
+}
+
+.sumupOverlay.isConfirmed:not(.isApiVerified) .sumupSuccessCheck {
+  background: #3f6f4f;
+}
+
+.sumupSuccessActions {
+  display: grid;
+}
+
+.sumupBtn:disabled {
+  opacity: 0.48;
+  filter: grayscale(0.85);
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sumupOverlay.isConfirmed .sumupSuccessCheck {
+    animation: sumupCheckAppear 260ms ease-out both;
+  }
+
+  @keyframes sumupCheckAppear {
+    from { opacity: 0.1; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+
 .sumupOverlay {
   position: fixed;
   z-index: 9999;

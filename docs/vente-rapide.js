@@ -126,6 +126,7 @@
     failedTicket: null,
     lastQueuedVerifiedSumupId: "",
     deferredLoadForSumup: false,
+    sumupManualBlocked: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
     daySummary: {
       isLoading: false,
@@ -160,7 +161,12 @@
     saveStatus: document.getElementById("saveStatus"),
 
     sumupConfirmOverlay: document.getElementById("sumupConfirmOverlay"),
+    sumupConfirmTitle: document.getElementById("sumupConfirmTitle"),
     sumupConfirmText: document.getElementById("sumupConfirmText"),
+    sumupSuccessHero: document.getElementById("sumupSuccessHero"),
+    sumupPendingActions: document.getElementById("sumupPendingActions"),
+    sumupSuccessActions: document.getElementById("sumupSuccessActions"),
+    sumupContinueBtn: document.getElementById("sumupContinueBtn"),
     sumupPendingAmount: document.getElementById("sumupPendingAmount"),
     sumupPendingReference: document.getElementById("sumupPendingReference"),
     sumupConfirmSuccessBtn: document.getElementById("sumupConfirmSuccessBtn"),
@@ -1577,8 +1583,16 @@
 
   const showSumupConfirm = (pending, message = "") => {
     if (!pending || !pending.transaction || !els.sumupConfirmOverlay) return;
-    if (SUMUP_CONFIG.verificationEnabled && els.sumupConfirmSuccessBtn) {
+
+    els.sumupConfirmOverlay.classList.remove("isConfirmed", "isApiVerified");
+    if (els.sumupConfirmTitle) els.sumupConfirmTitle.textContent = "Paiement SumUp en cours";
+    if (els.sumupSuccessHero) els.sumupSuccessHero.hidden = true;
+    if (els.sumupPendingActions) els.sumupPendingActions.hidden = false;
+    if (els.sumupSuccessActions) els.sumupSuccessActions.hidden = true;
+
+    if (els.sumupConfirmSuccessBtn) {
       els.sumupConfirmSuccessBtn.textContent = "Confirmer manuellement";
+      els.sumupConfirmSuccessBtn.disabled = state.saveInProgress || state.sumupManualBlocked;
     }
 
     els.sumupPendingAmount.textContent = formatCurrency(pending.transaction.total_encaisse_ttc);
@@ -1587,8 +1601,34 @@
 
     els.sumupConfirmText.textContent =
       message ||
-      "Le paiement SumUp a été lancé. Confirme le résultat après ton retour dans Lugdurum.";
+      "Vérification SumUp en cours. Si le paiement est bien confirmé dans SumUp, la confirmation manuelle reste possible.";
 
+    els.sumupConfirmOverlay.hidden = false;
+  };
+
+  // L'API SumUp prouve le paiement ; Google Sheets peut encore être
+  // en attente. Ne jamais confondre ces deux validations.
+  const showSumupSuccess = (transaction, { apiVerified = false, pendingCount = 0 } = {}) => {
+    if (!els.sumupConfirmOverlay) return;
+
+    els.sumupConfirmOverlay.classList.add("isConfirmed");
+    els.sumupConfirmOverlay.classList.toggle("isApiVerified", apiVerified);
+    if (els.sumupConfirmTitle) {
+      els.sumupConfirmTitle.textContent = apiVerified
+        ? "PAIEMENT VALIDÉ !"
+        : "Paiement confirmé";
+    }
+    if (els.sumupSuccessHero) els.sumupSuccessHero.hidden = false;
+    if (els.sumupPendingActions) els.sumupPendingActions.hidden = true;
+    if (els.sumupSuccessActions) els.sumupSuccessActions.hidden = false;
+
+    els.sumupPendingAmount.textContent = formatCurrency(transaction.total_encaisse_ttc);
+    els.sumupPendingReference.textContent = `Réf. ${transaction.transaction_id}`;
+    els.sumupConfirmText.textContent = apiVerified
+      ? "Paiement vérifié par SumUp. Ticket sauvegardé sur cet appareil." +
+        (pendingCount ? " Synchronisation Google Sheets en cours." : " Synchronisation Google Sheets terminée.")
+      : "Paiement confirmé manuellement dans Lugdurum." +
+        (pendingCount ? " Synchronisation Google Sheets en cours." : " Ticket enregistré dans Google Sheets.");
     els.sumupConfirmOverlay.hidden = false;
   };
 
@@ -1671,7 +1711,7 @@
     try {
       const result = await sumupVerificationPromise;
       const current = getPendingSumup();
-      if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress) return;
+      if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress || sumupVerificationStopped) return;
 
       if (result?.verified === true && result?.status === "SUCCESSFUL" &&
           result?.foreign_tx_id === expectedId) {
@@ -1684,10 +1724,12 @@
       const status = String(result?.status || "").toUpperCase();
       if (status === "MISMATCH") {
         sumupVerificationStopped = true;
+        state.sumupManualBlocked = true;
         showSumupConfirm(current, "Attention : montant, devise, compte ou référence incohérents. " +
           "Aucun ticket automatique créé. Vérifie dans SumUp avant toute confirmation.");
       } else if (["FAILED", "CANCELLED", "REFUNDED", "CHARGEBACK"].includes(status)) {
         sumupVerificationStopped = true;
+        state.sumupManualBlocked = true;
         showSumupConfirm(current, "SumUp signale : " + status +
           ". Aucune vente automatique enregistrée.");
       } else if (["UNSUPPORTED_ID", "INVALID_REQUEST", "NOT_CONFIGURED", "NOT_AUTHORIZED"].includes(status)) {
@@ -1704,7 +1746,7 @@
       }
     } catch (error) {
       const current = getPendingSumup();
-      if (current?.foreign_tx_id === expectedId) {
+      if (current?.foreign_tx_id === expectedId && !sumupVerificationStopped) {
         showSumupConfirm(current, "Contrôle SumUp indisponible (" +
           String(error?.message || "réseau") + "). Le paiement n'est pas annulé ; " +
           "confirmation manuelle possible après vérification dans SumUp.");
@@ -1794,6 +1836,7 @@
     }
 
     resetSumupVerification();
+    state.sumupManualBlocked = false;
     const foreignTxId = buildForeignTxId();
     const transaction = buildTransaction({
       provider: "SUMUP",
@@ -1835,6 +1878,13 @@
     const isApiVerified = verification?.verified === true &&
       verification?.status === "SUCCESSFUL" &&
       verification?.foreign_tx_id === pending.foreign_tx_id;
+    if (!isApiVerified && state.sumupManualBlocked) {
+      showSumupConfirm(
+        pending,
+        "SumUp a signalé un refus ou une incohérence. Impossible de confirmer manuellement ce paiement : vérifie dans SumUp."
+      );
+      return;
+    }
     const transaction = {
       ...pending.transaction,
       statut: "validee",
@@ -1857,8 +1907,16 @@
       return;
     }
 
+    // Le premier chemin (manuel ou API) verrouille avant tout appel réseau.
+    // Une réponse API concurrente ne doit jamais lancer un deuxième ticket.
+    sumupVerificationStopped = true;
+    if (sumupVerificationTimer) window.clearTimeout(sumupVerificationTimer);
+    sumupVerificationTimer = null;
     state.saveInProgress = true;
     renderPayment();
+    showSumupConfirm(pending, isApiVerified
+      ? "Paiement vérifié par SumUp. Sécurisation du ticket…"
+      : "Confirmation manuelle : enregistrement du ticket…");
 
     try {
       // Après preuve API positive de SumUp : écrire durablement l'opération
@@ -1884,11 +1942,12 @@
       }
 
       clearPendingSumup();
-      hideSumupConfirm();
 
       const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
         ? api().getPendingWritesCount()
         : 0;
+
+      showSumupSuccess(transaction, { apiVerified: isApiVerified, pendingCount });
 
       setStatus(
         queueFastPath
@@ -1928,6 +1987,7 @@
     }
 
     clearPendingSumup();
+    state.sumupManualBlocked = false;
     hideSumupConfirm();
 
     setStatus(
@@ -2416,6 +2476,11 @@
 
   if (els.sumupReturnBtn) {
     els.sumupReturnBtn.addEventListener("click", reopenSumup);
+  }
+  if (els.sumupContinueBtn) {
+    els.sumupContinueBtn.addEventListener("click", () => {
+      if (!state.saveInProgress) hideSumupConfirm();
+    });
   }
 
   // Sur iOS, focus et visibilitychange arrivent souvent ensemble au retour
