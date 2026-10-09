@@ -1724,10 +1724,12 @@
       const status = String(result?.status || "").toUpperCase();
       if (status === "MISMATCH") {
         sumupVerificationStopped = true;
+        state.sumupManualBlocked = true;
         showSumupConfirm(current, "Attention : montant, devise, compte ou référence incohérents. " +
           "Aucun ticket automatique créé. Vérifie dans SumUp avant toute confirmation.");
       } else if (["FAILED", "CANCELLED", "REFUNDED", "CHARGEBACK"].includes(status)) {
         sumupVerificationStopped = true;
+        state.sumupManualBlocked = true;
         showSumupConfirm(current, "SumUp signale : " + status +
           ". Aucune vente automatique enregistrée.");
       } else if (["UNSUPPORTED_ID", "INVALID_REQUEST", "NOT_CONFIGURED", "NOT_AUTHORIZED"].includes(status)) {
@@ -1834,6 +1836,7 @@
     }
 
     resetSumupVerification();
+    state.sumupManualBlocked = false;
     const foreignTxId = buildForeignTxId();
     const transaction = buildTransaction({
       provider: "SUMUP",
@@ -1875,6 +1878,13 @@
     const isApiVerified = verification?.verified === true &&
       verification?.status === "SUCCESSFUL" &&
       verification?.foreign_tx_id === pending.foreign_tx_id;
+    if (!isApiVerified && state.sumupManualBlocked) {
+      showSumupConfirm(
+        pending,
+        "SumUp a signalé un refus ou une incohérence. Impossible de confirmer manuellement ce paiement : vérifie dans SumUp."
+      );
+      return;
+    }
     const transaction = {
       ...pending.transaction,
       statut: "validee",
@@ -1897,8 +1907,16 @@
       return;
     }
 
+    // Le premier chemin (manuel ou API) verrouille avant tout appel réseau.
+    // Une réponse API concurrente ne doit jamais lancer un deuxième ticket.
+    sumupVerificationStopped = true;
+    if (sumupVerificationTimer) window.clearTimeout(sumupVerificationTimer);
+    sumupVerificationTimer = null;
     state.saveInProgress = true;
     renderPayment();
+    showSumupConfirm(pending, isApiVerified
+      ? "Paiement vérifié par SumUp. Sécurisation du ticket…"
+      : "Confirmation manuelle : enregistrement du ticket…");
 
     try {
       // Après preuve API positive de SumUp : écrire durablement l'opération
@@ -1924,11 +1942,12 @@
       }
 
       clearPendingSumup();
-      hideSumupConfirm();
 
       const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
         ? api().getPendingWritesCount()
         : 0;
+
+      showSumupSuccess(transaction, { apiVerified: isApiVerified, pendingCount });
 
       setStatus(
         queueFastPath
@@ -1968,6 +1987,7 @@
     }
 
     clearPendingSumup();
+    state.sumupManualBlocked = false;
     hideSumupConfirm();
 
     setStatus(
@@ -2456,6 +2476,11 @@
 
   if (els.sumupReturnBtn) {
     els.sumupReturnBtn.addEventListener("click", reopenSumup);
+  }
+  if (els.sumupContinueBtn) {
+    els.sumupContinueBtn.addEventListener("click", () => {
+      if (!state.saveInProgress) hideSumupConfirm();
+    });
   }
 
   // Sur iOS, focus et visibilitychange arrivent souvent ensemble au retour
