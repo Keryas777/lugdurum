@@ -245,6 +245,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
   const saved = [];
   const queued = [];
   const timers = [];
+  const timerDelays = [];
   const fakeElement = () => ({
     value: "", textContent: "", innerHTML: "", hidden: true, disabled: false,
     dataset: {}, children: [], style: {},
@@ -267,11 +268,22 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
     crypto: { randomUUID: () => "123E4567-E89B-12D3-A456-426614174000" },
     location: { href: options.url || "https://example.test/vente-rapide.html" },
     history: { replaceState() {} },
-    setTimeout(callback) { timers.push(callback); return timers.length; },
+    setTimeout(callback, delay) {
+      timers.push(callback);
+      timerDelays.push(delay);
+      return timers.length;
+    },
     clearTimeout() {},
     addEventListener() {},
     LugdurumAPI: {
-      async verifySumupPayment() { return options.verifyPromise || verifiedResult; },
+      async verifySumupPayment() {
+        if (options.verificationSequence) {
+          const next = options.verificationSequence.shift();
+          if (next instanceof Error) throw next;
+          return next || verifiedResult;
+        }
+        return options.verifyPromise || verifiedResult;
+      },
       async saveVenteRapideBundle(payload) {
         saved.push(payload);
         if (options.manualSavePromise) return options.manualSavePromise;
@@ -317,7 +329,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
     sumup_url: "sumupmerchant://pay/1.0",
     transaction
   }));
-  return { app, memory, saved, queued, timers, elements };
+  return { app, memory, saved, queued, timers, timerDelays, elements };
 }
 
 test("PWA pilote : paiement API SUCCESSFUL => un ticket valide et panier vide", async () => {
@@ -486,4 +498,42 @@ test("Concurrence : erreur manuelle puis réponse tardive de l'API => pas de dou
   assert.equal(h.saved.length, 1);
   assert.equal(h.queued.length, 0);
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("Performance SumUp : NOT_FOUND déclenche un nouveau contrôle en 600 ms", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "NOT_FOUND", retryable: true });
+  await h.app.verifyPendingSumup();
+  assert.ok(h.timerDelays.includes(600), "Délai de relance trop long");
+  assert.match(h.app.els.sumupConfirmText.textContent, /Transaction encore absente de l'API SumUp/);
+  assert.match(h.app.els.sumupConfirmText.textContent, /tentative 1\/5/);
+});
+
+test("Performance SumUp : erreur réseau tente de nouveau après 900 ms, sans valider le ticket", async () => {
+  const h = createSumupFrontendHarness({}, true, {
+    verificationSequence: [new Error("JSONP temporairement indisponible")]
+  });
+  await h.app.verifyPendingSumup();
+  assert.ok(h.timerDelays.includes(900), "Délai de secours imprévu");
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.queued.length, 0);
+  assert.match(h.app.els.sumupConfirmText.textContent, /Vérification SumUp momentanément indisponible/);
+});
+
+test("Performance SumUp : première lecture NOT_FOUND, seconde SUCCESSFUL = une seule vente", async () => {
+  const h = createSumupFrontendHarness({}, true, {
+    fastQueue: true,
+    verificationSequence: [
+      { verified: false, status: "NOT_FOUND", retryable: true },
+      { verified: true, status: "SUCCESSFUL", foreign_tx_id: ID, transaction_code: "TEST123" }
+    ]
+  });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.timerDelays[0], 600);
+  h.timers[0]();
+  // La lecture lancée par le timer est asynchrone.
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.app.els.sumupConfirmTitle.textContent, "PAIEMENT VALIDÉ !");
 });

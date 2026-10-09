@@ -58,7 +58,9 @@
     // Verification SumUp commune a tous les vendeurs, avec confirmation
     // manuelle en secours si le paiement n'est pas confirme par l'API.
     verificationEnabled: true,
-    verificationRetryMs: 1800,
+    // Après une réponse NOT_FOUND/PENDING, ne pas ajouter presque 2 s
+    // d'attente alors que SumUp peut publier la transaction entre-temps.
+    verificationRetryMs: 600,
     verificationMaxAttempts: 5
   };
 
@@ -1658,6 +1660,7 @@
   let sumupVerificationAttempts = 0;
   let sumupVerificationCurrentId = "";
   let sumupVerificationStopped = false;
+  let sumupVerificationStartedAt = 0;
 
   const resetSumupVerification = () => {
     if (sumupVerificationTimer) window.clearTimeout(sumupVerificationTimer);
@@ -1665,15 +1668,16 @@
     sumupVerificationAttempts = 0;
     sumupVerificationCurrentId = "";
     sumupVerificationStopped = false;
+    sumupVerificationStartedAt = 0;
   };
 
-  const scheduleSumupVerification = () => {
+  const scheduleSumupVerification = (delayMs = SUMUP_CONFIG.verificationRetryMs) => {
     if (sumupVerificationTimer || sumupVerificationStopped ||
         sumupVerificationAttempts >= SUMUP_CONFIG.verificationMaxAttempts) return;
     sumupVerificationTimer = window.setTimeout(() => {
       sumupVerificationTimer = null;
       verifyPendingSumup();
-    }, SUMUP_CONFIG.verificationRetryMs);
+    }, Math.max(350, Math.min(3000, delayMs)));
   };
 
   const verifyPendingSumup = async () => {
@@ -1698,6 +1702,8 @@
 
     sumupVerificationAttempts++;
     const expectedId = pending.foreign_tx_id;
+    const requestStartedAt = Date.now();
+    if (!sumupVerificationStartedAt) sumupVerificationStartedAt = requestStartedAt;
     showSumupConfirm(pending, "Vérification du paiement auprès de SumUp… (" +
       sumupVerificationAttempts + "/" + SUMUP_CONFIG.verificationMaxAttempts +
       "). La confirmation manuelle reste disponible.");
@@ -1710,6 +1716,7 @@
 
     try {
       const result = await sumupVerificationPromise;
+      const requestMs = Date.now() - requestStartedAt;
       const current = getPendingSumup();
       if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress || sumupVerificationStopped) return;
 
@@ -1737,20 +1744,49 @@
         showSumupConfirm(current, "Vérification impossible avec cette référence ; " +
           "confirmation manuelle disponible.");
       } else if (sumupVerificationAttempts < SUMUP_CONFIG.verificationMaxAttempts) {
-        showSumupConfirm(current, "SumUp n'a pas encore confirmé ce paiement (" +
-          (status || "en attente") + "). Nouvelle vérification automatique…");
-        scheduleSumupVerification();
+        const notIndexed = status === "NOT_FOUND";
+        const awaiting = status === "PENDING" || status === "IN_PROGRESS";
+        const reason = notIndexed
+          ? "Transaction encore absente de l'API SumUp"
+          : awaiting
+            ? "Paiement encore en attente dans l'API SumUp"
+            : "Réponse de vérification SumUp : " + (status || "INCONNU");
+        showSumupConfirm(
+          current,
+          reason + " (tentative " + sumupVerificationAttempts + "/" +
+          SUMUP_CONFIG.verificationMaxAttempts + ", " +
+          (requestMs / 1000).toFixed(1).replace(".", ",") +
+          " s). Nouvelle tentative automatique… Tu peux confirmer manuellement si SumUp affiche déjà le règlement comme validé."
+        );
+        // Retenter vite après NOT_FOUND (indexation retardée), un peu plus
+        // prudemment après erreur du serveur. Ne jamais valider sans SUCCESSFUL.
+        scheduleSumupVerification(
+          notIndexed || awaiting ? SUMUP_CONFIG.verificationRetryMs : 1100
+        );
       } else {
-        showSumupConfirm(current, "Statut SumUp non confirmé automatiquement. " +
-          "Vérifie le paiement dans SumUp puis utilise la confirmation manuelle.");
+        showSumupConfirm(
+          current,
+          "Vérification automatique terminée sans succès (dernier statut : " +
+          (status || "INCONNU") + ", en " +
+          ((Date.now() - sumupVerificationStartedAt) / 1000).toFixed(1).replace(".", ",") +
+          " s). Vérifie le résultat dans SumUp avant toute confirmation manuelle."
+        );
       }
     } catch (error) {
       const current = getPendingSumup();
       if (current?.foreign_tx_id === expectedId && !sumupVerificationStopped) {
-        showSumupConfirm(current, "Contrôle SumUp indisponible (" +
-          String(error?.message || "réseau") + "). Le paiement n'est pas annulé ; " +
-          "confirmation manuelle possible après vérification dans SumUp.");
-        scheduleSumupVerification();
+        const requestMs = Date.now() - requestStartedAt;
+        const hasRetry = sumupVerificationAttempts < SUMUP_CONFIG.verificationMaxAttempts;
+        showSumupConfirm(
+          current,
+          "Vérification SumUp momentanément indisponible (" +
+          String(error?.message || "réseau") + ", tentative " +
+          sumupVerificationAttempts + "/" + SUMUP_CONFIG.verificationMaxAttempts +
+          ", " + (requestMs / 1000).toFixed(1).replace(".", ",") + " s)." +
+          (hasRetry ? " Nouvelle tentative automatique…" : " Dernière tentative terminée.") +
+          " Si SumUp confirme le paiement, tu peux le valider manuellement."
+        );
+        if (hasRetry) scheduleSumupVerification(900);
       }
     } finally {
       sumupVerificationPromise = null;
