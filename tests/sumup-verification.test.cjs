@@ -237,7 +237,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
   assert.ok(enabled.includes(start), "Demarrage du frontend non reconnu");
   const source = enabled.replace(
     start,
-    "  window.__test = { state, els, verifyPendingSumup, buildTransaction, buildForeignTxId, sumupPilotEnabled: SUMUP_CONFIG.verificationEnabled };\n})();"
+    "  window.__test = { state, els, verifyPendingSumup, confirmSumupSuccess, confirmSumupFailure, buildTransaction, buildForeignTxId, sumupPilotEnabled: SUMUP_CONFIG.verificationEnabled };\n})();"
   );
   const memory = new Map();
   if (options.previouslyEnabled) memory.set("lugdurum_sumup_pilot_enabled", "1");
@@ -271,9 +271,11 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
     clearTimeout() {},
     addEventListener() {},
     LugdurumAPI: {
-      async verifySumupPayment() { return verifiedResult; },
+      async verifySumupPayment() { return options.verifyPromise || verifiedResult; },
       async saveVenteRapideBundle(payload) {
         saved.push(payload);
+        if (options.manualSavePromise) return options.manualSavePromise;
+        if (options.manualSaveError) throw new Error("Écriture incertaine");
         return { ok: true };
       },
       queueVerifiedSumupSale: options.fastQueue ? (payload) => {
@@ -315,7 +317,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
     sumup_url: "sumupmerchant://pay/1.0",
     transaction
   }));
-  return { app, memory, saved, queued, timers };
+  return { app, memory, saved, queued, timers, elements };
 }
 
 test("PWA pilote : paiement API SUCCESSFUL => un ticket valide et panier vide", async () => {
@@ -415,5 +417,73 @@ test("PWA rapide : MISMATCH SumUp ne met jamais de ticket payé en file", async 
   await h.app.verifyPendingSumup();
   assert.equal(h.queued.length, 0);
   assert.equal(h.saved.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("UI API : coche verte, résultat SumUp séparé de Sheets", async () => {
+  const h = createSumupFrontendHarness({
+    verified: true, status: "SUCCESSFUL", foreign_tx_id: ID, transaction_code: "TEST123"
+  }, true, { fastQueue: true });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.app.els.sumupConfirmOverlay.hidden, false);
+  assert.equal(h.app.els.sumupSuccessHero.hidden, false);
+  assert.equal(h.app.els.sumupPendingActions.hidden, true);
+  assert.equal(h.app.els.sumupSuccessActions.hidden, false);
+  assert.equal(h.app.els.sumupConfirmTitle.textContent, "PAIEMENT VALIDÉ !");
+  assert.match(h.app.els.sumupConfirmText.textContent, /Paiement vérifié par SumUp/);
+  assert.match(h.app.els.sumupConfirmText.textContent, /Google Sheets/);
+});
+
+test("UI manuelle : sans affirmer vérification par API", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "NOT_FOUND" }, true, { fastQueue: true });
+  await h.app.confirmSumupSuccess();
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.app.els.sumupConfirmTitle.textContent, "Paiement confirmé");
+  assert.match(h.app.els.sumupConfirmText.textContent, /confirmé manuellement/);
+  assert.ok(!h.app.els.sumupConfirmText.textContent.includes("vérifié par SumUp"));
+});
+
+test("MISMATCH API : la confirmation manuelle est interdite", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "MISMATCH" }, true, { fastQueue: true });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.app.els.sumupConfirmSuccessBtn.disabled, true);
+  await h.app.confirmSumupSuccess();
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("Concurrence : manuel engagé puis réponse API => un seul ticket", async () => {
+  let finishVerification, finishSave;
+  const verifyPromise = new Promise(resolve => { finishVerification = resolve; });
+  const manualSavePromise = new Promise(resolve => { finishSave = resolve; });
+  const h = createSumupFrontendHarness({}, true, { fastQueue: true, verifyPromise, manualSavePromise });
+  const verification = h.app.verifyPendingSumup();
+  const manual = h.app.confirmSumupSuccess();
+  assert.equal(h.saved.length, 1);
+  finishVerification({ verified: true, status: "SUCCESSFUL", foreign_tx_id: ID, transaction_code: "TEST123" });
+  await verification;
+  assert.equal(h.queued.length, 0);
+  finishSave({ ok: true });
+  await manual;
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+});
+
+test("Concurrence : erreur manuelle puis réponse tardive de l'API => pas de doublon", async () => {
+  let finishVerification, failSave;
+  const verifyPromise = new Promise(resolve => { finishVerification = resolve; });
+  const manualSavePromise = new Promise((resolve, reject) => { failSave = reject; });
+  const h = createSumupFrontendHarness({}, true, { fastQueue: true, verifyPromise, manualSavePromise });
+  const verification = h.app.verifyPendingSumup();
+  const manual = h.app.confirmSumupSuccess();
+  failSave(new Error("Écriture incertaine"));
+  await manual;
+  finishVerification({ verified: true, status: "SUCCESSFUL", foreign_tx_id: ID });
+  await verification;
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.queued.length, 0);
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
 });
