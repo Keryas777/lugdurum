@@ -126,6 +126,7 @@
     failedTicket: null,
     lastQueuedVerifiedSumupId: "",
     deferredLoadForSumup: false,
+    sumupManualBlocked: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
     daySummary: {
       isLoading: false,
@@ -160,7 +161,12 @@
     saveStatus: document.getElementById("saveStatus"),
 
     sumupConfirmOverlay: document.getElementById("sumupConfirmOverlay"),
+    sumupConfirmTitle: document.getElementById("sumupConfirmTitle"),
     sumupConfirmText: document.getElementById("sumupConfirmText"),
+    sumupSuccessHero: document.getElementById("sumupSuccessHero"),
+    sumupPendingActions: document.getElementById("sumupPendingActions"),
+    sumupSuccessActions: document.getElementById("sumupSuccessActions"),
+    sumupContinueBtn: document.getElementById("sumupContinueBtn"),
     sumupPendingAmount: document.getElementById("sumupPendingAmount"),
     sumupPendingReference: document.getElementById("sumupPendingReference"),
     sumupConfirmSuccessBtn: document.getElementById("sumupConfirmSuccessBtn"),
@@ -1577,8 +1583,16 @@
 
   const showSumupConfirm = (pending, message = "") => {
     if (!pending || !pending.transaction || !els.sumupConfirmOverlay) return;
-    if (SUMUP_CONFIG.verificationEnabled && els.sumupConfirmSuccessBtn) {
+
+    els.sumupConfirmOverlay.classList.remove("isConfirmed", "isApiVerified");
+    if (els.sumupConfirmTitle) els.sumupConfirmTitle.textContent = "Paiement SumUp en cours";
+    if (els.sumupSuccessHero) els.sumupSuccessHero.hidden = true;
+    if (els.sumupPendingActions) els.sumupPendingActions.hidden = false;
+    if (els.sumupSuccessActions) els.sumupSuccessActions.hidden = true;
+
+    if (els.sumupConfirmSuccessBtn) {
       els.sumupConfirmSuccessBtn.textContent = "Confirmer manuellement";
+      els.sumupConfirmSuccessBtn.disabled = state.saveInProgress || state.sumupManualBlocked;
     }
 
     els.sumupPendingAmount.textContent = formatCurrency(pending.transaction.total_encaisse_ttc);
@@ -1587,8 +1601,34 @@
 
     els.sumupConfirmText.textContent =
       message ||
-      "Le paiement SumUp a été lancé. Confirme le résultat après ton retour dans Lugdurum.";
+      "Vérification SumUp en cours. Si le paiement est bien confirmé dans SumUp, la confirmation manuelle reste possible.";
 
+    els.sumupConfirmOverlay.hidden = false;
+  };
+
+  // L'API SumUp prouve le paiement ; Google Sheets peut encore être
+  // en attente. Ne jamais confondre ces deux validations.
+  const showSumupSuccess = (transaction, { apiVerified = false, pendingCount = 0 } = {}) => {
+    if (!els.sumupConfirmOverlay) return;
+
+    els.sumupConfirmOverlay.classList.add("isConfirmed");
+    els.sumupConfirmOverlay.classList.toggle("isApiVerified", apiVerified);
+    if (els.sumupConfirmTitle) {
+      els.sumupConfirmTitle.textContent = apiVerified
+        ? "PAIEMENT VALIDÉ !"
+        : "Paiement confirmé";
+    }
+    if (els.sumupSuccessHero) els.sumupSuccessHero.hidden = false;
+    if (els.sumupPendingActions) els.sumupPendingActions.hidden = true;
+    if (els.sumupSuccessActions) els.sumupSuccessActions.hidden = false;
+
+    els.sumupPendingAmount.textContent = formatCurrency(transaction.total_encaisse_ttc);
+    els.sumupPendingReference.textContent = `Réf. ${transaction.transaction_id}`;
+    els.sumupConfirmText.textContent = apiVerified
+      ? "Paiement vérifié par SumUp. Ticket sauvegardé sur cet appareil." +
+        (pendingCount ? " Synchronisation Google Sheets en cours." : " Synchronisation Google Sheets terminée.")
+      : "Paiement confirmé manuellement dans Lugdurum." +
+        (pendingCount ? " Synchronisation Google Sheets en cours." : " Ticket enregistré dans Google Sheets.");
     els.sumupConfirmOverlay.hidden = false;
   };
 
