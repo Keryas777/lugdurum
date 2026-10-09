@@ -114,6 +114,7 @@
 }
 
 .saleModeBtn {
+  touch-action: manipulation;
   min-height: 54px;
   display: grid;
   place-items: center;
@@ -157,6 +158,7 @@
 }
 
 .paymentBtn {
+  touch-action: manipulation;
   min-height: var(--tap);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -280,6 +282,8 @@
 }
 
 .productBtn {
+  touch-action: manipulation;
+  background-color: #ede1ce;
   position: relative;
   min-height: 108px;
   display: grid;
