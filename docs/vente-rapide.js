@@ -1885,7 +1885,12 @@
       setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}. Réessaie le même ticket après vérification.`, "isError");
     } finally {
       state.saveInProgress = false;
-      renderPayment();
+      if (state.pendingCatalogueUpdate &&
+          state.ticketItems.length === 0 && state.draftPack.length === 0) {
+        renderAll();
+      } else {
+        renderPayment();
+      }
     }
   };
 
@@ -1990,7 +1995,12 @@
       setStatus(`Enregistrement incertain : ${error.message}. Réessaie SANS modifier le panier pour conserver le même ID et éviter un doublon.`, "isError");
     } finally {
       state.saveInProgress = false;
-      renderPayment();
+      if (state.pendingCatalogueUpdate &&
+          state.ticketItems.length === 0 && state.draftPack.length === 0) {
+        renderAll();
+      } else {
+        renderPayment();
+      }
     }
   };
 
