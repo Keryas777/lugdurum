@@ -267,3 +267,113 @@ test("aucun succès local anticipé et report J2 protégé", () => {
     // The next declaration after carry may vary: only assert the guard in its prefix.
   assert.ok(carry.includes("getPendingWritesCount() > 0"));
 });
+
+
+const reportCode = section(
+  frontend,
+  "  const getExistingCarryoverMovements = (",
+  "  const carryStockToNextDay = async () => {"
+);
+const movementBuilderCode = section(
+  frontend,
+  "  const CLOTURE_BATCH_KEYS = Object.freeze({",
+  "  const saveClosureToApi = async"
+);
+const buildRealOperation = new Function(
+  movementBuilderCode + "\nreturn buildBatchOperation;"
+)();
+
+function makeReporter(rows, send) {
+  const create = new Function(
+    "state", "isActiveMovement", "normalizeMovementType",
+    "MOVEMENT_TYPES", "hasApi", "api", "buildBatchOperation",
+    reportCode + "\nreturn {getExistingCarryoverMovements,saveCarryoverToApi};"
+  );
+  return create(
+    { mouvementsStock: rows },
+    (movement) => movement.statut !== "annule",
+    (type) => String(type || "").trim().toUpperCase(),
+    { REPORT_CLOTURE: "REPORT_CLOTURE" },
+    () => true,
+    () => ({ batchUpsert: send }),
+    buildRealOperation
+  );
+}
+
+const reportMovements = Array.from({ length: 17 }, (_, index) => ({
+  mouvement_stock_id: "MVT_REPORT_CARRY_TEST_" + index,
+  type_mouvement: "REPORT_CLOTURE",
+  stock_mission_id: "MST_GERZAT",
+  journee_id: "J_GERZAT_J2",
+  sku_id: "SKU_" + index,
+  quantite: 1,
+  statut: "valide"
+}));
+
+test("report : 17 mouvements partent dans un seul batchUpsert", async () => {
+  let calls = 0;
+  const config = makeSheetsCore();
+  const reporter = makeReporter([], async (operations) => {
+    calls += 1;
+    assert.equal(operations.length, 17);
+    for (const operation of operations) {
+      const normalized = config.normalize(operation);
+      assert.equal(normalized.keyField, "mouvement_stock_id");
+      assert.ok(normalized.row.mouvement_stock_id);
+    }
+    return {
+      ok: true,
+      results: operations.map(() => ({ ok: true }))
+    };
+  });
+  const result = await reporter.saveCarryoverToApi({ movements: reportMovements });
+  assert.deepEqual(result, { queued: false, operations_count: 17 });
+  assert.equal(calls, 1);
+});
+
+test("report : détecter les 17 mouvements historiques à identifiant aléatoire", () => {
+  const reporter = makeReporter(reportMovements.concat([
+    { ...reportMovements[0], mouvement_stock_id: "AUTRE", journee_id: "J_AUTRE" },
+    { ...reportMovements[0], mouvement_stock_id: "CLOT", type_mouvement: "CLOTURE_COMPTE" }
+  ]), async () => ({ ok: true, results: [] }));
+  assert.equal(reporter.getExistingCarryoverMovements("MST_GERZAT", "J_GERZAT_J2").length, 17);
+  assert.equal(reporter.getExistingCarryoverMovements("MST_GERZAT", "J_AUTRE").length, 1);
+});
+
+test("report : en attente ou réponse partielle, ne pas confirmer le transfert", async () => {
+  const queued = makeReporter([], async () => ({ queued: true, pending_count: 1 }));
+  assert.deepEqual(
+    await queued.saveCarryoverToApi({ movements: reportMovements }),
+    { queued: true, pending_count: 1 }
+  );
+
+  const partial = makeReporter([], async () => ({ results: [{ ok: true }] }));
+  await assert.rejects(
+    () => partial.saveCarryoverToApi({ movements: reportMovements }),
+    /réponse du lot incomplète/i
+  );
+});
+
+test("report : rien n'est écrit sans mouvement et le contexte J2 change seulement après succès", async () => {
+  let calls = 0;
+  const reporter = makeReporter([], async () => {
+    calls += 1;
+    return { results: [] };
+  });
+  await assert.rejects(
+    () => reporter.saveCarryoverToApi({ movements: [] }),
+    /aucune ligne de stock/i
+  );
+  assert.equal(calls, 0);
+  const carry = section(frontend,
+    "  const carryStockToNextDay = async () => {",
+    "  const fillTheoreticalCounts = () => {"
+  );
+  assert.ok(carry.indexOf("const response = await saveCarryoverToApi") <
+    carry.indexOf("upsertMovementsLocal(movements)"));
+  assert.ok(carry.indexOf("const response = await saveCarryoverToApi") <
+    carry.indexOf("safeLocalSet(STORAGE_KEYS.activeJourneeId"));
+  assert.ok(carry.includes('carryover_id: "CARRY_" + fromDayId + "_" + nextDayId'));
+  assert.ok(carry.includes("getExistingCarryoverMovements(missionId, nextDayId)"));
+  assert.ok(carry.includes("state.dataLoaded = false"));
+});
