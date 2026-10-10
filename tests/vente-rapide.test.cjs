@@ -345,7 +345,7 @@ test("2 téléphones : sans contexte local, J1 + stock emporté + CA commun retr
     assert.equal(phone.api.els.stockPreparedTotal.textContent, "152");
     assert.equal(phone.api.els.stockPreparedBreakdown.textContent, "92 × 50 cL · 60 × 20 cL");
     assert.equal(phone.api.state.daySummary.tickets, 2);
-    assert.equal(phone.api.state.daySummary.revenue, 77.98);
+    assert.equal(phone.api.state.daySummary.revenue.toFixed(2), "77.98");
     assert.equal(phone.api.els.dayRevenueTotal.textContent.includes("77"), true);
     assert.equal(phone.store.get("lugdurum_active_stock_mission_id"), "MST_GERZAT");
     assert.equal(phone.store.get("lugdurum_active_journee_id"), "J_GERZAT");
