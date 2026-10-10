@@ -2667,6 +2667,10 @@
   els.clearTicketBtn.addEventListener("click", () => { if (!state.saveInProgress) clearTicket(); });
   els.undoBtn.addEventListener("click", () => { if (!state.saveInProgress) undoLast(); });
   els.saveTicketBtn.addEventListener("click", () => saveTicket());
+  els.refreshDaySummaryBtn?.addEventListener("click", () => {
+    if (state.saveInProgress || getPendingSumup()) return;
+    loadContext().catch(console.warn);
+  });
   els.externalCbBtn?.addEventListener("click", showExternalCbConfirm);
   els.externalCbConfirmBtn?.addEventListener("click", confirmExternalCbSale);
   els.externalCbCancelBtn?.addEventListener("click", closeExternalCbConfirm);
@@ -2714,6 +2718,15 @@
     checkPendingSumup();
     refreshSummaryOnResume();
   });
+
+  // Le CA est commun aux deux vendeurs, pas aux caches de leurs téléphones.
+  // Réseau seulement en avant-plan et sans concurrence avec SumUp / sync.
+  window.setInterval?.(() => {
+    if (document.visibilityState === "hidden" ||
+        state.daySummary.isLoading || state.saveInProgress ||
+        getPendingSumup() || !hasActiveSalesContext()) return;
+    loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+  }, 90000);
 
   window.addEventListener("lugdurum:sync-status", (event) => {
     const detail = event.detail || {};
