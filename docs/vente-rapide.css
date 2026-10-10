@@ -1011,6 +1011,24 @@ body.saleDetailsOpen {
   line-height: 1.4;
 }
 
+/* L'évènement et la date restent distincts, y compris sur petit écran. */
+.saleDetailsSubtitle {
+  display: grid;
+  gap: 3px;
+}
+
+.saleDetailsSubtitleEvent,
+.saleDetailsSubtitleDate {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.saleDetailsSubtitleDate {
+  color: #8a5a2b;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
 .saleDetailsNotice {
   border-radius: 12px;
   padding: 10px 12px;
@@ -1091,6 +1109,79 @@ body.saleDetailsOpen {
   flex: 0 0 auto;
   color: #8a5a2b;
   font-variant-numeric: tabular-nums;
+}
+
+/* Deux fonds sobres pour distinguer immédiatement les formats vendus. */
+.saleDetailsFormats {
+  display: grid;
+  gap: 10px;
+}
+
+.saleDetailsFormatGroup {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.16);
+  border-radius: 14px;
+  background: #fffaf1;
+}
+
+.saleDetailsFormatGroup.is50cl {
+  border-color: rgba(168, 143, 104, 0.38);
+  background: rgba(216, 160, 79, 0.15);
+}
+
+.saleDetailsFormatGroup.is20cl {
+  border-color: rgba(63, 111, 79, 0.28);
+  background: rgba(63, 111, 79, 0.10);
+}
+
+.saleDetailsFormatTitle {
+  margin: 0 0 7px;
+  color: #1f1b16;
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.saleDetailsProductList {
+  gap: 0;
+}
+
+.saleDetailsProductList li {
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(86, 65, 42, 0.12);
+}
+
+.saleDetailsProductList li:first-child {
+  padding-top: 2px;
+}
+
+.saleDetailsProductList li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.saleDetailsProductName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 3px;
+}
+
+.saleDetailsProductCode {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 25px;
+  padding: 2px 8px;
+  border: 1px solid rgba(138, 90, 43, 0.18);
+  border-radius: 7px;
+  color: #8a5a2b;
+  background: rgba(255, 250, 241, 0.88);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
 }
 
 .saleDetailsList small,
