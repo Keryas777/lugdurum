@@ -2755,7 +2755,7 @@
       renderPayment();
     }
   });
-  window.LugdurumUsers?.refreshFromSheet();
+  // Pas de requête utilisateurs bloquante au démarrage des ventes.
 
   // Le CA est commun aux deux vendeurs, pas aux caches de leurs téléphones.
   // Réseau seulement en avant-plan et sans concurrence avec SumUp / sync.
