@@ -105,7 +105,8 @@
     offresVenteCache: "lugdurum_offres_vente_cache",
     mouvementsStock: "lugdurum_mouvements_stock",
     sumupPending: "lugdurum_pending_sumup_ticket",
-    sumupAffiliateKey: "lugdurum_sumup_affiliate_key"
+    sumupAffiliateKey: "lugdurum_sumup_affiliate_key",
+    sharedStockMission: "lugdurum_shared_stock_mission_cache"
   };
 
   const state = {
@@ -2402,6 +2403,9 @@
     // Le cache local n'est qu'un contexte provisoire pour le mode hors ligne.
     const stockId = hints.explicitStockId || hints.localStockId;
     const dayId = hints.explicitDayId || hints.localDayId;
+    const cachedStock = readJson(STORAGE_KEYS.sharedStockMission, null);
+    state.sharedStockMission = cachedStock && String(cachedStock.mission_id || "") === stockId
+      ? cachedStock : null;
     state.journeeActive = {
       ...EMPTY_JOURNEE_ACTIVE,
       user_id: currentUserId || EMPTY_JOURNEE_ACTIVE.user_id,
@@ -2460,6 +2464,7 @@
           : "Date non définie"
       };
       persistSharedSalesContext(stockMissionId, selectedDayId);
+      writeJson(STORAGE_KEYS.sharedStockMission, selected.stock);
       // CA jour = toutes les transactions de cette journée (Jérôme + Antho).
       setDaySummaryFromTransactions(remote.transactions);
       renderAll();
@@ -2709,6 +2714,21 @@
   els.addPackBtn.addEventListener("click", () => { if (!state.saveInProgress) addPackToTicket(); });
   els.clearTicketBtn.addEventListener("click", () => { if (!state.saveInProgress) clearTicket(); });
   els.undoBtn.addEventListener("click", () => { if (!state.saveInProgress) undoLast(); });
+  els.refreshSharedDayBtn?.addEventListener("click", () => {
+    if (!hasActiveSalesContext() || state.daySummary.isLoading || state.saveInProgress) return;
+    loadDaySummaryFromNetwork().catch(console.warn);
+  });
+  // Deux appareils vendent simultanément : mise à jour régulière si la PWA
+  // est affichée. Une lecture échouée ne bloque jamais la vente rapide.
+  if (typeof window.setInterval === "function") {
+    window.setInterval(() => {
+      if (document.visibilityState !== "visible" || !navigator.onLine ||
+          state.saveInProgress || state.daySummary.isLoading ||
+          getPendingSumup() || !hasActiveSalesContext()) return;
+      loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    }, 60000);
+  }
+
   els.saveTicketBtn.addEventListener("click", () => saveTicket());
   els.externalCbBtn?.addEventListener("click", showExternalCbConfirm);
   els.externalCbConfirmBtn?.addEventListener("click", confirmExternalCbSale);
