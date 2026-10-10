@@ -27,7 +27,7 @@
     saveInscriptionEventBundle_()
     saveMissionStockBundle_()
     saveJourneeHistoriqueBundle_()
-    saveCloture_()
+    upsertRowByConfig_() : clôtures via salon_id (clé de l'onglet réel)
 */
 
 const POST_UPSERT_ACTIONS = {
@@ -303,10 +303,16 @@ function invokePostAction_(action, payload, context) {
   }
 
   if (action === "saveCloture") {
-    return callRequiredFunction_(
-      "saveCloture_",
-      payload.cloture || payload.data || payload.row || {}
-    );
+    // Ancien routeur : saveCloture_ n'existe pas. La fonction publique
+    // saveCloture() utilise cloture_id, absent du tableau de clôture V1.
+    // Ici, écrire via la clé métier *salon_id* réellement utilisée dans
+    // clotures_journees, sans ajouter de colonne ni créer de doublons.
+    const closure = payload.cloture || payload.data || payload.row || {};
+    if (!closure || typeof closure !== "object" || Array.isArray(closure) ||
+        !String(closure.salon_id || "").trim()) {
+      throw new Error("Clôture invalide : salon_id obligatoire.");
+    }
+    return callRequiredFunction_("upsertRowByConfig_", "clotures", closure, "salon_id");
   }
 
   if (action === "saveJourneeHistoriqueBundle") {
