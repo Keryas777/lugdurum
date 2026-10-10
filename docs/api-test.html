@@ -24,6 +24,12 @@
         box-sizing: border-box;
       }
 
+      /* Empêcher le rebond vertical iOS sans bloquer le scroll normal. */
+      html,
+      body {
+        overscroll-behavior-y: none;
+      }
+
       body {
         margin: 0;
         padding: 20px;
