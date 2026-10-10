@@ -268,40 +268,6 @@
 }
 
 /* ==============================
-   Produits vendus — aperçu carte
-   ============================== */
-
-.closedProductsGrid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.closedProductChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  border: 1px solid rgba(86, 65, 42, 0.12);
-  border-radius: 999px;
-  padding: 0 11px;
-  color: var(--text);
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.78),
-      rgba(255, 250, 241, 0.54)
-    );
-  font-size: 0.82rem;
-  font-weight: 900;
-}
-
-.closedProductChip strong {
-  color: var(--rum);
-  font-weight: 950;
-}
-
-/* ==============================
    Actions cartes
    ============================== */
 
