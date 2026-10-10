@@ -34,7 +34,7 @@ function section(text, from, to) {
 
 const saveCode = section(
   frontend,
-  "  const buildBatchOperation = (",
+  "  const CLOTURE_BATCH_KEYS = Object.freeze({",
   "  // Les anciennes sauvegardes"
 );
 const createSaver = new Function(
