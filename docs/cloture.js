@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Clôture V9 :
+    Clôture V10 :
     - Charge lugdurum-api.js avant ce fichier.
     - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
     - Lit missions_stock, missions_vente, journees_vente, transactions,
@@ -1435,10 +1435,23 @@
     }
   };
 
-  const buildBatchOperation = (sheetKey, data) => ({
-    sheetKey,
-    data
+  // Le moteur Sheets accepte une keyField explicite. Sans cela, une
+  // ancienne configuration de clotures_journees utilise encore cloture_id
+  // alors que la clé métier réellement présente est salon_id.
+  const CLOTURE_BATCH_KEYS = Object.freeze({
+    clotures: "salon_id",
+    mouvementsStock: "mouvement_stock_id",
+    journees: "journee_id",
+    missionsStock: "mission_id"
   });
+
+  const buildBatchOperation = (sheetKey, data) => {
+    const keyField = CLOTURE_BATCH_KEYS[sheetKey];
+    if (!keyField || !String(data?.[keyField] || "").trim()) {
+      throw new Error(`Identifiant ${keyField || "inconnu"} manquant pour ${sheetKey}.`);
+    }
+    return { sheetKey, keyField, data };
+  };
 
   const buildClosureSheetRow = (closure) => ({
     salon_id: closure.salon_id,
