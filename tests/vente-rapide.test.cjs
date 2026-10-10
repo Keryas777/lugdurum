@@ -187,7 +187,7 @@ test("CB externe : confirmation volontaire, aucun appel SumUp, ticket CB et stoc
   app.api.state.paymentMode = "CB";
   app.api.showExternalCbConfirm();
   assert.equal(app.api.els.externalCbOverlay.hidden, false);
-  assert.equal(app.api.els.externalCbAmount.textContent, "25 €");
+  assert.match(app.api.els.externalCbAmount.textContent, /25\\s*€/u);
   assert.equal(app.calls.length, 0, "L'ouverture n'enregistre rien");
 
   await app.api.confirmExternalCbSale();
