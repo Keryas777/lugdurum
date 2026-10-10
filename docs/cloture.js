@@ -1902,7 +1902,7 @@
   // explicitement que l'action n'existe pas encore. Une erreur réseau,
   // un contexte invalide ou une réponse incomplète restent des erreurs.
   const isClotureActionNotDeployed = (error) =>
-    /action GET inconnue\\s*:\\s*getClotureData|action inconnue\\s*:\\s*getClotureData/i
+    /action GET inconnue\s*:\s*getClotureData|action inconnue\s*:\s*getClotureData/i
       .test(String(error?.message || ""));
 
   const loadRemoteDataWithClotureData = async () => {
