@@ -19,7 +19,8 @@ const code = source.replace(
   startup,
   "  window.__test = { state, els, saveTicket, confirmSumupSuccess, " +
     "confirmSumupFailure, reopenSumup, buildTransaction, " +
-    "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale };\n})();"
+    "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale, " +
+    "selectSharedSalesContext, loadContext };\n})();"
 );
 
 function element() {
@@ -75,7 +76,7 @@ function setup(saveBundle, pendingCount = () => 0) {
   };
   vm.runInNewContext(code, {
     window, document, localStorage, navigator: { onLine: true },
-    URL, console
+    URL, URLSearchParams, console
   }, { filename: "vente-rapide.js" });
 
   const api = window.__test;
@@ -295,4 +296,105 @@ test("CB externe après refus de SumUp : panier restauré et pas de paiement lan
   assert.equal(app.calls.length, 1);
   assert.equal(app.calls[0].transaction.paiement_provider, "EXTERNE");
   assert.equal(app.calls[0].transaction.sumup_foreign_tx_id, "");
+});
+
+const todayIsoLocal = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+const gerzatSharedFixture = () => {
+  const date = todayIsoLocal();
+  const missionsStock = [
+    { mission_id: "MST_OLD", nom: "Gerzat (doublon)", statut: "annule",
+      total_bouteilles_preparees: 0 },
+    { mission_id: "MST_GERZAT", nom: "Gerzat", statut: "pret",
+      stock_prepare: true, total_bouteilles_preparees: 152,
+      total_50cl_prepare: 92, total_20cl_prepare: 60 }
+  ];
+  const journees = [
+    { journee_id: "J_OLD", stock_mission_id: "MST_OLD", date, statut: "pret" },
+    { journee_id: "J_GERZAT", stock_mission_id: "MST_GERZAT",
+      mission_id: "EVT_GERZAT", jour_label: "J1", date, statut: "pret" },
+    { journee_id: "J_GERZAT_J2", stock_mission_id: "MST_GERZAT",
+      mission_id: "EVT_GERZAT", jour_label: "J2", date: "2099-11-12", statut: "pret" }
+  ];
+  const transactions = [
+    { transaction_id: "TX_1", journee_id: "J_GERZAT", montant: 45.99,
+      total_encaisse_ttc: 45.99, statut: "validee", paiement_statut: "PAYE" },
+    { transaction_id: "TX_2", journee_id: "J_GERZAT",
+      total_encaisse_ttc: 31.99, statut: "validee", paiement_statut: "PAYE" }
+  ];
+  return { missionsStock, journees, transactions };
+};
+
+test("2 téléphones : sans contexte local, J1 + stock emporté + CA commun retrouvés", async () => {
+  const fixture = gerzatSharedFixture();
+  const phones = [setup(async () => ({ ok: true })), setup(async () => ({ ok: true }))];
+
+  await Promise.all(phones.map(async (phone) => {
+    phone.window.location.search = "";
+    phone.window.LugdurumAPI.getCoreData = async () => ({ tables: fixture });
+    phone.window.LugdurumAPI.getCurrentUserId = () => "U_ANTHO";
+    await phone.api.loadContext();
+
+    assert.equal(phone.api.state.journeeActive.mission_id, "MST_GERZAT");
+    assert.equal(phone.api.state.journeeActive.journee_id, "J_GERZAT");
+    assert.equal(phone.api.state.journeeActive.user_id, "U_ANTHO");
+    assert.equal(phone.api.state.sharedStock.total_bouteilles_preparees, 152);
+    assert.equal(phone.api.els.stockPreparedTotal.textContent, "152");
+    assert.equal(phone.api.els.stockPreparedBreakdown.textContent, "92 × 50 cL · 60 × 20 cL");
+    assert.equal(phone.api.state.daySummary.tickets, 2);
+    assert.equal(phone.api.state.daySummary.revenue, 77.98);
+    assert.equal(phone.api.els.dayRevenueTotal.textContent.includes("77"), true);
+    assert.equal(phone.store.get("lugdurum_active_stock_mission_id"), "MST_GERZAT");
+    assert.equal(phone.store.get("lugdurum_active_journee_id"), "J_GERZAT");
+  }));
+});
+
+test("Ancien cache J2 : priorité à la journée du jour sur la même mission", () => {
+  const phone = setup(async () => ({ ok: true }));
+  const fixture = gerzatSharedFixture();
+  const result = phone.api.selectSharedSalesContext(
+    fixture.missionsStock, fixture.journees,
+    { stockMissionId: "MST_GERZAT", journeeId: "J_GERZAT_J2" }
+  );
+  assert.equal(result.journee.journee_id, "J_GERZAT");
+});
+
+test("URL explicite d'un événement : prioritaire sur un cache local obsolète", async () => {
+  const phone = setup(async () => ({ ok: true }));
+  const fixture = gerzatSharedFixture();
+  phone.store.set("lugdurum_preparation_context", JSON.stringify({
+    mission_id: "MST_OTHER", stock_mission_id: "MST_OTHER", journee_id: "J_OTHER"
+  }));
+  phone.window.location.search = "?stock_mission_id=MST_GERZAT&journee_id=J_GERZAT";
+  phone.window.LugdurumAPI.getCoreData = async () => ({ tables: fixture });
+  await phone.api.loadContext();
+  assert.equal(phone.api.state.journeeActive.journee_id, "J_GERZAT");
+  assert.equal(phone.api.state.journeeActive.mission_id, "MST_GERZAT");
+});
+
+test("Plusieurs journées aujourd'hui : aucune mission sélectionnée au hasard", () => {
+  const phone = setup(async () => ({ ok: true }));
+  const fixture = gerzatSharedFixture();
+  fixture.missionsStock.push({ mission_id: "MST_OTHER", statut: "pret" });
+  fixture.journees.push({
+    journee_id: "J_OTHER", stock_mission_id: "MST_OTHER",
+    date: todayIsoLocal(), statut: "pret"
+  });
+  const result = phone.api.selectSharedSalesContext(
+    fixture.missionsStock, fixture.journees, {}
+  );
+  assert.equal(result, null);
+});
+
+test("Une journée annulée ou un stock annulé ne peut être choisi", () => {
+  const phone = setup(async () => ({ ok: true }));
+  const fixture = gerzatSharedFixture();
+  const forbidden = phone.api.selectSharedSalesContext(
+    fixture.missionsStock, fixture.journees,
+    { stockMissionId: "MST_OLD", journeeId: "J_OLD", explicitUrl: true }
+  );
+  assert.equal(forbidden.mission.mission_id, "MST_GERZAT");
 });
