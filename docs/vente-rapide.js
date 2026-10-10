@@ -159,6 +159,12 @@
     clearTicketBtn: document.getElementById("clearTicketBtn"),
     undoBtn: document.getElementById("undoBtn"),
     saveTicketBtn: document.getElementById("saveTicketBtn"),
+    externalCbBtn: document.getElementById("externalCbBtn"),
+    externalCbOverlay: document.getElementById("externalCbOverlay"),
+    externalCbAmount: document.getElementById("externalCbAmount"),
+    externalCbConfirmBtn: document.getElementById("externalCbConfirmBtn"),
+    externalCbCancelBtn: document.getElementById("externalCbCancelBtn"),
+    externalCbStatus: document.getElementById("externalCbStatus"),
     amountPaidInput: document.getElementById("amountPaidInput"),
     saveStatus: document.getElementById("saveStatus"),
 
@@ -1015,6 +1021,12 @@
 
     if (state.saveInProgress) els.saveTicketBtn.textContent = "Enregistrement…";
     els.saveTicketBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
+    if (els.externalCbBtn) {
+      els.externalCbBtn.hidden = !isCb;
+      els.externalCbBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
+    }
+    if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
+    if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
     els.amountPaidInput.disabled = state.saveInProgress;
     if (els.sumupConfirmSuccessBtn) els.sumupConfirmSuccessBtn.disabled = state.saveInProgress;
     if (els.sumupConfirmFailBtn) els.sumupConfirmFailBtn.disabled = state.saveInProgress;
@@ -2056,6 +2068,56 @@
     window.location.href = pending.sumup_url;
   };
 
+  // CB encaissee sur un autre telephone (Tap to Pay / autre terminal).
+  // Ne pas initier de paiement bancaire ni attribuer une verification SumUp.
+  const showExternalCbConfirm = () => {
+    if (state.saveInProgress || state.paymentMode !== "CB") return;
+    if (!hasActiveSalesContext()) {
+      showMissingContextStatus();
+      return;
+    }
+    if (!state.ticketItems.length) {
+      setStatus("Ajoute au moins un produit avant d'enregistrer cette CB.", "isError");
+      return;
+    }
+    if (state.draftPack.length) {
+      setStatus("Termine ou vide le coffret en cours avant d'enregistrer cette CB.", "isError");
+      return;
+    }
+    if (getPendingSumup()) {
+      setStatus(
+        "Un paiement SumUp est encore en attente sur ce telephone. Termine ou annule d'abord cette tentative pour eviter une vente en double.",
+        "isError"
+      );
+      return;
+    }
+    if (!els.externalCbOverlay) return;
+
+    const inputAmount = Number(String(els.amountPaidInput.value).replace(",", "."));
+    const total = Number.isFinite(inputAmount) && inputAmount > 0
+      ? inputAmount : getTicketTotal();
+    els.externalCbAmount.textContent = formatCurrency(total);
+    els.externalCbStatus.textContent = "";
+    els.externalCbOverlay.hidden = false;
+  };
+
+  const closeExternalCbConfirm = () => {
+    if (state.saveInProgress || !els.externalCbOverlay) return;
+    els.externalCbOverlay.hidden = true;
+  };
+
+  const confirmExternalCbSale = async () => {
+    if (state.saveInProgress || !els.externalCbOverlay || els.externalCbOverlay.hidden) return;
+    if (state.paymentMode !== "CB" || getPendingSumup()) return;
+    const saved = await saveTicket({ externalCb: true });
+    if (saved) {
+      els.externalCbOverlay.hidden = true;
+    } else if (els.externalCbStatus) {
+      els.externalCbStatus.textContent =
+        "Enregistrement non confirme. Ne ressaisis pas la vente ailleurs : reessaie ici avec le meme ticket.";
+    }
+  };
+
   const getTicketFingerprint = () => JSON.stringify({
     mission_id: state.journeeActive.mission_id,
     journee_id: state.journeeActive.journee_id,
@@ -2064,16 +2126,20 @@
     items: state.ticketItems
   });
 
-  const saveTicket = async () => {
-    if (state.saveInProgress) return;
+  const saveTicket = async ({ externalCb = false } = {}) => {
+    if (state.saveInProgress) return false;
     if (!hasActiveSalesContext()) {
       showMissingContextStatus();
       return;
     }
 
-    if (state.paymentMode === "CB") {
+    if (state.paymentMode === "CB" && !externalCb) {
       launchSumupPayment();
-      return;
+      return false;
+    }
+    if (externalCb && (state.paymentMode !== "CB" || getPendingSumup())) {
+      setStatus("Paiement CB externe impossible : mode incorrect ou tentative SumUp encore en attente.", "isError");
+      return false;
     }
 
     if (state.ticketItems.length === 0) {
@@ -2090,10 +2156,15 @@
     const transaction = state.failedTicket?.fingerprint === fingerprint
       ? state.failedTicket.transaction
       : buildTransaction({
-          provider: "",
+          provider: externalCb ? "EXTERNE" : "",
           paymentStatus: "PAYE",
           status: "validee"
         });
+
+    // Une CB externe est declaree par le vendeur, jamais verifiee par l'API SumUp.
+    if (externalCb && transaction.paiement_provider === "EXTERNE") {
+      transaction.note = "CB encaissee sur un autre appareil / Tap to Pay, confirmee manuellement dans Lugdurum.";
+    }
 
     // Une tentative rejouée sur le même panier garde son transaction_id.
     state.failedTicket = { fingerprint, transaction };
@@ -2110,8 +2181,8 @@
 
       setStatus(
         pendingCount > 0
-          ? `Ticket + sortie stock conservés dans la file d’attente · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
-          : `Ticket enregistré + sortie de stock enregistrée · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
+          ? `${externalCb ? "CB externe déclarée" : "Ticket"} · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
+          : `${externalCb ? "CB externe enregistrée (sans SumUp sur cet appareil)" : "Ticket enregistré"} · sortie de stock enregistrée · ${formatCurrency(transaction.total_encaisse_ttc)}`,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
 
@@ -2121,8 +2192,10 @@
       state.amountManuallyEdited = false;
       renderAll();
       refreshDaySummaryAfterSale();
+      return true;
     } catch (error) {
       setStatus(`Enregistrement incertain : ${error.message}. Réessaie SANS modifier le panier pour conserver le même ID et éviter un doublon.`, "isError");
+      return false;
     } finally {
       state.saveInProgress = false;
       if (state.pendingCatalogueUpdate &&
@@ -2506,7 +2579,10 @@
   els.addPackBtn.addEventListener("click", () => { if (!state.saveInProgress) addPackToTicket(); });
   els.clearTicketBtn.addEventListener("click", () => { if (!state.saveInProgress) clearTicket(); });
   els.undoBtn.addEventListener("click", () => { if (!state.saveInProgress) undoLast(); });
-  els.saveTicketBtn.addEventListener("click", saveTicket);
+  els.saveTicketBtn.addEventListener("click", () => saveTicket());
+  els.externalCbBtn?.addEventListener("click", showExternalCbConfirm);
+  els.externalCbConfirmBtn?.addEventListener("click", confirmExternalCbSale);
+  els.externalCbCancelBtn?.addEventListener("click", closeExternalCbConfirm);
 
   if (els.sumupConfirmSuccessBtn) {
     els.sumupConfirmSuccessBtn.addEventListener("click", () => {
