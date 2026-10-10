@@ -153,7 +153,6 @@
     dayDetailsOverlay: document.getElementById("dayDetailsOverlay"),
     dayDetailsContent: document.getElementById("dayDetailsContent"),
     closeDayDetailsBtn: document.getElementById("closeDayDetailsBtn"),
-    closeDayDetailsFooterBtn: document.getElementById("closeDayDetailsFooterBtn"),
     stockPreparedTotal: document.getElementById("stockPreparedTotal"),
     stockPreparedBreakdown: document.getElementById("stockPreparedBreakdown"),
     refreshDaySummaryBtn: document.getElementById("refreshDaySummaryBtn"),
@@ -2912,7 +2911,6 @@
   els.saveTicketBtn.addEventListener("click", () => saveTicket());
   els.openDayDetailsBtn?.addEventListener("click", openDayDetails);
   els.closeDayDetailsBtn?.addEventListener("click", closeDayDetails);
-  els.closeDayDetailsFooterBtn?.addEventListener("click", closeDayDetails);
   els.dayDetailsOverlay?.addEventListener("click", (event) => {
     if (event.target === els.dayDetailsOverlay) closeDayDetails();
   });
@@ -2922,16 +2920,10 @@
       event.preventDefault();
       closeDayDetails();
     }
-    if (event.key === "Tab") {
-      const first = els.closeDayDetailsBtn;
-      const last = els.closeDayDetailsFooterBtn;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
+    if (event.key === "Tab" && els.closeDayDetailsBtn) {
+      // Une seule action dans cette modale : conserver le focus sur Fermer.
+      event.preventDefault();
+      els.closeDayDetailsBtn.focus();
     }
   });
   els.refreshDaySummaryBtn?.addEventListener("click", () => {
