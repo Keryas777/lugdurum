@@ -72,6 +72,19 @@
   }
 }
 
+.saleSellerBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.saleSellerPill {
+  min-height: 44px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .saleSummary {
   display: grid;
   gap: 12px;
