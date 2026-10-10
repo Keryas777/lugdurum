@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Lugdurum API V18 — VENTE RAPIDE SINGLE ACTION + JSONP GET
+    Lugdurum API V20 — SYNC RETRY ROBUSTE + VENTE RAPIDE SINGLE ACTION + JSONP GET
 
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
@@ -19,6 +19,7 @@
       écrit transaction + lignes + mouvements_stock en UNE SEULE action Apps Script.
     - Écritures POST avec file d’attente offline officielle : lugdurum_pending_writes.
     - Rejeu automatique au retour réseau, au focus, à la visibilité et au chargement.
+    - Nouvelles tentatives autonomes et temporisées jusqu'à vidage de la file, même sans navigation.
     - Rejeu par paquets via batchActions.
     - Nettoyage robuste de la file après succès batch.
     - État données permanent : local / actualisation / en ligne.
@@ -135,7 +136,6 @@
   };
 
   const CORE_TABLE_KEY_ALIASES = {
-    utilisateurs: ["utilisateurs"],
     clients: ["clients"],
 
     commandesPro: ["commandesPro", "commandes_pro"],
@@ -207,6 +207,10 @@
   };
 
   const FLUSH_BATCH_SIZE = 20;
+  const SYNC_RETRY_BASE_MS = 2000;
+  const SYNC_RETRY_MAX_MS = 60000;
+  const SYNC_OFFLINE_CHECK_MS = 30000;
+  const POST_TIMEOUT_MS = 90000;
 
   const DATA_STATE_LABELS = {
     local: "Données locales",
@@ -216,6 +220,8 @@
 
   let isFlushing = false;
   let flushTimer = null;
+  let consecutiveSyncFailures = 0;
+  let retryNotBefore = 0;
 
   const nowIso = () => new Date().toISOString();
 
@@ -470,11 +476,9 @@
       globalUser?.userId ||
       "";
 
-    // L'identité du vendeur est propre à l'appareil. Une ancienne constante
-    // globale U_JEROME ne doit jamais supplanter son choix explicite.
-    const savedUserId = String(safeLocalGet(STORAGE_KEYS.currentUserId) || "").trim();
-    if (savedUserId) return savedUserId;
-    return String(globalUserId || "").trim();
+    if (globalUserId) return String(globalUserId).trim();
+
+    return String(safeLocalGet(STORAGE_KEYS.currentUserId) || "").trim();
   };
 
   const setCurrentUserId = (userId) => {
@@ -782,6 +786,10 @@
     return error;
   };
 
+  // Les erreurs de verrou ou de disponibilité serveur sont transitoires.
+  const isTransientApiError = (message) =>
+    /lock timeout|verrou|too many times|too many requests|quota exceeded|service unavailable|temporarily unavailable|internal error|timed?\s*out|délai d.attente|delai d.attente/i.test(String(message || ""));
+
   const normaliseResponse = (result, action) => {
     if (!result || typeof result !== "object") {
       throw new Error(`Réponse API invalide sur ${action}`);
@@ -789,7 +797,7 @@
 
     if (!result.ok) {
       const error = new Error(result.error || `Erreur API sur ${action}`);
-      error.queueable = false;
+      error.queueable = isTransientApiError(result.error);
       error.api_result = result;
       error.action = action;
       throw error;
@@ -805,10 +813,16 @@
       throw new Error("API_URL manquante dans lugdurum-api.js");
     }
 
-    let response;
+    // Safari/iOS peut laisser une requête en suspens : ne pas bloquer toute
+    // la file indéfiniment. Les IDs métiers rendent le rejeu idempotent.
+    const controller =
+      typeof AbortController === "function" ? new AbortController() : null;
+    const timeout = controller
+      ? window.setTimeout(() => controller.abort(), POST_TIMEOUT_MS)
+      : null;
 
     try {
-      response = await fetch(API_URL, {
+      const response = await fetch(API_URL, {
         method: "POST",
         cache: "no-store",
         headers: {
@@ -817,29 +831,40 @@
         body: JSON.stringify({
           action,
           ...payload
-        })
+        }),
+        ...(controller ? { signal: controller.signal } : {})
       });
+
+      if (!response.ok) {
+        throw makeQueueableError(`Erreur API HTTP ${response.status}`);
+      }
+
+      let result;
+
+      try {
+        result = await response.json();
+      } catch (error) {
+        throw makeQueueableError(
+          `Réponse JSON illisible depuis Apps Script : ${error.message}`
+        );
+      }
+
+      return normaliseResponse(result, action);
     } catch (error) {
+      if (typeof error?.queueable === "boolean") {
+        throw error;
+      }
+
       throw makeQueueableError(
-        `Impossible de joindre Apps Script : ${error.message}`
+        error?.name === "AbortError"
+          ? `Délai de réponse API dépassé (${POST_TIMEOUT_MS / 1000} s).`
+          : `Impossible de joindre Apps Script : ${error?.message || "erreur réseau"}`
       );
+    } finally {
+      if (timeout !== null) {
+        window.clearTimeout(timeout);
+      }
     }
-
-    if (!response.ok) {
-      throw makeQueueableError(`Erreur API HTTP ${response.status}`);
-    }
-
-    let result;
-
-    try {
-      result = await response.json();
-    } catch (error) {
-      throw makeQueueableError(
-        `Réponse JSON illisible depuis Apps Script : ${error.message}`
-      );
-    }
-
-    return normaliseResponse(result, action);
   };
 
   const enqueueWrite = (action, payload = {}, reason = "") => {
@@ -869,6 +894,9 @@
       last_action: action,
       last_error: reason || ""
     });
+
+    // Une erreur POST ne doit pas attendre un changement de page pour être rejouée.
+    scheduleFlush(350);
 
     return {
       queued: true,
@@ -1012,13 +1040,15 @@
     return [];
   };
 
-  const findBatchResultForItem = (results, queuedItem, index) => {
-    return (
-      results.find((item) => item.queue_id === queuedItem.id) ||
-      results[index] ||
-      results.find((item) => item.action === queuedItem.action) ||
-      null
+  const findBatchResultForItem = (results, queuedItem) => {
+    // Jamais de déduction à partir de la position : queue_id doit correspondre.
+    const matches = results.filter((item) =>
+      item && String(item.queue_id || "") === String(queuedItem.id || "")
     );
+    if (matches.length !== 1) return null;
+    const result = matches[0];
+    if (result.action && result.action !== queuedItem.action) return null;
+    return result;
   };
 
   const flushPendingWrites = async () => {
@@ -1106,18 +1136,13 @@
 
           const okIds = [];
           const errorsById = {};
-          let mustStop = false;
-
-          batch.forEach((queuedItem, index) => {
-            if (mustStop) return;
-
-            const result = findBatchResultForItem(results, queuedItem, index);
+          batch.forEach((queuedItem) => {
+            const result = findBatchResultForItem(results, queuedItem);
 
             if (!result) {
               failedCount += 1;
               errorsById[queuedItem.id] =
                 "Résultat absent dans la réponse batchActions.";
-              mustStop = true;
               return;
             }
 
@@ -1130,9 +1155,10 @@
             failedCount += 1;
             errorsById[queuedItem.id] =
               result.error || `Erreur API sur ${queuedItem.action}`;
-            mustStop = true;
           });
 
+          // Toutes les actions batchActions sont traitées par Apps Script :
+          // conserver les échecs, et acquitter même les succès qui les suivent.
           if (okIds.length > 0) {
             removePendingWritesByIds(okIds, {
               status: "syncing",
@@ -1159,7 +1185,7 @@
             });
           }
 
-          if (mustStop) break;
+          if (Object.keys(errorsById).length > 0) break;
         } catch (error) {
           const firstItem = batch[0];
 
@@ -1220,35 +1246,81 @@
     } finally {
       isFlushing = false;
 
+      const remaining = getPendingWritesCount();
+      let nextRetryAt = "";
+
+      if (remaining === 0) {
+        consecutiveSyncFailures = 0;
+        retryNotBefore = 0;
+      } else if (isOnline()) {
+        consecutiveSyncFailures = Math.min(consecutiveSyncFailures + 1, 20);
+        const delay = Math.min(
+          SYNC_RETRY_MAX_MS,
+          SYNC_RETRY_BASE_MS * Math.pow(2, consecutiveSyncFailures - 1)
+        );
+
+        retryNotBefore = Date.now() + delay;
+        nextRetryAt = new Date(retryNotBefore).toISOString();
+        scheduleFlush(delay);
+      } else {
+        retryNotBefore = 0;
+        scheduleFlush(SYNC_OFFLINE_CHECK_MS);
+      }
+
       writeSyncState({
         is_flushing: false,
-        pending_count: getPendingWritesCount()
+        pending_count: remaining,
+        next_retry_at: nextRetryAt
       });
     }
   };
 
   const scheduleFlush = (delay = 350) => {
-    if (flushTimer) {
+    if (flushTimer !== null) {
       window.clearTimeout(flushTimer);
     }
 
+    const waitMs = Math.max(
+      0,
+      Number(delay) || 0,
+      retryNotBefore - Date.now()
+    );
+
     flushTimer = window.setTimeout(() => {
       flushTimer = null;
+      const pending = getPendingWritesCount();
 
-      if (getPendingWritesCount() > 0 && isOnline()) {
+      if (pending === 0) {
+        consecutiveSyncFailures = 0;
+        retryNotBefore = 0;
+
+        writeSyncState({
+          status: "idle",
+          last_message: "Aucune écriture en attente.",
+          next_retry_at: ""
+        });
+        return;
+      }
+
+      if (!isOnline()) {
+        writeSyncState({
+          status: "offline",
+          last_message: `${pending} écriture(s) en attente : appareil hors ligne.`
+        });
+        // La reconnexion est également captée via 'online', mais iOS peut
+        // ne pas émettre cet événement : revérifier périodiquement.
+        scheduleFlush(SYNC_OFFLINE_CHECK_MS);
+        return;
+      }
+
+      if (!isFlushing) {
         flushPendingWrites().catch((error) => {
           console.warn("Synchronisation Lugdurum impossible.", error);
         });
-      } else {
-        writeSyncState({
-          status: getPendingWritesCount() > 0 ? "pending" : "idle",
-          last_message:
-            getPendingWritesCount() > 0
-              ? `${getPendingWritesCount()} écriture(s) en attente.`
-              : "Aucune écriture en attente."
-        });
       }
-    }, delay);
+      // Si une synchronisation est déjà en cours, son 'finally' assurera
+      // lui-même la programmation de la tentative suivante.
+    }, waitMs);
   };
 
   const requestGetJsonp = (action, params = {}, timeoutMs = 15000) =>
@@ -1370,6 +1442,10 @@
   };
 
   const afterSuccessfulDirectWrite = (action) => {
+    // Un POST direct a réussi : la connexion est probablement rétablie.
+    // Ne pas conserver le délai de repli d'une précédente erreur réseau.
+    consecutiveSyncFailures = 0;
+    retryNotBefore = 0;
     const pendingCount = getPendingWritesCount();
 
     writeSyncState({
@@ -2323,45 +2399,6 @@
   const enqueueAction = (action, payload = {}) =>
     requestQueuedPost(action, payload);
 
-  // Les paiements déjà vérifiés par l'API SumUp peuvent être conservés
-  // durablement sur l'appareil sans attendre la réponse lente de Sheets.
-  // Ne pas exposer ceci comme une confirmation bancaire : le paiement doit
-  // avoir été vérifié AVANT l'appel par le parcours vente rapide.
-  const queueVerifiedSumupSale = (payload = {}) => {
-    const transaction = payload.transaction || {};
-    const transactionId = String(transaction.transaction_id || "").trim();
-    if (!transactionId ||
-        String(transaction.paiement_statut || "") !== "PAYE" ||
-        String(transaction.statut || "") !== "validee" ||
-        String(transaction.paiement_provider || "").toUpperCase() !== "SUMUP") {
-      throw new Error("Ticket SumUp vérifié invalide : impossible de mettre en file.");
-    }
-
-    const existing = getPendingWrites().find((item) =>
-      item.action === "saveVenteRapideBundle" &&
-      String(item.payload?.transaction?.transaction_id || "") === transactionId
-    );
-    if (existing) {
-      scheduleFlush(250);
-      return {
-        queued: true,
-        duplicate: true,
-        queue_id: existing.id,
-        pending_count: getPendingWritesCount()
-      };
-    }
-
-    const result = enqueueWrite(
-      "saveVenteRapideBundle",
-      payload,
-      "Paiement SumUp confirmé : synchronisation Google Sheets à effectuer."
-    );
-    // La file est écrite dans localStorage avant de retourner au vendeur.
-    // Le replay existant est idempotent via transaction_id et mouvement_stock_id.
-    scheduleFlush(250);
-    return result;
-  };
-
   window.LugdurumDataState = {
     set: setDataState,
     get: getDataState
@@ -2385,7 +2422,6 @@
     call,
     queueAction,
     enqueueAction,
-    queueVerifiedSumupSale,
 
     list,
     upsert,
@@ -2582,6 +2618,9 @@
   };
 
   window.addEventListener("online", () => {
+    consecutiveSyncFailures = 0;
+    retryNotBefore = 0;
+
     writeSyncState({
       status: "online",
       last_message: "Connexion retrouvée."
