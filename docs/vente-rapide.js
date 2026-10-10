@@ -130,6 +130,7 @@
     deferredLoadForSumup: false,
     sumupManualBlocked: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
+    sharedStock: null,
     daySummary: {
       isLoading: false,
       isLoaded: false,
@@ -147,6 +148,9 @@
     ticketPanelTotal: document.getElementById("ticketPanelTotal"),
     dayRevenueTotal: document.getElementById("dayRevenueTotal"),
     dayTicketCount: document.getElementById("dayTicketCount"),
+    stockPreparedTotal: document.getElementById("stockPreparedTotal"),
+    stockPreparedBreakdown: document.getElementById("stockPreparedBreakdown"),
+    refreshDaySummaryBtn: document.getElementById("refreshDaySummaryBtn"),
     saleSummaryTitle: document.getElementById("saleSummaryTitle"),
     missionMeta: document.querySelector(".saleSummary .missionMeta"),
     packComposer: document.getElementById("packComposer"),
@@ -628,6 +632,7 @@
 
     const requestId = ++currentSummaryRequest;
     const journeeId = state.journeeActive.journee_id;
+    if (els.refreshDaySummaryBtn) els.refreshDaySummaryBtn.disabled = true;
     state.daySummary = {
       ...state.daySummary,
       isLoading: true,
@@ -659,6 +664,8 @@
       }
 
       return state.daySummary;
+    } finally {
+      if (els.refreshDaySummaryBtn) els.refreshDaySummaryBtn.disabled = false;
     }
   };
 
@@ -734,6 +741,17 @@
     }
 
     renderDaySummary();
+    const stock = state.sharedStock;
+    if (els.stockPreparedTotal) {
+      els.stockPreparedTotal.textContent = stock
+        ? String(toNumber(stock.total_bouteilles_preparees, 0))
+        : "—";
+    }
+    if (els.stockPreparedBreakdown) {
+      els.stockPreparedBreakdown.textContent = stock
+        ? `${toNumber(stock.total_50cl_prepare, 0)} × 50 cL · ${toNumber(stock.total_20cl_prepare, 0)} × 20 cL`
+        : "En attente du stock commun";
+    }
   };
 
   const renderModes = () => {
@@ -2258,93 +2276,162 @@
     };
   };
 
+  // Les identifiants locaux sont propres à chaque iPhone. La relation
+  // journees_vente.stock_mission_id est la source de vérité pour deux vendeurs.
+  const selectSharedSalesContext = (
+    missionsStock,
+    journees,
+    { stockMissionId = "", journeeId = "", explicitUrl = false } = {}
+  ) => {
+    const ignore = (item) => {
+      const status = normalizeKey(item?.statut || "");
+      return status.includes("annule") || status.includes("clotur") ||
+        status.includes("clôtur");
+    };
+    const missions = (missionsStock || []).filter((mission) =>
+      !ignore(mission) && String(mission.mission_id || "").trim()
+    );
+    const byId = new Map(missions.map((mission) => [String(mission.mission_id).trim(), mission]));
+    const choices = (journees || [])
+      .filter((day) => !ignore(day))
+      .map((day) => {
+        const linkedId = String(day.stock_mission_id || day.mission_stock_id || "").trim();
+        const mission = byId.get(linkedId);
+        if (!mission) return null;
+        return { mission, journee: day };
+      })
+      .filter(Boolean);
+
+    const date = new Date();
+    const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const isToday = (choice) => String(choice.journee.date || "").slice(0, 10) === today;
+    const requestedDay = String(journeeId || "").trim();
+    const requestedStock = String(stockMissionId || "").trim();
+
+    // Un lien explicite depuis l'accueil l'emporte sur l'ancien cache.
+    if (explicitUrl && requestedDay) {
+      const matched = choices.find((choice) => choice.journee.journee_id === requestedDay);
+      if (matched) return matched;
+    }
+
+    if (requestedStock) {
+      const linked = choices.filter((choice) => choice.mission.mission_id === requestedStock);
+      const todayChoice = linked.find(isToday);
+      if (todayChoice) return todayChoice;
+      const requestedChoice = linked.find((choice) => choice.journee.journee_id === requestedDay);
+      if (requestedChoice) return requestedChoice;
+      if (linked.length === 1) return linked[0];
+    }
+
+    if (requestedDay) {
+      const matched = choices.find((choice) => choice.journee.journee_id === requestedDay);
+      if (matched && isToday(matched)) return matched;
+    }
+
+    const todayChoices = choices.filter(isToday);
+    const inProgress = todayChoices.filter((choice) => normalizeKey(choice.journee.statut) === "en_cours");
+    if (inProgress.length === 1) return inProgress[0];
+    if (todayChoices.length === 1) return todayChoices[0];
+
+    // Plusieurs événements en parallèle : ne surtout pas choisir au hasard.
+    return null;
+  };
+
   const loadContext = async () => {
     const context = readJson(STORAGE_KEYS.preparationContext, null);
-
-    const stockMissionId =
-      context?.stock_mission_id ||
-      context?.mission_id ||
+    const url = new URLSearchParams(window.location.search || "");
+    const urlStockId = url.get("stock_mission_id") || "";
+    const urlJourneeId = url.get("journee_id") || "";
+    const stockMissionId = urlStockId ||
+      context?.stock_mission_id || context?.mission_id ||
       localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
-      localStorage.getItem(STORAGE_KEYS.activeMissionId) ||
-      "";
-
-    const journeeId =
-      context?.journee_id ||
-      localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
-      "";
-
+      localStorage.getItem(STORAGE_KEYS.activeMissionId) || "";
+    const journeeId = urlJourneeId ||
+      context?.journee_id || localStorage.getItem(STORAGE_KEYS.activeJourneeId) || "";
     const currentUserId = hasApi() && typeof api().getCurrentUserId === "function"
-      ? api().getCurrentUserId()
-      : "";
+      ? api().getCurrentUserId() : "";
 
     state.journeeActive = {
       ...EMPTY_JOURNEE_ACTIVE,
       user_id: currentUserId || EMPTY_JOURNEE_ACTIVE.user_id,
       mission_id: stockMissionId,
-      journee_id: journeeId
+      journee_id: journeeId,
+      label: stockMissionId && journeeId ? "Journée active" : "Recherche de la journée partagée…",
+      date_label: stockMissionId && journeeId ? "Contexte local, vérification réseau…" : "Recherche dans Google Sheets…"
     };
-
-    if (!stockMissionId || !journeeId) {
-      state.contextLoaded = true;
-      renderAll();
-      showMissingContextStatus();
-      return;
-    }
-
-    state.journeeActive = {
-      ...state.journeeActive,
-      label: "Journée active",
-      date_label: "Contexte local chargé"
-    };
-
-    state.daySummary = {
-      ...state.daySummary,
-      isLoading: true,
-      lastError: ""
-    };
-
+    state.daySummary = { ...state.daySummary, isLoading: true, lastError: "" };
     renderAll();
 
     try {
+      // Même sans aucune information locale : lire les journées communes.
       const remote = await loadRemoteContextBundle();
-
       state.missionsStock = remote.missionsStock;
       state.journees = remote.journees;
 
-      const mission = state.missionsStock.find(
-        (item) => String(item.mission_id || "") === String(stockMissionId || "")
+      const selected = selectSharedSalesContext(
+        state.missionsStock, state.journees,
+        {
+          stockMissionId,
+          journeeId,
+          explicitUrl: Boolean(urlStockId || urlJourneeId)
+        }
       );
 
-      const journee = state.journees.find(
-        (item) => String(item.journee_id || "") === String(journeeId || "")
-      );
-
-      if (mission || journee) {
+      if (!selected) {
         state.journeeActive = {
-          ...state.journeeActive,
-          label: [
-            mission?.nom || "Mission",
-            journee?.jour_label || ""
-          ].filter(Boolean).join(" — "),
-          date_label: journee?.date ? formatDisplayDateLong(journee.date) : state.journeeActive.date_label,
-          mission_id: stockMissionId,
-          journee_id: journeeId
+          ...state.journeeActive, mission_id: "", journee_id: "",
+          label: "Journée non sélectionnée",
+          date_label: "Sélectionne Gerzat sur l'accueil, puis ouvre Journée de vente."
         };
+        state.sharedStock = null;
+        state.daySummary = {
+          ...state.daySummary, isLoading: false, isLoaded: false,
+          revenue: 0, tickets: 0, lastError: "Aucune journée partagée unique pour aujourd'hui."
+        };
+        setStatus(
+          "Plusieurs journées possibles ou aucune journée aujourd'hui. Choisis l'événement sur l'accueil.",
+          "isError"
+        );
+        return;
       }
 
-      setDaySummaryFromTransactions(remote.transactions);
-      renderAll();
-    } catch (error) {
-      console.warn("Contexte journée non chargé depuis Sheets.", error);
-
-      state.daySummary = {
-        ...state.daySummary,
-        isLoading: false,
-        isLoaded: false,
-        lastError: error.message || "Lecture réseau impossible."
+      const mission = selected.mission;
+      const journee = selected.journee;
+      const resolvedStockId = String(mission.mission_id).trim();
+      const resolvedDayId = String(journee.journee_id).trim();
+      state.sharedStock = mission;
+      state.journeeActive = {
+        ...state.journeeActive,
+        mission_id: resolvedStockId,
+        journee_id: resolvedDayId,
+        label: [mission.nom || "Mission", journee.jour_label || ""].filter(Boolean).join(" — "),
+        date_label: journee.date ? formatDisplayDateLong(journee.date) : ""
       };
 
-      renderDaySummary();
+      // Le prochain lancement de la PWA sur CE téléphone retrouvera le même
+      // stock, sans partager une file offline ni une identité de vendeur.
+      localStorage.setItem(STORAGE_KEYS.activeMissionId, resolvedStockId);
+      localStorage.setItem(STORAGE_KEYS.activeStockMissionId, resolvedStockId);
+      localStorage.setItem(STORAGE_KEYS.activeJourneeId, resolvedDayId);
+      writeJson(STORAGE_KEYS.preparationContext, {
+        mission_id: resolvedStockId,
+        stock_mission_id: resolvedStockId,
+        journee_id: resolvedDayId,
+        step: "vente_rapide",
+        updated_at: new Date().toISOString()
+      });
+
+      setDaySummaryFromTransactions(remote.transactions);
+      setStatus("");
+    } catch (error) {
+      console.warn("Contexte partagé non chargé depuis Sheets.", error);
+      state.daySummary = {
+        ...state.daySummary, isLoading: false,
+        lastError: error.message || "Lecture réseau impossible."
+      };
+      if (!hasActiveSalesContext()) {
+        showMissingContextStatus();
+      }
     } finally {
       state.contextLoaded = true;
       renderAll();
