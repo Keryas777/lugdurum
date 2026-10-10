@@ -84,6 +84,10 @@ function setup(saveBundle, pendingCount = () => 0) {
     mission_id: "MS_TEST", journee_id: "JV_TEST",
     user_id: "U_TEST", label: "Test", date_label: ""
   };
+  // Dans ce groupe de tests unitaires, la journée factice MS_TEST/JV_TEST
+  // représente un contexte déjà validé. Les tests du chargement réseau
+  // couvrent séparément la phase d'identification de la journée.
+  api.state.contextLoaded = true;
   api.state.paymentMode = "ESP";
   api.state.ticketItems = [{
     item_id: "ITEM_1", type: "bottle", sku_id: "SKU_TEST",
@@ -93,6 +97,16 @@ function setup(saveBundle, pendingCount = () => 0) {
   api.els.amountPaidInput.value = "25";
   return { api, calls, store, timers, window };
 }
+
+test("contexte local non vérifié : impossible d'encaisser même avec des IDs en cache", async () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.contextLoaded = false;
+  const saved = await app.api.saveTicket();
+  assert.equal(saved, false);
+  assert.equal(app.calls.length, 0);
+  assert.equal(app.api.state.ticketItems.length, 1);
+  assert.match(app.api.els.saveStatus.textContent, /Vérification de la journée/);
+});
 
 test("double clic : une seule ecriture ticket et mouvements de stock", async () => {
   let resolve;
@@ -334,9 +348,20 @@ test("2 téléphones : sans contexte local, J1 + stock emporté + CA commun retr
 
   await Promise.all(phones.map(async (phone) => {
     phone.window.location.search = "";
-    phone.window.LugdurumAPI.getCoreData = async () => ({ tables: fixture });
+    const requestedTables = [];
+    phone.window.LugdurumAPI.getCoreData = async (tables) => {
+      requestedTables.push([...tables]);
+      return { tables: fixture };
+    };
     phone.window.LugdurumAPI.getCurrentUserId = () => "U_ANTHO";
     await phone.api.loadContext();
+
+    assert.equal(phone.api.state.contextLoaded, true);
+    assert.deepEqual(requestedTables[0], ["missionsStock", "journees"],
+      "Les transactions ne doivent pas bloquer la confirmation de la journée");
+    // Le CA est intentionnellement lancé après la résolution du contexte,
+    // dans une autre promesse (parcours terrain plus rapide).
+    await new Promise(setImmediate);
 
     assert.equal(phone.api.state.journeeActive.mission_id, "MST_GERZAT");
     assert.equal(phone.api.state.journeeActive.journee_id, "J_GERZAT");
@@ -350,6 +375,36 @@ test("2 téléphones : sans contexte local, J1 + stock emporté + CA commun retr
     assert.equal(phone.store.get("lugdurum_active_stock_mission_id"), "MST_GERZAT");
     assert.equal(phone.store.get("lugdurum_active_journee_id"), "J_GERZAT");
   }));
+});
+
+test("CA retardé : J2 est utilisable sans attendre les statistiques", async () => {
+  const phone = setup(async () => ({ ok: true }));
+  const fixture = gerzatSharedFixture();
+  let resolveTransactions;
+  const tablesRequested = [];
+  phone.window.LugdurumAPI.getCoreData = (tables) => {
+    tablesRequested.push([...tables]);
+    if (tables.includes("transactions")) {
+      return new Promise((resolve) => { resolveTransactions = resolve; });
+    }
+    return Promise.resolve({ tables: fixture });
+  };
+
+  await phone.api.loadContext();
+  assert.equal(phone.api.state.contextLoaded, true);
+  assert.equal(phone.api.state.journeeActive.journee_id, "J_GERZAT");
+  assert.equal(phone.api.state.daySummary.isLoading, true);
+  assert.equal(phone.api.state.daySummary.isLoaded, false);
+  assert.deepEqual(tablesRequested, [
+    ["missionsStock", "journees"],
+    ["transactions"]
+  ]);
+
+  // Les tickets partagés arrivent plus tard, sans cacher le bon contexte.
+  resolveTransactions({ tables: { transactions: fixture.transactions } });
+  await new Promise(setImmediate);
+  assert.equal(phone.api.state.daySummary.tickets, 2);
+  assert.equal(phone.api.state.daySummary.revenue.toFixed(2), "77.98");
 });
 
 test("Ancien cache J2 : priorité à la journée du jour sur la même mission", () => {
