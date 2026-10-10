@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Clôture V8 :
+    Clôture V9 :
     - Charge lugdurum-api.js avant ce fichier.
     - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
     - Lit missions_stock, missions_vente, journees_vente, transactions,
@@ -1212,7 +1212,7 @@
     const existingId = state.existingClosure?.cloture_id || "";
     const clotureId =
       existingId ||
-      `CLOT_${String(state.journee.date || "").replaceAll("-", "")}_${Date.now().toString(36).toUpperCase()}`;
+      `CLOT_${salonId}`;
 
     return {
       salon_id: salonId,
@@ -1449,58 +1449,50 @@
     total_reel: closure.total_reel,
     total_tickets_calcule: closure.total_tickets_calcule,
     ecart: closure.ecart,
-    note: closure.note
+    note: closure.note,
+    // Colonnes réellement présentes dans clotures_journees.
+    stock_mission_id: closure.stock_mission_id,
+    ca_total_ttc: closure.ca_total_ttc,
+    total_frais_ttc: closure.total_frais_ttc,
+    statut: closure.statut,
+    created_at: closure.created_at,
+    updated_at: closure.updated_at
   });
 
   const saveClosureToApi = async ({ closure, movements, patch }) => {
-    if (!hasApi()) {
-      throw new Error("lugdurum-api.js n’est pas chargé.");
+    if (!hasApi() || typeof api().batchUpsert !== "function") {
+      throw new Error("Enregistrement groupé indisponible : mise à jour LugdurumAPI nécessaire.");
     }
 
-    const closureSheetRow = buildClosureSheetRow(closure);
-
-    if (typeof api().saveCloture === "function") {
-      await api().saveCloture(closureSheetRow);
-    } else if (typeof api().batchUpsert === "function") {
-      await api().batchUpsert([
-        buildBatchOperation("clotures", closureSheetRow)
-      ]);
-    } else {
-      throw new Error("Aucune méthode API disponible pour écrire la clôture.");
-    }
-
-    if (movements.length > 0) {
-      if (typeof api().saveMouvementStock === "function") {
-        for (const movement of movements) {
-          await api().saveMouvementStock(movement);
-        }
-      } else if (typeof api().batchUpsert === "function") {
-        await api().batchUpsert(
-          movements.map((movement) => buildBatchOperation("mouvementsStock", movement))
-        );
-      }
-    }
-
+    // Tous les éléments d'une clôture dans une seule écriture groupée.
+    // Les clés salon_id, mouvement_stock_id, journee_id et mission_id
+    // garantissent un upsert idempotent lors d'une retransmission réseau.
+    // batchUpsert_ exécute le lot sous un même verrou Sheets.
+    const operations = [
+      buildBatchOperation("clotures", buildClosureSheetRow(closure)),
+      ...movements.map((movement) => buildBatchOperation("mouvementsStock", movement))
+    ];
     if (patch) {
-      if (typeof api().saveJournee === "function") {
-        await api().saveJournee(patch.updatedJournee);
-      }
-
-      if (typeof api().saveMissionStock === "function") {
-        await api().saveMissionStock(patch.updatedMission);
-      }
-
-      if (
-        typeof api().saveJournee !== "function" &&
-        typeof api().saveMissionStock !== "function" &&
-        typeof api().batchUpsert === "function"
-      ) {
-        await api().batchUpsert([
-          buildBatchOperation("journees", patch.updatedJournee),
-          buildBatchOperation("missionsStock", patch.updatedMission)
-        ]);
-      }
+      operations.push(
+        buildBatchOperation("journees", patch.updatedJournee),
+        buildBatchOperation("missionsStock", patch.updatedMission)
+      );
     }
+
+    const response = await api().batchUpsert(operations);
+    if (response?.queued === true) {
+      // L'écriture est seulement conservée dans la file officielle.
+      // La journée n'est pas clôturée tant que le lot n'est pas confirmé.
+      return { queued: true, pending_count: response.pending_count || 1 };
+    }
+
+    // Ne pas déduire le succès d'une simple réponse HTTP sans résultat.
+    const results = response?.results;
+    if (!Array.isArray(results) || results.length !== operations.length ||
+        results.some((result) => result?.ok !== true)) {
+      throw new Error("Réponse du lot de clôture incomplète. Vérifie Sheets avant une nouvelle tentative.");
+    }
+    return { queued: false, operations_count: operations.length };
   };
 
   // Les anciennes sauvegardes ne sont pas la file d'attente officielle.
@@ -1637,13 +1629,8 @@
     const movements = status === "cloturee" ? buildClosureMovements(closure) : [];
     const patch = status === "cloturee" ? buildDayAndMissionPatchAfterClose(closure) : null;
 
-    upsertClosureLocal(closure);
-    upsertMovementsLocal(movements);
-
-    if (patch) {
-      applyDayAndMissionPatchLocal(patch);
-    }
-
+    // Ne pas mettre le cache en état « clôturé » avant la confirmation
+    // du lot serveur. Un échec ne doit pas créer de fausse clôture locale.
     setSaving(true);
     setStatus(
       status === "cloturee"
@@ -1652,11 +1639,28 @@
     );
 
     try {
-      await saveClosureToApi({
+      const response = await saveClosureToApi({
         closure,
         movements,
         patch
       });
+
+      if (response.queued) {
+        state.dataLoaded = false;
+        renderDataFreshness("Clôture en attente de synchronisation · données à revérifier");
+        setStatus(
+          "Clôture mise en attente, non confirmée dans Google Sheets. Attends la synchronisation puis rouvre cette page avant de reporter le stock.",
+          "isError"
+        );
+        return null;
+      }
+
+      // Uniquement après confirmation du lot : refléter la clôture et
+      // les mouvements en local, puis autoriser le report vers J2.
+      upsertClosureLocal(closure);
+      upsertMovementsLocal(movements);
+      if (patch) applyDayAndMissionPatchLocal(patch);
+      cacheTargetedClosureData();
 
       const pendingCount = getPendingWritesCount();
 
@@ -1674,13 +1678,16 @@
       renderAll();
       return closure;
     } catch (error) {
+      // Le backend a pu écrire une partie d'un lot avant l'erreur.
+      // Bloquer toute nouvelle clôture ou report jusqu'à une nouvelle
+      // lecture Sheets et conserver les quantités saisies à l'écran.
+      state.dataLoaded = false;
+      renderDataFreshness("Enregistrement non confirmé · actualisation nécessaire");
       setStatus(
-        `${status === "cloturee" ? "Clôture gardée en local" : "Brouillon gardé en local"} · API à synchroniser : ${error.message}`,
+        `Enregistrement non confirmé dans Google Sheets : ${error.message}. Rouvre la clôture pour vérifier l'état serveur avant toute nouvelle tentative.`,
         "isError"
       );
-
-      renderAll();
-      return closure;
+      return null;
     } finally {
       setSaving(false);
     }
@@ -1745,12 +1752,19 @@
   };
 
   const carryStockToNextDay = async () => {
+    // Une clôture locale/queued ne doit JAMAIS déclencher un report réel.
+    if (!state.dataLoaded || getPendingWritesCount() > 0) {
+      setStatus("Report bloqué : attends une clôture confirmée sur Google Sheets et une synchronisation terminée.", "isError");
+      return;
+    }
     if (!state.nextDay) {
       setStatus("Aucune prochaine journée disponible pour le report.", "isError");
       return;
     }
-    if (!state.existingClosure) {
-      setStatus("Clôture J1 non enregistrée : clôture d'abord la journée avant de reporter le stock.", "isError");
+    if (!state.existingClosure ||
+        normalizeStatus(state.existingClosure.statut) !== "cloturee" ||
+        normalizeStatus(state.journee?.statut) !== "cloture") {
+      setStatus("Report bloqué : J1 doit être réellement clôturée dans Google Sheets.", "isError");
       return;
     }
 
