@@ -104,6 +104,7 @@
     localTransactionsBackup: "lugdurum_transactions_backup",
     catalogueCache: "lugdurum_catalogue_cache",
     offresVenteCache: "lugdurum_offres_vente_cache",
+    salesContextCache: "lugdurum_sale_context_cache_v1",
     mouvementsStock: "lugdurum_mouvements_stock",
     sumupPending: "lugdurum_pending_sumup_ticket",
     sumupAffiliateKey: "lugdurum_sumup_affiliate_key"
@@ -2609,6 +2610,87 @@
     return null;
   };
 
+  // Un cache ne peut servir au mode hors ligne que si la journée est
+  // explicitement datée d'AUJOURD'HUI. Ne jamais réutiliser J1 sur J2.
+  const restoreTodayContextFromCache = ({ stockMissionId = "", journeeId = "", explicitUrl = false } = {}) => {
+    const cache = readJson(STORAGE_KEYS.salesContextCache, null);
+    const sources = [
+      {
+        missionsStock: readCachedArray("lugdurum_missions_stock"),
+        journees: readCachedArray("lugdurum_journees")
+      },
+      cache
+    ];
+    const now = new Date();
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    ].join("-");
+
+    for (const source of sources) {
+      if (!Array.isArray(source?.missionsStock) || !Array.isArray(source?.journees)) continue;
+      let choice = selectSharedSalesContext(source.missionsStock, source.journees, {
+        stockMissionId, journeeId, explicitUrl
+      });
+      // Un lien conservé vers J1 ne doit pas imposer J1 le lendemain.
+      if (String(choice?.journee?.date || "").slice(0, 10) !== today) {
+        choice = selectSharedSalesContext(source.missionsStock, source.journees, {
+          stockMissionId, journeeId: "", explicitUrl: false
+        });
+      }
+      if (String(choice?.journee?.date || "").slice(0, 10) !== today) continue;
+
+      const resolvedStockId = String(choice.mission.mission_id).trim();
+      const resolvedDayId = String(choice.journee.journee_id).trim();
+      state.missionsStock = source.missionsStock;
+      state.journees = source.journees;
+      state.sharedStock = choice.mission;
+      state.journeeActive = {
+        ...state.journeeActive,
+        mission_id: resolvedStockId,
+        journee_id: resolvedDayId,
+        label: [choice.mission.nom || "Mission", choice.journee.jour_label || ""].filter(Boolean).join(" — "),
+        date_label: formatDisplayDateLong(choice.journee.date) + " · hors ligne"
+      };
+      state.daySummary = {
+        ...state.daySummary,
+        isLoading: false,
+        isLoaded: false,
+        lastError: "CA partagé indisponible hors ligne."
+      };
+      localStorage.setItem(STORAGE_KEYS.activeMissionId, resolvedStockId);
+      localStorage.setItem(STORAGE_KEYS.activeStockMissionId, resolvedStockId);
+      localStorage.setItem(STORAGE_KEYS.activeJourneeId, resolvedDayId);
+      writeJson(STORAGE_KEYS.preparationContext, {
+        mission_id: resolvedStockId,
+        stock_mission_id: resolvedStockId,
+        journee_id: resolvedDayId,
+        step: "vente_rapide",
+        source: "cache_hors_ligne",
+        updated_at: new Date().toISOString()
+      });
+      setStatus("Mode hors ligne : journée du jour retrouvée localement. Les tickets resteront en attente de synchronisation.", "isError");
+      return true;
+    }
+    state.journeeActive = {
+      ...state.journeeActive,
+      mission_id: "",
+      journee_id: "",
+      label: "Journée non vérifiée",
+      date_label: "Aucune journée du jour trouvée localement : connexion nécessaire."
+    };
+    state.sharedStock = null;
+    state.daySummary = {
+      ...state.daySummary,
+      isLoading: false,
+      isLoaded: false,
+      lastError: "Aucune journée du jour disponible hors ligne."
+    };
+    setStatus("Vente bloquée : impossible de vérifier la journée du jour sans connexion.", "isError");
+    return false;
+  };
+
   const loadContext = async () => {
     state.contextLoaded = false;
     const context = readJson(STORAGE_KEYS.preparationContext, null);
@@ -2636,11 +2718,31 @@
     state.daySummary = { ...state.daySummary, isLoading: true, lastError: "" };
     renderAll();
 
+    // Sans réseau, ne pas attendre le timeout JSONP de 15 secondes pour
+    // accéder à la caisse. Le cache n'est utilisé que pour la date locale.
+    if (navigator.onLine === false) {
+      restoreTodayContextFromCache({
+        stockMissionId,
+        journeeId,
+        explicitUrl: Boolean(urlStockId || urlJourneeId)
+      });
+      state.contextLoaded = true;
+      renderAll();
+      return;
+    }
+
     try {
       // Même sans aucune information locale : lire les journées communes.
       const remote = await loadRemoteContextBundle();
       state.missionsStock = remote.missionsStock;
       state.journees = remote.journees;
+      // Snapshot dédié, sans historique des transactions et sans écraser
+      // les caches métiers de Préparation stock / Clôture.
+      writeJson(STORAGE_KEYS.salesContextCache, {
+        missionsStock: remote.missionsStock,
+        journees: remote.journees,
+        savedAt: new Date().toISOString()
+      });
 
       const selected = selectSharedSalesContext(
         state.missionsStock, state.journees,
@@ -2702,13 +2804,13 @@
       setStatus("");
     } catch (error) {
       console.warn("Contexte partagé non chargé depuis Sheets.", error);
-      state.daySummary = {
-        ...state.daySummary, isLoading: false,
-        lastError: error.message || "Lecture réseau impossible."
-      };
-      if (!hasActiveSalesContext()) {
-        showMissingContextStatus();
-      }
+      // Réseau déclaré disponible mais requête en échec : même repli
+      // local strict que dans le mode hors ligne explicite.
+      restoreTodayContextFromCache({
+        stockMissionId,
+        journeeId,
+        explicitUrl: Boolean(urlStockId || urlJourneeId)
+      });
     } finally {
       state.contextLoaded = true;
       renderAll();
@@ -3011,6 +3113,14 @@
   window.addEventListener("focus", () => {
     checkPendingSumup();
     refreshSummaryOnResume();
+  });
+
+  // Au retour du réseau, revérifier la journée seulement si aucun panier,
+  // paiement SumUp ou enregistrement n'est en cours.
+  window.addEventListener("online", () => {
+    if (state.ticketItems.length || state.draftPack.length ||
+        state.saveInProgress || getPendingSumup()) return;
+    loadContext();
   });
 
   window.LugdurumUsers?.mount({
