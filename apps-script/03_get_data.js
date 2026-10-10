@@ -1886,3 +1886,181 @@ function getTimezoneGetData_() {
     return Session.getScriptTimeZone() || "Europe/Paris";
   }
 }
+/* ==========================================================
+   Clôture : getClotureData — lecture ciblée, sans écriture
+   ========================================================== */
+
+/*
+  Contrat :
+  - journee_id et stock_mission_id obligatoires et reliés entre eux ;
+  - journees[].mission_id reste l'évènement d'origine ;
+  - journees[].stock_mission_id reste la mission de stock ;
+  - ne renvoyer QUE la mission demandée, ses journées associées,
+    leurs évènements, les tickets de J1, les mouvements de cette
+    mission de stock, les frais pertinents et la clôture courante ;
+  - ventes_lignes uniquement si le ticket ne contient pas le
+    détail suffisant pour calculer les bouteilles.
+  Les résultats ne sont pas cachés entre vendeurs : on évite ainsi
+  de servir des ventes périmées pendant les encaissements.
+*/
+function getClotureData_(params) {
+  const startedAt = Date.now();
+  const request = params || {};
+  const journeeId = String(
+    request.journee_id || request.journeeId || ""
+  ).trim();
+  const stockMissionId = String(
+    request.stock_mission_id || request.stockMissionId || ""
+  ).trim();
+
+  if (!journeeId || !stockMissionId) {
+    throw new Error("getClotureData : journee_id et stock_mission_id obligatoires.");
+  }
+
+  const missionsStock = readSheetRows_("missionsStock").filter(function (mission) {
+    return String(mission.mission_id || "").trim() === stockMissionId;
+  });
+
+  if (missionsStock.length !== 1) {
+    throw new Error("getClotureData : mission de stock introuvable ou non unique.");
+  }
+
+  const journees = readSheetRows_("journees").filter(function (journee) {
+    const explicitStockId = String(
+      journee.stock_mission_id || journee.mission_stock_id || ""
+    ).trim();
+    // Compatibilité historique : mission_id ne représente la mission
+    // de stock que lorsque le lien explicite n'existe pas.
+    return explicitStockId
+      ? explicitStockId === stockMissionId
+      : String(journee.mission_id || "").trim() === stockMissionId;
+  });
+
+  const activeJournee = journees.find(function (journee) {
+    return String(journee.journee_id || "").trim() === journeeId;
+  });
+
+  if (!activeJournee) {
+    throw new Error("getClotureData : la journée ne correspond pas à la mission de stock demandée.");
+  }
+
+  const eventIds = new Set(
+    journees.map(function (journee) {
+      return String(
+        journee.evenement_id || journee.mission_vente_id ||
+        journee.mission_id || ""
+      ).trim();
+    }).filter(Boolean)
+  );
+
+  const missions = readSheetRows_("missions").filter(function (mission) {
+    // Les missions_vente historiques peuvent avoir un evenement_id différent.
+    return eventIds.has(String(mission.mission_id || "").trim()) ||
+      eventIds.has(String(mission.evenement_id || "").trim());
+  });
+
+  const transactions = readSheetRows_("transactions").filter(function (tx) {
+    return String(tx.journee_id || "").trim() === journeeId;
+  });
+
+  const validTransactions = transactions.filter(isValidClotureTransaction_);
+  const validIds = new Set(validTransactions.map(function (tx) {
+    return String(tx.transaction_id || "").trim();
+  }).filter(Boolean));
+
+  const detailMissing = validTransactions.filter(function (tx) {
+    return !hasCompleteClotureTicketDetail_(tx);
+  });
+
+  let ventesLignes = [];
+  if (detailMissing.length) {
+    ventesLignes = readSheetRows_("ventesLignes").filter(function (line) {
+      return validIds.has(String(line.transaction_id || "").trim());
+    });
+
+    const ligneIds = new Set(ventesLignes.map(function (line) {
+      return String(line.transaction_id || "").trim();
+    }));
+    const idsWithoutLines = detailMissing.map(function (tx) {
+      return String(tx.transaction_id || "").trim();
+    }).filter(function (id) {
+      return !id || !ligneIds.has(id);
+    });
+
+    if (idsWithoutLines.length) {
+      throw new Error(
+        "getClotureData : lignes de vente manquantes pour " +
+        idsWithoutLines.length + " ticket(s), stock non confirmé."
+      );
+    }
+  }
+
+  // Mouvement de stock sur toute la mission (préparation, report,
+  // réapprovisionnement et clôtures). Ne pas limiter à J1.
+  const mouvementsStock = readSheetRows_("mouvementsStock").filter(function (movement) {
+    return String(
+      movement.stock_mission_id || movement.mission_id || ""
+    ).trim() === stockMissionId;
+  });
+
+  const frais = readSheetRows_("frais").filter(function (f) {
+    const mission = String(f.stock_mission_id || f.mission_id || "").trim();
+    const journee = String(f.journee_id || "").trim();
+    return mission === stockMissionId && (!journee || journee === journeeId);
+  });
+
+  const clotures = readSheetRows_("clotures").filter(function (closure) {
+    return String(closure.salon_id || closure.journee_id || "").trim() === journeeId;
+  });
+
+  return {
+    api_mode: "getClotureData",
+    generated_at: new Date().toISOString(),
+    duration_ms: Date.now() - startedAt,
+    journee_id: journeeId,
+    stock_mission_id: stockMissionId,
+    missions: missions,
+    missionsStock: missionsStock,
+    journees: journees,
+    transactions: transactions,
+    ventesLignes: ventesLignes,
+    frais: frais,
+    mouvementsStock: mouvementsStock,
+    clotures: clotures
+  };
+}
+
+function isValidClotureTransaction_(tx) {
+  const norm = function (value) {
+    return String(value || "").trim().toLowerCase().normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  };
+  const status = norm(tx && tx.statut);
+  const paymentStatus = norm(tx && tx.paiement_statut);
+  const badStatus = ["annule", "refuse", "rembourse", "attente"];
+  if (badStatus.some(function (word) { return status.indexOf(word) >= 0; })) return false;
+  if (["annule", "refuse", "rembourse", "attente", "lance"].some(function (word) {
+    return paymentStatus.indexOf(word) >= 0;
+  })) return false;
+  return true;
+}
+
+function hasCompleteClotureTicketDetail_(tx) {
+  if (Array.isArray(tx.lignes) && tx.lignes.length > 0) {
+    return tx.lignes.every(function (line) { return Boolean(line && line.sku_id); });
+  }
+  let details = tx.detail_ticket;
+  if (typeof details === "string") {
+    try { details = JSON.parse(details); }
+    catch (_error) { return false; }
+  }
+  if (!Array.isArray(details) || !details.length) return false;
+  return details.every(function (item) {
+    if (!item || typeof item !== "object") return false;
+    if (item.type === "box") {
+      return Array.isArray(item.composition) && item.composition.length > 0 &&
+        item.composition.every(function (part) { return Boolean(part && part.sku_id); });
+    }
+    return Boolean(item.sku_id);
+  });
+}

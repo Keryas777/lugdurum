@@ -185,6 +185,10 @@ function invokeGetAction_(action, params) {
     return callRequiredFunction_("getCoreData_", tables, params);
   }
 
+  if (action === "getClotureData") {
+    return callRequiredFunction_("getClotureData_", params);
+  }
+
   if (action === "getHomeData") {
     return callRequiredFunction_("getHomeData_", params);
   }

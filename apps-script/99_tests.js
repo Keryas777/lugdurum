@@ -439,6 +439,10 @@ function runLugdurumTests(options) {
     return test99_get_home_data_();
   }, report);
 
+  lugRunTest_("03_cloture_data_ciblee", function() {
+    return test99_get_cloture_data_();
+  }, report);
+
   lugRunTest_("06_vente_rapide_critical_columns", function() {
     return test99_vente_rapide_critical_columns_();
   }, report);
@@ -885,6 +889,82 @@ function test99_get_home_data_() {
     keys: Object.keys(envelope),
     generated_at: envelope.generated_at || envelope.generatedAt || "",
     summary: lugSummarizeObjectArrays_(envelope)
+  };
+}
+
+function test99_get_cloture_data_() {
+  // Test strictement en lecture seule sur une journée et sa mission de stock
+  // présentes dans la feuille. Aucune donnée de caisse n'est modifiée.
+  var journees = readSheetRows_("journees");
+  var stocks = readSheetRows_("missionsStock");
+  var missionIds = new Set(stocks.map(function (mission) {
+    return String(mission.mission_id || "").trim();
+  }).filter(Boolean));
+
+  var candidate = journees.find(function (journee) {
+    var stockId = String(
+      journee.stock_mission_id || journee.mission_stock_id || ""
+    ).trim();
+    return stockId && missionIds.has(stockId);
+  });
+
+  if (!candidate) {
+    return { skipped: true, reason: "Aucune journée liée à une mission de stock." };
+  }
+
+  var dayId = String(candidate.journee_id || "").trim();
+  var missionId = String(
+    candidate.stock_mission_id || candidate.mission_stock_id || ""
+  ).trim();
+
+  var response = lugCallGetAction_("getClotureData", {
+    journee_id: dayId,
+    stock_mission_id: missionId
+  });
+
+  lugAssert_(response.ok === true,
+    "getClotureData doit répondre ok:true.", response);
+  var data = response.data || {};
+
+  [
+    "missions", "missionsStock", "journees", "transactions",
+    "ventesLignes", "frais", "mouvementsStock", "clotures"
+  ].forEach(function (key) {
+    lugAssert_(Array.isArray(data[key]),
+      "getClotureData : tableau manquant " + key, { keys: Object.keys(data) });
+  });
+
+  lugAssert_(
+    data.journee_id === dayId && data.stock_mission_id === missionId,
+    "getClotureData : incohérence contexte."
+  );
+  lugAssert_(
+    data.journees.some(function (journee) {
+      return String(journee.journee_id || "") === dayId;
+    }),
+    "getClotureData : journée active non retournée."
+  );
+  lugAssert_(
+    data.transactions.every(function (tx) {
+      return String(tx.journee_id || "") === dayId;
+    }),
+    "getClotureData : ventes hors journée."
+  );
+  lugAssert_(
+    data.mouvementsStock.every(function (movement) {
+      return String(
+        movement.stock_mission_id || movement.mission_id || ""
+      ) === missionId;
+    }),
+    "getClotureData : mouvement hors mission de stock."
+  );
+
+  return {
+    journees: data.journees.length,
+    tickets: data.transactions.length,
+    mouvements: data.mouvementsStock.length,
+    lignes: data.ventesLignes.length,
+    duration_ms: data.duration_ms || null
   };
 }
 
