@@ -1954,8 +1954,9 @@ function getClotureData_(params) {
   );
 
   const missions = readSheetRows_("missions").filter(function (mission) {
-    const id = String(mission.evenement_id || mission.mission_id || "").trim();
-    return eventIds.has(id);
+    // Les missions_vente historiques peuvent avoir un evenement_id différent.
+    return eventIds.has(String(mission.mission_id || "").trim()) ||
+      eventIds.has(String(mission.evenement_id || "").trim());
   });
 
   const transactions = readSheetRows_("transactions").filter(function (tx) {
