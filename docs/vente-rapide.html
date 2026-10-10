@@ -19,10 +19,10 @@
     <title>Lugdurum — Journée de vente</title>
 
     <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./vente-rapide.css?v=17" />
+    <link rel="stylesheet" href="./vente-rapide.css?v=18" />
 
     <script src="./lugdurum-api.js?v=11" defer></script>
-    <script src="./vente-rapide.js?v=28" defer></script>
+    <script src="./vente-rapide.js?v=29" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -205,11 +205,53 @@
             <button class="btn btnPrimary" type="button" id="saveTicketBtn">
               Enregistrer le ticket
             </button>
+            <button class="btn btnGhost externalCbBtn" type="button" id="externalCbBtn" hidden>
+              CB déjà encaissée ailleurs
+            </button>
           </div>
 
           <p class="saveStatus" id="saveStatus" role="status"></p>
         </section>
       </main>
+    </div>
+
+    <div
+      class="sumupOverlay cbExternalOverlay"
+      id="externalCbOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="externalCbTitle"
+      aria-describedby="externalCbText"
+      hidden
+    >
+      <div class="sumupDialog">
+        <div class="sumupDialogHeader">
+          <p class="sectionKicker">CB sur un autre appareil</p>
+          <h2 id="externalCbTitle">Encaissement déjà effectué ?</h2>
+          <p id="externalCbText">
+            À utiliser uniquement si le paiement CB est réellement accepté
+            sur l'autre téléphone ou terminal. Aucun paiement ne sera demandé
+            à SumUp depuis Lugdurum.
+          </p>
+        </div>
+        <div class="sumupRecap">
+          <span>Montant CB encaissé</span>
+          <strong id="externalCbAmount">0 €</strong>
+          <small>Le ticket et les sorties de stock seront enregistrés comme CB externe.</small>
+        </div>
+        <p class="externalCbWarning">
+          Vérifie qu'aucune vente identique n'est déjà enregistrée dans Lugdurum.
+        </p>
+        <div class="sumupActions">
+          <button class="sumupBtn sumupBtnSuccess" type="button" id="externalCbConfirmBtn">
+            Oui, enregistrer cette CB
+          </button>
+          <button class="sumupBtn sumupBtnGhost" type="button" id="externalCbCancelBtn">
+            Retour au ticket
+          </button>
+        </div>
+        <p class="saveStatus" id="externalCbStatus" role="status" aria-live="polite"></p>
+      </div>
     </div>
 
     <div
