@@ -583,6 +583,34 @@
   font-weight: 850;
 }
 
+.externalCbBtn[hidden],
+.cbExternalOverlay[hidden] {
+  display: none;
+}
+
+.externalCbBtn {
+  min-height: 52px;
+  color: #3f6f4f;
+  border-color: rgba(63, 111, 79, 0.4);
+  background: #f6f1e8;
+  touch-action: manipulation;
+}
+
+.externalCbWarning {
+  margin: 4px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(168, 143, 104, 0.12);
+  color: #5d482e;
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.cbExternalOverlay .sumupDialog {
+  background: linear-gradient(145deg, #f6f1e8, #faf7ef);
+}
+
 #saveTicketBtn.isSumupButton {
   background:
     linear-gradient(135deg, #2f7cf6, #1162dc);
