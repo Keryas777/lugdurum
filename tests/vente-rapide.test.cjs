@@ -398,3 +398,23 @@ test("Une journée annulée ou un stock annulé ne peut être choisi", () => {
   );
   assert.equal(forbidden.mission.mission_id, "MST_GERZAT");
 });
+
+test("vendeur absent : impossible d'enregistrer un ticket par erreur sous Jérôme", async () => {
+  const phone = setup(async () => ({ ok: true }));
+  phone.api.state.journeeActive.user_id = "";
+  await phone.api.saveTicket();
+  assert.equal(phone.calls.length, 0);
+  assert.match(phone.api.els.saveStatus.textContent, /Choisis d'abord le vendeur/);
+  assert.equal(phone.api.state.ticketItems.length, 1);
+});
+
+test("vendeurs distincts : l'ID de chaque ticket conserve son auteur propre", async () => {
+  const jerome = setup(async () => ({ ok: true }));
+  const anthony = setup(async () => ({ ok: true }));
+  jerome.api.state.journeeActive.user_id = "U_JEROME";
+  anthony.api.state.journeeActive.user_id = "U_ANTHONY";
+  await Promise.all([jerome.api.saveTicket(), anthony.api.saveTicket()]);
+  assert.equal(jerome.calls[0].transaction.user_id, "U_JEROME");
+  assert.equal(anthony.calls[0].transaction.user_id, "U_ANTHONY");
+  assert.notEqual(jerome.calls[0].transaction.transaction_id, anthony.calls[0].transaction.transaction_id);
+});
