@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Clôture V5 :
+    Clôture V6 :
     - Charge lugdurum-api.js avant ce fichier.
     - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
     - Lit missions_stock, missions_vente, journees_vente, transactions,
@@ -33,6 +33,7 @@
     preparationContext: "lugdurum_preparation_context",
 
     pendingTransactions: "lugdurum_pending_transactions",
+    closureIgnoredLegacy: "lugdurum_cloture_legacy_tests_ignores",
     transactionsCache: "lugdurum_transactions_cache",
     transactionsBackup: "lugdurum_transactions_backup",
     ventesLignes: "lugdurum_ventes_lignes",
@@ -132,7 +133,8 @@
     closeDayBtn: document.getElementById("closeDayBtn"),
     carryNextDayBtn: document.getElementById("carryNextDayBtn"),
     closeNoteInput: document.getElementById("closeNoteInput"),
-    closeStatus: document.getElementById("closeStatus")
+    closeStatus: document.getElementById("closeStatus"),
+    legacyRecoveryPanel: document.getElementById("legacyRecoveryPanel")
   };
 
   const api = () => window.LugdurumAPI || null;
@@ -1486,29 +1488,131 @@
     }
   };
 
-  const getUnmatchedLegacyPendingCount = () => {
+  // Les anciennes sauvegardes ne sont pas la file d'attente officielle.
+  // Seules celles de la journée clôturée (ou sans journee_id vérifiable)
+  // doivent éventuellement bloquer. Ne jamais les supprimer sans décision.
+  const getLegacyTransactionFingerprint = (transaction) => {
+    const id = String(transaction?.transaction_id || "").trim();
+    if (!id) return "";
+    return JSON.stringify([
+      id,
+      String(transaction?.journee_id || "").trim(),
+      String(transaction?.date_heure || "").trim(),
+      String(transaction?.total_encaisse_ttc ?? transaction?.total_encaisse ?? "")
+    ]);
+  };
+
+  const getUnmatchedLegacyPendingForClose = () => {
+    const dayId = String(state.journee?.journee_id || "").trim();
     const remoteIds = new Set(
       state.allTransactions.map((transaction) =>
         String(transaction.transaction_id || "").trim()
       ).filter(Boolean)
     );
+    const ignored = getObject(STORAGE_KEYS.closureIgnoredLegacy);
     return getArray(STORAGE_KEYS.pendingTransactions).filter((transaction) => {
       const id = String(transaction?.transaction_id || "").trim();
-      return !id || !remoteIds.has(id);
-    }).length;
+      const transactionDay = String(transaction?.journee_id || "").trim();
+      if (id && remoteIds.has(id)) return false;
+      if (transactionDay && transactionDay !== dayId) return false;
+      const fingerprint = getLegacyTransactionFingerprint(transaction);
+      return !fingerprint || !ignored[fingerprint];
+    });
+  };
+
+  const hideLegacyRecovery = () => {
+    if (!els.legacyRecoveryPanel) return;
+    els.legacyRecoveryPanel.hidden = true;
+    els.legacyRecoveryPanel.replaceChildren();
+  };
+
+  const renderLegacyRecovery = (transactions) => {
+    const panel = els.legacyRecoveryPanel;
+    if (!panel) return;
+    panel.replaceChildren();
+    panel.hidden = !transactions.length;
+    if (!transactions.length) return;
+
+    const introduction = document.createElement("p");
+    introduction.textContent =
+      "Ancien(s) ticket(s) local(aux) absent(s) de Google Sheets. Vérifie chaque ligne avant de poursuivre : une vente réelle non synchronisée doit être récupérée, pas ignorée.";
+    panel.append(introduction);
+
+    transactions.forEach((transaction) => {
+      const record = document.createElement("div");
+      record.className = "legacyRecoveryRecord";
+      const id = String(transaction?.transaction_id || "").trim();
+      const dayId = String(transaction?.journee_id || "").trim();
+      const total = getTransactionTotal(transaction);
+      const date = String(transaction?.date_heure || transaction?.created_at || "").trim();
+
+      const summary = document.createElement("p");
+      summary.className = "legacyRecoveryDetails";
+      summary.textContent =
+        `${formatCurrency(total)} · ${date || "Date inconnue"} · ${id || "Sans identifiant"}` +
+        (dayId ? "" : " · Journée inconnue");
+      record.append(summary);
+
+      if (id && dayId === String(state.journee?.journee_id || "")) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btnGhost legacyRecoveryButton";
+        button.textContent = "C'est un ticket test : l'écarter de cette clôture";
+        button.addEventListener("click", () => {
+          if (state.isSaving) return;
+          const fingerprint = getLegacyTransactionFingerprint(transaction);
+          // Jamais d'ignorance silencieuse d'une vente : confirmation explicite.
+          const confirmed = window.confirm(
+            `Confirmer que ce ticket de ${formatCurrency(total)} est uniquement un TEST, sans paiement réel ?\n\nIdentifiant : ${id}\n\nIl sera ignoré pour cette clôture seulement. Sa sauvegarde locale restera intacte.\n\nN'accepte PAS si la vente a réellement eu lieu.`
+          );
+          if (!confirmed) return;
+
+          const ignored = getObject(STORAGE_KEYS.closureIgnoredLegacy);
+          ignored[fingerprint] = {
+            journee_id: dayId,
+            transaction_id: id,
+            confirme_a: new Date().toISOString()
+          };
+          writeJson(STORAGE_KEYS.closureIgnoredLegacy, ignored);
+          const remaining = getUnmatchedLegacyPendingForClose();
+          renderLegacyRecovery(remaining);
+          setStatus(
+            remaining.length
+              ? `${remaining.length} ancien(s) ticket(s) à examiner encore. Aucun effacement effectué.`
+              : "Ticket test écarté de cette clôture, sans supprimer sa sauvegarde. Vérifie le stock, puis clique à nouveau sur « Clôturer la journée ».",
+            remaining.length ? "isError" : "isSuccess"
+          );
+        });
+        record.append(button);
+      } else {
+        const warning = document.createElement("small");
+        warning.textContent = "Identification insuffisante : aucune exclusion automatique possible.";
+        record.append(warning);
+      }
+      panel.append(record);
+    });
   };
 
   const saveClosure = async (status) => {
     if (!state.mission || !state.journee || state.isSaving) return null;
 
     if (status === "cloturee") {
+      hideLegacyRecovery();
       if (!state.dataLoaded) {
         setStatus("Clôture finale impossible : lecture Google Sheets non confirmée. Réessaie avec une connexion active.", "isError");
         return null;
       }
-      const pendingCount = getPendingWritesCount() + getUnmatchedLegacyPendingCount();
-      if (pendingCount > 0) {
-        setStatus(`Clôture finale bloquée : ${pendingCount} écriture(s) locales à synchroniser sur cet appareil.`, "isError");
+      const queuedWrites = getPendingWritesCount();
+      const oldLocalTickets = getUnmatchedLegacyPendingForClose();
+      if (queuedWrites > 0 || oldLocalTickets.length > 0) {
+        renderLegacyRecovery(oldLocalTickets);
+        setStatus(
+          queuedWrites > 0
+            ? `Clôture bloquée : ${queuedWrites} écriture(s) dans la file de synchronisation actuelle. Vérifie la connexion et attends leur envoi.` +
+              (oldLocalTickets.length ? ` Il reste aussi ${oldLocalTickets.length} ancien(s) ticket(s) à examiner ci-dessous.` : "")
+            : `Clôture bloquée : ${oldLocalTickets.length} ancien(s) ticket(s) local(aux) absent(s) de Google Sheets. Examine-les ci-dessous.`,
+          "isError"
+        );
         return null;
       }
       if (!validateCountsBeforeClose()) return null;
