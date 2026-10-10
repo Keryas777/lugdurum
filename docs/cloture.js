@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Clôture V10 :
+    Clôture V11 :
     - Charge lugdurum-api.js avant ce fichier.
     - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
     - Lit missions_stock, missions_vente, journees_vente, transactions,
@@ -1740,31 +1740,50 @@
     }));
   };
 
+
+  // Une journée de destination ne doit recevoir qu'un report par mission
+  // de stock. Détecter aussi les anciens reports à ID aléatoire déjà en Sheets.
+  const getExistingCarryoverMovements = (stockMissionId, nextDayId) =>
+    state.mouvementsStock
+      .filter(isActiveMovement)
+      .filter((movement) => {
+        const type = normalizeMovementType(movement.type_mouvement || movement.type);
+        const mission = String(movement.stock_mission_id || movement.mission_id || "").trim();
+        const destination = String(movement.to_journee_id || movement.journee_id || "").trim();
+        return mission === stockMissionId &&
+          destination === nextDayId &&
+          [MOVEMENT_TYPES.REPORT_CLOTURE, "REPORT", "STOCK_REPORT"].includes(type);
+      });
+
   const saveCarryoverToApi = async ({ movements }) => {
-    if (!hasApi()) {
-      throw new Error("lugdurum-api.js n’est pas chargé.");
+    if (!hasApi() || typeof api().batchUpsert !== "function") {
+      throw new Error("Écriture groupée du report indisponible.");
+    }
+    if (!Array.isArray(movements) || !movements.length) {
+      throw new Error("Report impossible : aucune ligne de stock à transmettre.");
     }
 
-    if (movements.length > 0) {
-      if (typeof api().saveMouvementStock === "function") {
-        for (const movement of movements) {
-          await api().saveMouvementStock(movement);
-        }
-        return;
-      }
+    // Un seul POST sous verrou Apps Script, clés fixes par mouvement :
+    // la file d'attente peut rejouer le lot sans ajouter de nouvelles lignes.
+    const operations = movements.map((movement) =>
+      buildBatchOperation("mouvementsStock", movement)
+    );
+    const response = await api().batchUpsert(operations);
 
-      if (typeof api().batchUpsert === "function") {
-        await api().batchUpsert(
-          movements.map((movement) => buildBatchOperation("mouvementsStock", movement))
-        );
-        return;
-      }
+    if (response?.queued === true) {
+      // Conservé par LugdurumAPI ; rien n'est encore confirmé en Sheets.
+      return { queued: true, pending_count: response.pending_count || 1 };
     }
-
-    throw new Error("Aucune méthode API disponible pour le report de stock.");
+    if (!Array.isArray(response?.results) ||
+        response.results.length !== operations.length ||
+        response.results.some((result) => result?.ok !== true)) {
+      throw new Error("Report non confirmé : réponse du lot incomplète.");
+    }
+    return { queued: false, operations_count: operations.length };
   };
 
   const carryStockToNextDay = async () => {
+    if (state.isSaving) return;
     // Une clôture locale/queued ne doit JAMAIS déclencher un report réel.
     if (!state.dataLoaded || getPendingWritesCount() > 0) {
       setStatus("Report bloqué : attends une clôture confirmée sur Google Sheets et une synchronisation terminée.", "isError");
@@ -1781,19 +1800,33 @@
       return;
     }
 
-    const ok = window.confirm(
-      `Reporter le stock compté vers ${getDayTitle(state.nextDay)} ?`
-    );
+    const missionId = String(state.mission?.mission_id || "").trim();
+    const fromDayId = String(state.journee?.journee_id || "").trim();
+    const nextDayId = String(state.nextDay?.journee_id || "").trim();
+    if (!missionId || !fromDayId || !nextDayId) {
+      setStatus("Report impossible : mission ou journée introuvable.", "isError");
+      return;
+    }
 
+    const existing = getExistingCarryoverMovements(missionId, nextDayId);
+    if (existing.length) {
+      setStatus(
+        "Report déjà présent pour J2 (" + existing.length + " mouvement(s)). Aucun nouveau report envoyé. Vérifie le stock dans Google Sheets.",
+        "isError"
+      );
+      return;
+    }
+
+    const ok = window.confirm(
+      "Reporter le stock compté vers " + getDayTitle(state.nextDay) + " ?"
+    );
     if (!ok) return;
 
     const now = new Date().toISOString();
-
     const stockLines = Array.isArray(state.existingClosure.stock_lignes)
       ? state.existingClosure.stock_lignes
       : state.stockRows.map((row) => {
           const counted = getCountedValue(row.sku_id);
-
           return {
             sku_id: row.sku_id,
             parfum_code: row.parfum_code,
@@ -1804,11 +1837,12 @@
         });
 
     const carryover = {
-      carryover_id: `CARRY_${Date.now().toString(36).toUpperCase()}`,
-      mission_id: state.mission.mission_id,
-      stock_mission_id: state.mission.mission_id,
-      from_journee_id: state.journee.journee_id,
-      to_journee_id: state.nextDay.journee_id,
+      // Clé déterministe : une répétition côté réseau ne crée pas de doublons.
+      carryover_id: "CARRY_" + fromDayId + "_" + nextDayId,
+      mission_id: missionId,
+      stock_mission_id: missionId,
+      from_journee_id: fromDayId,
+      to_journee_id: nextDayId,
       source_cloture_id: state.existingClosure.cloture_id || state.existingClosure.salon_id,
       lignes: stockLines
         .filter((line) => line.stock_compte !== "")
@@ -1823,48 +1857,52 @@
       created_at: now,
       updated_at: now
     };
-
-    const carryovers = getArray(STORAGE_KEYS.stockCarryovers);
-    carryovers.push(carryover);
-    writeJson(STORAGE_KEYS.stockCarryovers, carryovers);
-
     const movements = buildCarryoverMovements(carryover);
-    upsertMovementsLocal(movements);
-
-    safeLocalSet(STORAGE_KEYS.activeMissionId, state.mission.mission_id);
-    safeLocalSet(STORAGE_KEYS.activeStockMissionId, state.mission.mission_id);
-    safeLocalSet(STORAGE_KEYS.activeJourneeId, state.nextDay.journee_id);
-
-    writeJson(STORAGE_KEYS.preparationContext, {
-      mission_id: state.mission.mission_id,
-      stock_mission_id: state.mission.mission_id,
-      journee_id: state.nextDay.journee_id,
-      step: "stock_reporte",
-      source: "cloture",
-      carryover_id: carryover.carryover_id,
-      updated_at: now
-    });
-
     setSaving(true);
-    setStatus("Report du stock...");
+    setStatus("Report du stock en cours (" + movements.length + " références)…");
 
     try {
-      await saveCarryoverToApi({
-        carryover,
-        movements
+      const response = await saveCarryoverToApi({ movements });
+      if (response.queued) {
+        state.dataLoaded = false;
+        renderDataFreshness("Report du stock en attente de synchronisation");
+        setStatus(
+          "Report mis en attente, non confirmé dans Google Sheets. Attends la synchronisation et recharge la page avant toute nouvelle action.",
+          "isError"
+        );
+        return;
+      }
+
+      // Uniquement après confirmation serveur, enregistrer le contexte J2.
+      const carryovers = getArray(STORAGE_KEYS.stockCarryovers);
+      const previousIndex = carryovers.findIndex((item) =>
+        item.from_journee_id === fromDayId && item.to_journee_id === nextDayId
+      );
+      if (previousIndex >= 0) carryovers[previousIndex] = carryover;
+      else carryovers.push(carryover);
+      writeJson(STORAGE_KEYS.stockCarryovers, carryovers);
+      upsertMovementsLocal(movements);
+
+      safeLocalSet(STORAGE_KEYS.activeMissionId, missionId);
+      safeLocalSet(STORAGE_KEYS.activeStockMissionId, missionId);
+      safeLocalSet(STORAGE_KEYS.activeJourneeId, nextDayId);
+
+      writeJson(STORAGE_KEYS.preparationContext, {
+        mission_id: missionId,
+        stock_mission_id: missionId,
+        journee_id: nextDayId,
+        step: "stock_reporte",
+        source: "cloture",
+        carryover_id: carryover.carryover_id,
+        updated_at: now
       });
 
-      const pendingCount = getPendingWritesCount();
-
-      setStatus(
-        pendingCount > 0
-          ? `Stock reporté · ${pendingCount} écriture(s) en attente de synchronisation.`
-          : "Stock reporté vers la prochaine journée.",
-        pendingCount > 0 ? "isError" : "isSuccess"
-      );
+      setStatus("Stock reporté et confirmé dans Google Sheets pour la prochaine journée.", "isSuccess");
     } catch (error) {
+      state.dataLoaded = false;
+      renderDataFreshness("Report non confirmé · relecture Sheets nécessaire");
       setStatus(
-        `Stock reporté en local · API à synchroniser : ${error.message}`,
+        "Report non confirmé : " + error.message + ". Ne relance pas le report avant de vérifier Google Sheets.",
         "isError"
       );
     } finally {
