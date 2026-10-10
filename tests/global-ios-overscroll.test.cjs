@@ -19,6 +19,8 @@ test("Toutes les pages HTML utilisent le correctif anti-rebond", () => {
   let shared = 0;
   for (const name of pages) {
     const html = fs.readFileSync(path.join(docs, name), "utf8");
+    // Les fichiers de fragments HTML ne sont pas des pages de l’application.
+    if (!/<!doctype html/i.test(html)) continue;
     if (name === "diagnostic-sync.html") {
       assert.match(html, /href="\.\/diagnostic-sync\.css\?v=2"/);
     } else if (name === "api-test.html") {
