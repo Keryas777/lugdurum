@@ -113,7 +113,7 @@ const FALLBACK_SHEET_CONFIG_CORE = {
 
   clotures: {
     sheetName: "clotures_journees",
-    keyField: "cloture_id"
+    keyField: "salon_id"
   },
 
   clients: {
@@ -820,6 +820,8 @@ function normalizeSheetConfigObject_(tableKey, config) {
     keyField:
       safeConfig.keyField ||
       safeConfig.key_field ||
+      safeConfig.idKey ||
+      safeConfig.id_key ||
       safeConfig.key ||
       ""
   };
@@ -966,7 +968,7 @@ function inferKeyFieldFromSheetName_(sheetName) {
     },
     {
       includes: "clotures_journees",
-      keyField: "cloture_id"
+      keyField: "salon_id"
     },
     {
       includes: "clients",
