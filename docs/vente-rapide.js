@@ -34,8 +34,8 @@
     mission_id: "",
     label: "Aucune journée active",
     date_label: "Retourne dans Missions ou Préparation stock pour démarrer une journée.",
-    user_id: "U_JEROME",
-    vendeur: "Jérôme"
+    user_id: "",
+    vendeur: ""
   };
 
   const SHEETS = {
@@ -152,6 +152,8 @@
     stockPreparedBreakdown: document.getElementById("stockPreparedBreakdown"),
     refreshDaySummaryBtn: document.getElementById("refreshDaySummaryBtn"),
     saleSummaryTitle: document.getElementById("saleSummaryTitle"),
+    saleSellerBtn: document.getElementById("saleSellerBtn"),
+    saleSellerName: document.getElementById("saleSellerName"),
     missionMeta: document.querySelector(".saleSummary .missionMeta"),
     packComposer: document.getElementById("packComposer"),
     packProgressLabel: document.getElementById("packProgressLabel"),
@@ -403,6 +405,13 @@
       "Aucune journée active. Retourne dans Missions ou Préparation stock avant d’encaisser.",
       "isError"
     );
+  };
+
+  const hasSelectedSeller = () =>
+    Boolean(String(state.journeeActive?.user_id || "").trim());
+
+  const showMissingSellerStatus = () => {
+    setStatus("Choisis d'abord le vendeur sur cet appareil avant d'enregistrer ou d'encaisser un ticket.", "isError");
   };
 
   const syncAmountPaidInput = (total) => {
@@ -1038,10 +1047,12 @@
     els.saveTicketBtn.classList.toggle("isSumupButton", isCb);
 
     if (state.saveInProgress) els.saveTicketBtn.textContent = "Enregistrement…";
-    els.saveTicketBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
+    els.saveTicketBtn.disabled =
+      !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
     if (els.externalCbBtn) {
       els.externalCbBtn.hidden = !isCb;
-      els.externalCbBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
+      els.externalCbBtn.disabled =
+        !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
     }
     if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
     if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
@@ -1888,6 +1899,10 @@
       showMissingContextStatus();
       return;
     }
+    if (!hasSelectedSeller()) {
+      showMissingSellerStatus();
+      return;
+    }
 
     if (state.ticketItems.length === 0) {
       setStatus("Ajoute au moins un produit avant d’encaisser.", "isError");
@@ -2148,7 +2163,11 @@
     if (state.saveInProgress) return false;
     if (!hasActiveSalesContext()) {
       showMissingContextStatus();
-      return;
+      return false;
+    }
+    if (!hasSelectedSeller()) {
+      showMissingSellerStatus();
+      return false;
     }
 
     if (state.paymentMode === "CB" && !externalCb) {
@@ -2348,8 +2367,9 @@
       localStorage.getItem(STORAGE_KEYS.activeMissionId) || "";
     const journeeId = urlJourneeId ||
       context?.journee_id || localStorage.getItem(STORAGE_KEYS.activeJourneeId) || "";
-    const currentUserId = hasApi() && typeof api().getCurrentUserId === "function"
-      ? api().getCurrentUserId() : "";
+    const currentUserId = window.LugdurumUsers?.getUserId() ||
+      (hasApi() && typeof api().getCurrentUserId === "function"
+        ? api().getCurrentUserId() : "");
 
     state.journeeActive = {
       ...EMPTY_JOURNEE_ACTIVE,
@@ -2718,6 +2738,24 @@
     checkPendingSumup();
     refreshSummaryOnResume();
   });
+
+  window.LugdurumUsers?.mount({
+    button: els.saleSellerBtn,
+    nameElement: els.saleSellerName,
+    canChange() {
+      return !state.saveInProgress && !getPendingSumup() && !state.failedTicket;
+    },
+    onBlocked() {
+      setStatus("Termine ou annule le paiement en cours avant de changer de vendeur.", "isError");
+    },
+    onChange(user) {
+      state.journeeActive.user_id = user.user_id;
+      state.journeeActive.vendeur = user.nom;
+      setStatus("Vendeur actif sur cet appareil : " + user.nom, "isSuccess");
+      renderPayment();
+    }
+  });
+  // Pas de requête utilisateurs bloquante au démarrage des ventes.
 
   // Le CA est commun aux deux vendeurs, pas aux caches de leurs téléphones.
   // Réseau seulement en avant-plan et sans concurrence avec SumUp / sync.

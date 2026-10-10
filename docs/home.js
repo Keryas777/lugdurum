@@ -25,10 +25,13 @@
       labels toujours affichés, valeurs fallback si getHomeData renvoie "-", "—" ou rien.
   */
 
+  // La sélection du vendeur est locale à chaque appareil.
+  // Aucun utilisateur n'est attribué automatiquement lors d'un premier accès.
+  const initialUser = window.LugdurumUsers?.getCurrent() || null;
   const CURRENT_USER = {
-    user_id: "U_JEROME",
-    nom: "Jérôme",
-    role: "admin"
+    user_id: initialUser?.user_id || "",
+    nom: initialUser?.nom || "Choisir vendeur",
+    role: initialUser?.role || ""
   };
 
   const STORAGE_KEYS = {
@@ -3124,6 +3127,23 @@
       refreshHomeFromRemote();
     }
   });
+
+  window.LugdurumUsers?.mount({
+    button: document.querySelector(".userPill"),
+    nameElement: document.getElementById("currentUserName"),
+    onChange(user) {
+      CURRENT_USER.user_id = user.user_id;
+      CURRENT_USER.nom = user.nom;
+      CURRENT_USER.role = user.role;
+      if (state.dataSource === "loading") {
+        setText("#currentUserName", user.nom);
+      } else {
+        refreshHomeFromRemote();
+      }
+    }
+  });
+  // Mise à jour distante optionnelle ; liste connue disponible même hors ligne.
+  // Pas de requête utilisateurs bloquante au démarrage des ventes.
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initHome);

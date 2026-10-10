@@ -18,6 +18,7 @@
 */
 
 const SHEETS = {
+  utilisateurs: "utilisateurs",
   catalogue: "catalogue",
   offresVente: "offres_vente",
 
@@ -153,6 +154,7 @@ const SHEET_CONFIG = {
 };
 
 const GET_ACTIONS = {
+  getUtilisateurs: SHEETS.utilisateurs,
   getCatalogue: SHEETS.catalogue,
   getOffresVente: SHEETS.offresVente,
 
@@ -200,6 +202,7 @@ const EMPTY_GET_ACTIONS = {
 };
 
 const CORE_DATA_TABLES = {
+  utilisateurs: SHEETS.utilisateurs,
   catalogue: SHEETS.catalogue,
   offresVente: SHEETS.offresVente,
   offres_vente: SHEETS.offresVente,

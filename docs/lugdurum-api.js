@@ -135,6 +135,7 @@
   };
 
   const CORE_TABLE_KEY_ALIASES = {
+    utilisateurs: ["utilisateurs"],
     clients: ["clients"],
 
     commandesPro: ["commandesPro", "commandes_pro"],
@@ -469,9 +470,11 @@
       globalUser?.userId ||
       "";
 
-    if (globalUserId) return String(globalUserId).trim();
-
-    return String(safeLocalGet(STORAGE_KEYS.currentUserId) || "").trim();
+    // L'identité du vendeur est propre à l'appareil. Une ancienne constante
+    // globale U_JEROME ne doit jamais supplanter son choix explicite.
+    const savedUserId = String(safeLocalGet(STORAGE_KEYS.currentUserId) || "").trim();
+    if (savedUserId) return savedUserId;
+    return String(globalUserId || "").trim();
   };
 
   const setCurrentUserId = (userId) => {
