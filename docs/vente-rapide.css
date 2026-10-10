@@ -52,6 +52,14 @@
   gap: 14px;
 }
 
+/* Sur téléphone, rapprocher le vendeur et la journée active de l'en-tête fixe.
+   Garder de l'espace pour la zone de sécurité iOS, déjà gérée par .appShell. */
+@media (max-width: 640px) {
+  .page-sale .appShell > .saleLayout {
+    padding-top: 64px;
+  }
+}
+
 .saleSummary,
 .salePanel {
   border: 1px solid var(--border);
@@ -115,9 +123,11 @@
 }
 
 .saleRefreshBtn {
-  justify-self: end;
-  min-height: 38px;
-  padding: 7px 16px;
+  justify-self: stretch;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  text-align: center;
   border-radius: 999px;
   border: 1px solid rgba(63, 111, 79, 0.35);
   background: #f6f1e8;
