@@ -834,30 +834,59 @@
         ' <small>· ' + seller.count + ' ticket' + (seller.count > 1 ? 's' : '') +
         '</small></span><strong>' + formatCurrency(seller.amount) + '</strong></li>').join("");
 
-    const productsHtml = [...products.values()]
-      .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name, "fr"))
-      .map((p) => '<li><span>' + escapeHtml(p.name) +
-        (p.format ? ' · ' + p.format + ' cL' : '') +
-        '</span><strong>×' + p.qty + '</strong></li>').join("");
+    // Séparer réellement les formats : 50 cL puis 20 cL, sans mélanger
+    // les parfums et en conservant les quantités calculées depuis les tickets.
+    const productsByFormat = new Map();
+    products.forEach((product) => {
+      const format = toNumber(product.format, 0);
+      if (!productsByFormat.has(format)) productsByFormat.set(format, []);
+      productsByFormat.get(format).push(product);
+    });
+
+    const sortedFormats = [...productsByFormat.keys()].sort((a, b) => {
+      const priority = (format) => format === 50 ? 0 : format === 20 ? 1 : 2;
+      return priority(a) - priority(b) || b - a;
+    });
+
+    const productsHtml = sortedFormats.map((format) => {
+      const formatLabel = format > 0 ? format + " cL" : "Format non renseigné";
+      const formatClass = format === 50 ? " is50cl" : format === 20 ? " is20cl" : "";
+      const rows = productsByFormat.get(format)
+        .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name, "fr"))
+        .map((product) => {
+          const code = String(product.code || "").trim();
+          return '<li class="saleDetailsProductRow"><span class="saleDetailsProductName">' +
+            (code ? '<span class="saleDetailsProductCode">' + escapeHtml(code) + '</span>' : '') +
+            '<span>' + escapeHtml(product.name) + '</span></span>' +
+            '<strong>×' + product.qty + '</strong></li>';
+        }).join("");
+
+      return '<div class="saleDetailsFormatGroup' + formatClass + '">' +
+        '<h4 class="saleDetailsFormatTitle">' + escapeHtml(formatLabel) + '</h4>' +
+        '<ul class="saleDetailsList saleDetailsProductList">' + rows + '</ul></div>';
+    }).join("");
 
     const status = state.daySummary;
+    // Le message technique n'est utile que pendant une lecture ou en cas d'erreur.
     const notice = status.isLoading
       ? 'Actualisation du CA partagé en cours…'
       : status.lastError
         ? (status.isLoaded ? 'Réseau indisponible : dernière lecture affichée, chiffres potentiellement incomplets.'
           : 'Impossible de récupérer les tickets depuis Google Sheets.')
-        : status.isLoaded
-          ? 'Données partagées lues depuis Google Sheets. Les tickets non synchronisés ne sont pas encore comptés.'
-          : 'Lecture des tickets partagés en cours…';
+        : status.isLoaded ? '' : 'Lecture des tickets partagés en cours…';
     const noticeClass = status.lastError ? " isError" : "";
     const loaded = status.isLoaded;
     const noTickets = loaded && transactions.length === 0;
 
     content.innerHTML =
       '<div class="saleDetailsSections">' +
-      '<p class="saleDetailsSubtitle">' + escapeHtml(state.journeeActive.label || "Journée") +
-      (state.journeeActive.date_label ? ' · ' + escapeHtml(state.journeeActive.date_label) : '') + '</p>' +
-      '<p class="saleDetailsNotice' + noticeClass + '">' + escapeHtml(notice) + '</p>' +
+      '<div class="saleDetailsSubtitle">' +
+      '<span class="saleDetailsSubtitleEvent">' +
+      escapeHtml(state.journeeActive.label || "Journée") + '</span>' +
+      (state.journeeActive.date_label
+        ? '<span class="saleDetailsSubtitleDate">' + escapeHtml(state.journeeActive.date_label) + '</span>'
+        : '') + '</div>' +
+      (notice ? '<p class="saleDetailsNotice' + noticeClass + '">' + escapeHtml(notice) + '</p>' : '') +
       (loaded
         ? '<div class="saleDetailsStatGrid">' +
           '<div class="saleDetailsStat"><small>CA partagé</small><strong>' +
@@ -872,7 +901,7 @@
               sellersHtml + '</ul></section>' +
               '<section class="saleDetailsSection"><h3>Produits vendus</h3>' +
               (productsHtml
-                ? '<ul class="saleDetailsList">' + productsHtml + '</ul>'
+                ? '<div class="saleDetailsFormats">' + productsHtml + '</div>'
                 : '<p class="saleDetailsProductHint">Aucun détail produit disponible.</p>') +
               (detailedTickets < transactions.length
                 ? '<p class="saleDetailsProductHint">Détail disponible sur ' +
