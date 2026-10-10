@@ -92,14 +92,14 @@ test("le routeur saveCloture utilise salon_id et non saveCloture_", () => {
     '  if (action === "saveJourneeHistoriqueBundle") {'
   );
   let called;
-  const route = new Function("payload", "callRequiredFunction_", content);
+  const route = new Function("action", "payload", "callRequiredFunction_", content);
   const input = { cloture: { salon_id: "J_GERZAT_J1" } };
-  route(input, (...args) => { called = args; return { ok: true }; });
+  route("saveCloture", input, (...args) => { called = args; return { ok: true }; });
   assert.deepEqual(called, [
     "upsertRowByConfig_", "clotures", input.cloture, "salon_id"
   ]);
   assert.throws(
-    () => route({ cloture: { cloture_id: "CLOT_OLD" } }, () => {}),
+    () => route("saveCloture", { cloture: { cloture_id: "CLOT_OLD" } }, () => {}),
     /salon_id obligatoire/
   );
 });
