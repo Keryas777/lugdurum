@@ -19,11 +19,11 @@
     <title>Lugdurum — Journée de vente</title>
 
     <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./vente-rapide.css?v=20" />
+    <link rel="stylesheet" href="./vente-rapide.css?v=21" />
 
     <script src="./lugdurum-api.js?v=15" defer></script>
     <script src="./lugdurum-users.js?v=1" defer></script>
-    <script src="./vente-rapide.js?v=31" defer></script>
+    <script src="./vente-rapide.js?v=32" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -66,11 +66,13 @@
           </div>
 
           <div class="saleSummaryStats">
-            <div class="ticketTotalBox daySalesBox" aria-live="polite">
+            <button class="ticketTotalBox daySalesBox" type="button" id="openDayDetailsBtn"
+              aria-haspopup="dialog" aria-controls="dayDetailsOverlay">
               <span>CA jour partagé</span>
               <strong id="dayRevenueTotal">0 €</strong>
               <small id="dayTicketCount">0 ticket</small>
-            </div>
+              <small class="daySalesHint">Voir le détail des ventes →</small>
+            </button>
             <div class="ticketTotalBox stockTravelBox" aria-live="polite">
               <span>Stock emporté</span>
               <strong id="stockPreparedTotal">—</strong>
@@ -231,6 +233,26 @@
           <p class="saveStatus" id="saveStatus" role="status"></p>
         </section>
       </main>
+    </div>
+
+    <!-- Consultation uniquement : aucune action de modification des ventes. -->
+    <div class="saleDetailsOverlay" id="dayDetailsOverlay" role="dialog"
+      aria-modal="true" aria-labelledby="dayDetailsTitle" hidden>
+      <section class="saleDetailsDialog">
+        <header class="saleDetailsHeader">
+          <div>
+            <p class="sectionKicker">CA jour partagé</p>
+            <h2 id="dayDetailsTitle">Ventes de la journée</h2>
+          </div>
+          <button class="saleDetailsClose" id="closeDayDetailsBtn" type="button">Fermer</button>
+        </header>
+        <div class="saleDetailsContent" id="dayDetailsContent" aria-live="polite">
+          <p class="saleDetailsNotice">Chargement des ventes de la journée…</p>
+        </div>
+        <footer class="saleDetailsFooter">
+          <button class="saleDetailsClose" id="closeDayDetailsFooterBtn" type="button">Fermer la fenêtre</button>
+        </footer>
+      </section>
     </div>
 
     <div
