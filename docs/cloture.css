@@ -478,3 +478,54 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Anciennes sauvegardes locales : diagnostic sans suppression automatique. */
+.legacyRecoveryPanel[hidden] {
+  display: none !important;
+}
+
+.legacyRecoveryPanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(179, 92, 58, 0.28);
+  border-radius: 16px;
+  background: rgba(179, 92, 58, 0.07);
+}
+
+.legacyRecoveryPanel > p {
+  margin: 0;
+  color: #794a35;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.legacyRecoveryRecord {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(86, 65, 42, 0.14);
+  border-radius: 12px;
+  background: #fffaf1;
+}
+
+.legacyRecoveryRecord .legacyRecoveryDetails {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.legacyRecoveryRecord small {
+  color: #6c6255;
+}
+
+.legacyRecoveryButton {
+  width: 100%;
+  min-height: 44px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+}
