@@ -820,6 +820,13 @@ video {
   white-space: normal;
 }
 
+/* Accueil : montant et symbole € sur une seule ligne. */
+.page-home #todayRevenue {
+  white-space: nowrap;
+  font-size: clamp(1rem, 3.9vw, 1.9rem);
+  letter-spacing: -0.05em;
+}
+
 .statCard.warning.hasWarning {
   border-color: rgba(179, 92, 58, 0.3);
   background:
@@ -1210,6 +1217,20 @@ video {
     padding-inline: 14px;
   }
 
+  /* Un peu plus d'espace pour le CA sans élargir le panneau entier. */
+  .page-home .heroStats {
+    grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 0.85fr));
+    gap: 8px;
+  }
+
+  .page-home .heroStats .statCard {
+    padding-inline: 6px;
+  }
+
+  .page-home #todayRevenue {
+    font-size: clamp(0.875rem, 4.25vw, 1.3rem);
+  }
+
   .appShell > .topbar {
     padding-top: 6px;
     padding-bottom: 12px;
@@ -1315,6 +1336,10 @@ video {
 
   .statCard strong {
     font-size: clamp(1rem, 5vw, 1.45rem);
+  }
+
+  .page-home #todayRevenue {
+    font-size: clamp(0.77rem, 3.8vw, 0.93rem);
   }
 
   .appShell > .topbar:has(.backBtn) {
