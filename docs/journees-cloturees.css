@@ -509,131 +509,163 @@
 }
 
 /* ==============================
-   Détail produits façon carnet
-   Colonnes : Ref / 50 cL / 20 cL
-   Groupes : Prestige / Exception / Collection
+   Détail produits : vrai tableau à 3 colonnes
+   Groupé par gamme, lisible sur mobile
    ============================== */
 
-.closedSalesTable {
-  display: grid;
-  gap: 0;
+.closedSalesTableFrame {
   overflow: hidden;
-  border: 1px solid rgba(86, 65, 42, 0.14);
-  border-radius: var(--radius-md);
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 250, 241, 0.78),
-      rgba(255, 255, 255, 0.4)
-    );
+  border: 1px solid rgba(86, 65, 42, 0.17);
+  border-radius: 15px;
+  background: rgba(255, 250, 241, 0.78);
+  box-shadow: 0 5px 14px rgba(75, 48, 22, 0.045);
 }
 
-.closedSalesHeader,
-.closedSalesRow {
-  display: grid;
-  grid-template-columns: minmax(72px, 1fr) minmax(70px, 0.72fr) minmax(70px, 0.72fr);
-  align-items: center;
-  gap: 0;
-}
-
-.closedSalesHeader {
-  min-height: 38px;
-  color: var(--rum);
-  background: rgba(216, 160, 79, 0.14);
-  font-size: 0.74rem;
-  font-weight: 950;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.closedSalesHeader span,
-.closedSalesRow span {
-  min-width: 0;
-  padding: 9px 10px;
-  border-left: 1px solid rgba(86, 65, 42, 0.1);
-}
-
-.closedSalesHeader span:first-child,
-.closedSalesRow span:first-child {
-  border-left: 0;
-}
-
-.closedSalesRow {
-  min-height: 40px;
-  border-top: 1px solid rgba(86, 65, 42, 0.08);
+.closedSalesTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
   color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 900;
+  font-variant-numeric: tabular-nums;
 }
 
-.closedSalesRow span:nth-child(2),
-.closedSalesRow span:nth-child(3),
-.closedSalesHeader span:nth-child(2),
-.closedSalesHeader span:nth-child(3) {
+.closedSalesTable col:first-child {
+  width: 38%;
+}
+
+.closedSalesTable col:nth-child(2),
+.closedSalesTable col:nth-child(3) {
+  width: 31%;
+}
+
+.closedSalesCaption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.closedSalesTable thead th {
+  padding: 11px 8px;
+  border-bottom: 1px solid rgba(86, 65, 42, 0.15);
+  background: rgba(168, 143, 104, 0.19);
+  color: #624422;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  white-space: nowrap;
   text-align: center;
 }
 
-.closedSalesRow span:first-child {
-  color: var(--text);
+.closedSalesTable thead th:first-child {
+  padding-left: 14px;
+  text-align: left;
+}
+
+.closedSalesTable thead th + th {
+  border-left: 1px solid rgba(86, 65, 42, 0.11);
+}
+
+.closedSalesTable .closedSalesGroupRow th {
+  padding: 11px 13px 8px;
+  background: linear-gradient(90deg, rgba(168, 143, 104, 0.15), rgba(168, 143, 104, 0.045));
+  color: var(--rum);
+  text-align: left;
+}
+
+.closedSalesTable tbody + tbody .closedSalesGroupRow th {
+  border-top: 1px solid rgba(86, 65, 42, 0.15);
+}
+
+.closedSalesGroupName {
+  font-size: 0.84rem;
   font-weight: 950;
+  letter-spacing: 0.012em;
+}
+
+.closedSalesGroupCount {
+  margin-left: 7px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.closedSalesTable .closedSalesRow th,
+.closedSalesTable .closedSalesRow td {
+  padding: 8px 10px;
+  border-top: 1px solid rgba(86, 65, 42, 0.07);
+  background: rgba(255, 255, 255, 0.24);
+  vertical-align: middle;
+}
+
+.closedSalesTable .closedSalesRow th {
+  padding-left: 14px;
+  font-size: 0.97rem;
+  font-weight: 950;
+  letter-spacing: 0.035em;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.closedSalesTable .closedSalesRow td {
+  border-left: 1px solid rgba(86, 65, 42, 0.09);
+  text-align: center;
 }
 
 .closedSalesQty {
+  display: inline-grid;
+  min-width: 34px;
+  min-height: 31px;
+  padding: 4px 8px;
+  place-items: center;
+  border: 1px solid rgba(168, 143, 104, 0.24);
+  border-radius: 9px;
+  background: rgba(168, 143, 104, 0.12);
   color: var(--rum);
+  font-size: 0.96rem;
   font-weight: 950;
+  line-height: 1.1;
 }
 
-.closedSalesQty.isEmpty {
+.closedSalesQtyEmpty {
   color: var(--muted-2);
-  font-weight: 850;
+  font-weight: 700;
 }
 
-.closedSalesGroup {
-  margin: 0;
+.closedSalesTable .closedSalesTotalRow th,
+.closedSalesTable .closedSalesTotalRow td {
+  padding: 12px 10px;
   border-top: 2px solid rgba(138, 90, 43, 0.22);
-  padding: 10px 10px 6px;
+  background: rgba(168, 143, 104, 0.15);
   color: var(--rum);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(216, 160, 79, 0.13),
-      rgba(255, 250, 241, 0)
-    );
-  font-size: 0.72rem;
-  font-weight: 950;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.closedSalesGroup:first-child {
-  border-top: 0;
-}
-
-.closedSalesTotalRow {
-  display: grid;
-  grid-template-columns: minmax(72px, 1fr) minmax(70px, 0.72fr) minmax(70px, 0.72fr);
-  align-items: center;
-  border-top: 2px solid rgba(138, 90, 43, 0.22);
-  background: rgba(168, 143, 104, 0.1);
-  color: var(--rum);
-  font-size: 0.9rem;
+  font-size: 0.93rem;
   font-weight: 950;
 }
 
-.closedSalesTotalRow span {
-  padding: 10px;
+.closedSalesTable .closedSalesTotalRow th {
+  padding-left: 14px;
+  color: var(--text);
+  text-align: left;
+}
+
+.closedSalesTable .closedSalesTotalRow td {
   border-left: 1px solid rgba(86, 65, 42, 0.1);
-}
-
-.closedSalesTotalRow span:first-child {
-  border-left: 0;
-}
-
-.closedSalesTotalRow span:nth-child(2),
-.closedSalesTotalRow span:nth-child(3) {
   text-align: center;
 }
 
+.closedSalesOtherFormats {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
 /* ==============================
    États / messages
    ============================== */
@@ -727,17 +759,7 @@
     padding-inline: 13px;
   }
 
-  .closedSalesHeader,
-  .closedSalesRow,
-  .closedSalesTotalRow {
-    grid-template-columns: minmax(58px, 1fr) minmax(56px, 0.72fr) minmax(56px, 0.72fr);
-  }
-
-  .closedSalesHeader span,
-  .closedSalesRow span,
-  .closedSalesTotalRow span {
-    padding-inline: 8px;
-  }
+  .closedSalesTable thead th { font-size: 0.73rem; }
 }
 
 @media (max-width: 370px) {
@@ -754,19 +776,9 @@
     text-align: left;
   }
 
-  .closedSalesHeader,
-  .closedSalesRow,
-  .closedSalesTotalRow {
-    grid-template-columns: minmax(54px, 1fr) 52px 52px;
-  }
-
-  .closedSalesHeader {
-    font-size: 0.68rem;
-    letter-spacing: 0.08em;
-  }
-
-  .closedSalesRow,
-  .closedSalesTotalRow {
-    font-size: 0.82rem;
-  }
+  .closedSalesTable thead th { font-size: 0.7rem; padding-inline: 5px; }
+  .closedSalesTable .closedSalesRow th,
+  .closedSalesTable .closedSalesRow td { padding-inline: 6px; }
+  .closedSalesTable .closedSalesRow th { padding-left: 10px; }
+  .closedSalesTable thead th:first-child { padding-left: 10px; }
 }
