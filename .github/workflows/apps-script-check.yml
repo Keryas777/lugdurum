@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "apps-script/**"
+      - "docs/cloture.js"
+      - "docs/cloture.html"
+      - "tests/cloture-write.test.cjs"
       - ".github/workflows/apps-script-check.yml"
 
 permissions:
@@ -31,3 +34,8 @@ jobs:
       - name: Verifier les autorisations Sheets et SumUp
         run: |
           node -e 'const m = require("./apps-script/appsscript.json"); const required = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/script.external_request"]; for (const scope of required) { if (!m.oauthScopes?.includes(scope)) { console.error("Autorisation manquante:", scope); process.exitCode = 1; } }'
+
+      - name: Tester la clôture en simulation (sans écrire dans Sheets)
+        run: |
+          node --check docs/cloture.js
+          node --test tests/cloture-write.test.cjs
