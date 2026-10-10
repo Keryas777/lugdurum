@@ -1734,7 +1734,7 @@
       setStatus("Aucune prochaine journée disponible pour le report.", "isError");
       return;
     }
-    if (!state.existingClosure || normalizeStatus(state.existingClosure.statut) !== "cloturee") {
+    if (!state.existingClosure) {
       setStatus("Clôture J1 non enregistrée : clôture d'abord la journée avant de reporter le stock.", "isError");
       return;
     }
