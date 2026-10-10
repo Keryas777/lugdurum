@@ -131,6 +131,7 @@
     sumupManualBlocked: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
     sharedStock: null,
+    dayTransactions: [],
     daySummary: {
       isLoading: false,
       isLoaded: false,
@@ -148,6 +149,11 @@
     ticketPanelTotal: document.getElementById("ticketPanelTotal"),
     dayRevenueTotal: document.getElementById("dayRevenueTotal"),
     dayTicketCount: document.getElementById("dayTicketCount"),
+    openDayDetailsBtn: document.getElementById("openDayDetailsBtn"),
+    dayDetailsOverlay: document.getElementById("dayDetailsOverlay"),
+    dayDetailsContent: document.getElementById("dayDetailsContent"),
+    closeDayDetailsBtn: document.getElementById("closeDayDetailsBtn"),
+    closeDayDetailsFooterBtn: document.getElementById("closeDayDetailsFooterBtn"),
     stockPreparedTotal: document.getElementById("stockPreparedTotal"),
     stockPreparedBreakdown: document.getElementById("stockPreparedBreakdown"),
     refreshDaySummaryBtn: document.getElementById("refreshDaySummaryBtn"),
@@ -537,7 +543,8 @@
     if (!journeeId) {
       return {
         revenue: 0,
-        tickets: 0
+        tickets: 0,
+        transactions: []
       };
     }
 
@@ -558,12 +565,15 @@
         (sum, transaction) => sum + getTransactionAmount(transaction),
         0
       ),
-      tickets: validTransactions.length
+      tickets: validTransactions.length,
+      transactions: validTransactions
     };
   };
 
   const setDaySummaryFromTransactions = (transactions = []) => {
     const summary = computeDaySummaryFromTransactions(transactions);
+    // Exactement les mêmes tickets que le CA : jamais de cache local ou de doublons.
+    state.dayTransactions = summary.transactions;
 
     state.daySummary = {
       isLoading: false,
@@ -580,7 +590,10 @@
   };
 
   const renderDaySummary = () => {
+    // Rien à calculer ni à dessiner tant que la fenêtre est fermée.
+    if (els.dayDetailsOverlay && !els.dayDetailsOverlay.hidden) renderDayDetails();
     if (!els.dayRevenueTotal || !els.dayTicketCount) return;
+    if (els.openDayDetailsBtn) els.openDayDetailsBtn.disabled = !hasActiveSalesContext();
 
     if (!hasActiveSalesContext()) {
       els.dayRevenueTotal.textContent = "—";
@@ -635,6 +648,7 @@
         tickets: 0,
         lastError: "Aucune journée active."
       };
+      state.dayTransactions = [];
       renderDaySummary();
       return state.daySummary;
     }
@@ -686,6 +700,214 @@
       summaryRefreshTimer = null;
       loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
     }, 700);
+  };
+
+
+  // Détail consultatif. On réutilise detail_ticket (panier conservé dans
+  // transactions) : pas de lecture ventes_lignes supplémentaire à l'ouverture.
+  const readTicketItems = (transaction) => {
+    let detail = transaction?.detail_ticket;
+    if (typeof detail === "string") {
+      try { detail = JSON.parse(detail); }
+      catch (_error) { return []; }
+    }
+    if (Array.isArray(detail)) return detail;
+    if (Array.isArray(detail?.items)) return detail.items;
+    if (Array.isArray(detail?.ticketItems)) return detail.ticketItems;
+    return [];
+  };
+
+  const getSellerLabel = (transaction) => {
+    const id = String(transaction?.user_id || "").trim();
+    if (!id) return "Vendeur non renseigné";
+    const user = window.LugdurumUsers?.list()?.find((item) => item.user_id === id);
+    if (user?.nom) return user.nom;
+    // Certains historiques utilisent cet ancien identifiant.
+    if (id === "U_ANTHO") return "Anthony";
+    return id;
+  };
+
+  const getPaymentLabel = (transaction) => ({
+    ESP: "Espèces",
+    CB: "CB",
+    CHQ: "Chèque"
+  }[String(transaction?.mode_paiement || "").trim().toUpperCase()] ||
+    String(transaction?.mode_paiement || "Paiement non renseigné"));
+
+  const getTicketTime = (transaction) => {
+    const raw = transaction?.date_heure || transaction?.created_at || "";
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime())
+      ? "Heure non renseignée"
+      : new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  };
+
+  const getSoldItemDetails = (item) => {
+    if (!item || typeof item !== "object") return { html: "", products: [] };
+    const isBox = item.type === "box" || Array.isArray(item.composition);
+    if (isBox) {
+      const composition = Array.isArray(item.composition) ? item.composition : [];
+      const size = toNumber(item.box_size, composition.length);
+      const format = toNumber(item.format_cl, 20);
+      const label = String(item.label || ("Coffret " + size + "×" + format + " cL"));
+      const products = composition.map((p) => {
+        const code = typeof p === "string" ? p : String(p?.parfum_code || "").trim();
+        const name = typeof p === "string" ? p : String(p?.parfum_nom || code || p?.sku_id || "").trim();
+        return { code, name, format, qty: 1 };
+      }).filter((p) => p.name);
+      const compositionText = products.length
+        ? products.map((p) => p.name).join(", ")
+        : "Composition non renseignée";
+      return {
+        html: "<strong>1 × " + escapeHtml(label) + "</strong> <span>· " +
+          escapeHtml(compositionText) + "</span>",
+        products
+      };
+    }
+
+    const sku = String(item.sku_id || "").trim();
+    const catalogueProduct = sku ? findProductBySku(sku) : null;
+    const name = String(item.parfum_nom || catalogueProduct?.parfum_nom ||
+      item.parfum_code || sku || "Produit").trim();
+    const code = String(item.parfum_code || catalogueProduct?.parfum_code || sku).trim();
+    const format = toNumber(item.format_cl, catalogueProduct?.format_cl || 0);
+    const qty = Math.max(0, Math.trunc(toNumber(item.quantite, 1)));
+    if (!qty) return { html: "", products: [] };
+    return {
+      html: "<strong>" + qty + " × " + escapeHtml(name) +
+        (format ? " · " + format + " cL" : "") + "</strong>",
+      products: [{ code, name, format, qty }]
+    };
+  };
+
+  const renderDayDetails = () => {
+    if (!els.dayDetailsContent || els.dayDetailsOverlay?.hidden) return;
+    const content = els.dayDetailsContent;
+    const previousScroll = content.scrollTop;
+    const journeeId = String(state.journeeActive?.journee_id || "").trim();
+    const transactions = state.dayTransactions
+      .filter((tx) => String(tx?.journee_id || "").trim() === journeeId)
+      .sort((a, b) => String(b.date_heure || b.created_at || "")
+        .localeCompare(String(a.date_heure || a.created_at || "")));
+    const sellers = new Map();
+    const products = new Map();
+    let detailedTickets = 0;
+    let bottleCount = 0;
+
+    const ticketsHtml = transactions.map((tx, index) => {
+      const seller = getSellerLabel(tx);
+      const sellerKey = String(tx.user_id || "").trim() || "inconnu";
+      const prior = sellers.get(sellerKey) || { label: seller, count: 0, amount: 0 };
+      prior.count += 1;
+      prior.amount += getTransactionAmount(tx);
+      sellers.set(sellerKey, prior);
+
+      const items = readTicketItems(tx);
+      if (items.length) detailedTickets += 1;
+      const itemDetails = items.map(getSoldItemDetails);
+      itemDetails.forEach((item) => {
+        item.products.forEach((product) => {
+          const key = [product.code || product.name, product.format].join("|");
+          const existing = products.get(key) || { ...product, qty: 0 };
+          existing.qty += product.qty;
+          products.set(key, existing);
+          bottleCount += product.qty;
+        });
+      });
+
+      const lines = itemDetails.filter((item) => item.html)
+        .map((item) => "<li>" + item.html + "</li>").join("");
+      return '<li class="saleDetailsTicket">' +
+        '<div class="saleDetailsTicketHead"><strong>Ticket ' + (index + 1) +
+        ' · ' + escapeHtml(getTicketTime(tx)) + '</strong><strong>' +
+        formatCurrency(getTransactionAmount(tx)) + '</strong></div>' +
+        '<p class="saleDetailsTicketMeta">' + escapeHtml(seller) + ' · ' +
+        escapeHtml(getPaymentLabel(tx)) + '</p>' +
+        (lines
+          ? '<ul class="saleDetailsTicketProducts">' + lines + '</ul>'
+          : '<p class="saleDetailsProductHint">Détail des produits indisponible pour ce ticket.</p>') +
+        '</li>';
+    }).join("");
+
+    const sellersHtml = [...sellers.values()]
+      .sort((a, b) => b.amount - a.amount)
+      .map((seller) => '<li><span>' + escapeHtml(seller.label) +
+        ' <small>· ' + seller.count + ' ticket' + (seller.count > 1 ? 's' : '') +
+        '</small></span><strong>' + formatCurrency(seller.amount) + '</strong></li>').join("");
+
+    const productsHtml = [...products.values()]
+      .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name, "fr"))
+      .map((p) => '<li><span>' + escapeHtml(p.name) +
+        (p.format ? ' · ' + p.format + ' cL' : '') +
+        '</span><strong>×' + p.qty + '</strong></li>').join("");
+
+    const status = state.daySummary;
+    const notice = status.isLoading
+      ? 'Actualisation du CA partagé en cours…'
+      : status.lastError
+        ? (status.isLoaded ? 'Réseau indisponible : dernière lecture affichée, chiffres potentiellement incomplets.'
+          : 'Impossible de récupérer les tickets depuis Google Sheets.')
+        : status.isLoaded
+          ? 'Données partagées lues depuis Google Sheets. Les tickets non synchronisés ne sont pas encore comptés.'
+          : 'Lecture des tickets partagés en cours…';
+    const noticeClass = status.lastError ? " isError" : "";
+    const loaded = status.isLoaded;
+    const noTickets = loaded && transactions.length === 0;
+
+    content.innerHTML =
+      '<div class="saleDetailsSections">' +
+      '<p class="saleDetailsSubtitle">' + escapeHtml(state.journeeActive.label || "Journée") +
+      (state.journeeActive.date_label ? ' · ' + escapeHtml(state.journeeActive.date_label) : '') + '</p>' +
+      '<p class="saleDetailsNotice' + noticeClass + '">' + escapeHtml(notice) + '</p>' +
+      (loaded
+        ? '<div class="saleDetailsStatGrid">' +
+          '<div class="saleDetailsStat"><small>CA partagé</small><strong>' +
+          formatCurrency(status.revenue) + '</strong></div>' +
+          '<div class="saleDetailsStat"><small>Tickets</small><strong>' +
+          transactions.length + '</strong></div>' +
+          '<div class="saleDetailsStat"><small>Bouteilles détaillées</small><strong>' +
+          bottleCount + '</strong></div></div>' +
+          (noTickets
+            ? '<p class="saleDetailsNotice">Aucune vente validée pour cette journée.</p>'
+            : '<section class="saleDetailsSection"><h3>Par vendeur</h3><ul class="saleDetailsList">' +
+              sellersHtml + '</ul></section>' +
+              '<section class="saleDetailsSection"><h3>Produits vendus</h3>' +
+              (productsHtml
+                ? '<ul class="saleDetailsList">' + productsHtml + '</ul>'
+                : '<p class="saleDetailsProductHint">Aucun détail produit disponible.</p>') +
+              (detailedTickets < transactions.length
+                ? '<p class="saleDetailsProductHint">Détail disponible sur ' +
+                  detailedTickets + ' ticket(s) sur ' + transactions.length +
+                  ' : les quantités de produits peuvent être incomplètes.</p>'
+                : '') + '</section>' +
+              '<section class="saleDetailsSection"><h3>Tickets (' + transactions.length +
+              ')</h3><ol class="saleDetailsTickets">' + ticketsHtml + '</ol></section>')
+        : '') + '</div>';
+    content.scrollTop = previousScroll;
+  };
+
+  const openDayDetails = () => {
+    if (!els.dayDetailsOverlay || !hasActiveSalesContext()) return;
+    els.dayDetailsOverlay.hidden = false;
+    document.body.classList.add("saleDetailsOpen");
+    renderDayDetails();
+    els.closeDayDetailsBtn?.focus({ preventScroll: true });
+
+    // Affichage immédiat de la dernière lecture : aucune attente au clic.
+    // Rafraîchissement seulement si nécessaire, sans gêner un encaissement.
+    const lastRead = Date.parse(state.daySummary.lastLoadedAt || "");
+    const outdated = !Number.isFinite(lastRead) || Date.now() - lastRead > 15000;
+    if (outdated && !state.daySummary.isLoading &&
+        !state.saveInProgress && !getPendingSumup()) {
+      loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    }
+  };
+
+  const closeDayDetails = () => {
+    if (!els.dayDetailsOverlay || els.dayDetailsOverlay.hidden) return;
+    els.dayDetailsOverlay.hidden = true;
+    document.body.classList.remove("saleDetailsOpen");
+    els.openDayDetailsBtn?.focus({ preventScroll: true });
   };
 
   const getVisibleProducts = () => {
@@ -2404,6 +2626,7 @@
           date_label: "Sélectionne Gerzat sur l'accueil, puis ouvre Journée de vente."
         };
         state.sharedStock = null;
+        state.dayTransactions = [];
         state.daySummary = {
           ...state.daySummary, isLoading: false, isLoaded: false,
           revenue: 0, tickets: 0, lastError: "Aucune journée partagée unique pour aujourd'hui."
@@ -2687,6 +2910,30 @@
   els.clearTicketBtn.addEventListener("click", () => { if (!state.saveInProgress) clearTicket(); });
   els.undoBtn.addEventListener("click", () => { if (!state.saveInProgress) undoLast(); });
   els.saveTicketBtn.addEventListener("click", () => saveTicket());
+  els.openDayDetailsBtn?.addEventListener("click", openDayDetails);
+  els.closeDayDetailsBtn?.addEventListener("click", closeDayDetails);
+  els.closeDayDetailsFooterBtn?.addEventListener("click", closeDayDetails);
+  els.dayDetailsOverlay?.addEventListener("click", (event) => {
+    if (event.target === els.dayDetailsOverlay) closeDayDetails();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (els.dayDetailsOverlay?.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDayDetails();
+    }
+    if (event.key === "Tab") {
+      const first = els.closeDayDetailsBtn;
+      const last = els.closeDayDetailsFooterBtn;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+  });
   els.refreshDaySummaryBtn?.addEventListener("click", () => {
     if (state.saveInProgress || getPendingSumup()) return;
     loadContext().catch(console.warn);
