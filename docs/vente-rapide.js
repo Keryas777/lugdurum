@@ -8,8 +8,9 @@
       sinon LugdurumAPI.getCoreData(["catalogue", "offresVente"]),
       sinon fallback legacy getCatalogue() + getOffresVente().
     - Ne charge plus mouvements_stock au démarrage.
-    - Contexte journée + résumé CA chargés en une seule lecture réseau quand possible :
-      missionsStock + journees + transactions via getCoreData().
+    - La journée partagée est vérifiée en priorité via missionsStock + journees.
+    - Les transactions / le CA partagés sont lus ensuite en arrière-plan :
+      l'historique des tickets ne bloque plus l'ouverture de la caisse.
     - CA jour affiché en haut :
       calculé uniquement depuis l’onglet transactions lu par réseau,
       jamais depuis lugdurum_transactions_backup ni cache local.
@@ -1297,12 +1298,14 @@
     els.saveTicketBtn.classList.toggle("isSumupButton", isCb);
 
     if (state.saveInProgress) els.saveTicketBtn.textContent = "Enregistrement…";
+    // Un ancien contexte local ne suffit pas pour encaisser pendant
+    // la vérification en cours (notamment au passage J1 → J2).
     els.saveTicketBtn.disabled =
-      !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+      !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
     if (els.externalCbBtn) {
       els.externalCbBtn.hidden = !isCb;
       els.externalCbBtn.disabled =
-        !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+        !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
     }
     if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
     if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
@@ -2411,6 +2414,10 @@
 
   const saveTicket = async ({ externalCb = false } = {}) => {
     if (state.saveInProgress) return false;
+    if (!state.contextLoaded) {
+      setStatus("Vérification de la journée en cours. Attends la confirmation avant d'encaisser.", "isError");
+      return false;
+    }
     if (!hasActiveSalesContext()) {
       showMissingContextStatus();
       return false;
@@ -2513,35 +2520,31 @@
     }
 
     if (typeof api().getCoreData === "function") {
+      // La recherche de la journée ne doit pas attendre la lecture de
+      // toutes les transactions historiques de la société.
       const result = await api().getCoreData([
         "missionsStock",
-        "journees",
-        "transactions"
-      ]);
+        "journees"
+      ], { flushBeforeRead: true });
 
       return {
         missionsStock: getCoreArray(result, "missionsStock"),
-        journees: getCoreArray(result, "journees"),
-        transactions: getCoreArray(result, "transactions")
+        journees: getCoreArray(result, "journees")
       };
     }
 
-    const [missionsStock, journees, transactions] = await Promise.all([
+    const [missionsStock, journees] = await Promise.all([
       typeof api().getMissionsStock === "function"
         ? api().getMissionsStock()
         : Promise.resolve([]),
       typeof api().getJournees === "function"
         ? api().getJournees()
-        : Promise.resolve([]),
-      typeof api().getTransactions === "function"
-        ? api().getTransactions()
         : Promise.resolve([])
     ]);
 
     return {
       missionsStock: Array.isArray(missionsStock) ? missionsStock : [],
-      journees: Array.isArray(journees) ? journees : [],
-      transactions: Array.isArray(transactions) ? transactions : []
+      journees: Array.isArray(journees) ? journees : []
     };
   };
 
@@ -2607,6 +2610,7 @@
   };
 
   const loadContext = async () => {
+    state.contextLoaded = false;
     const context = readJson(STORAGE_KEYS.preparationContext, null);
     const url = new URLSearchParams(window.location.search || "");
     const urlStockId = url.get("stock_mission_id") || "";
@@ -2692,7 +2696,9 @@
         updated_at: new Date().toISOString()
       });
 
-      setDaySummaryFromTransactions(remote.transactions);
+      // Le contexte est maintenant identifié ; le CA partagé peut arriver
+      // plus tard sans empêcher la préparation du ticket suivant.
+      void loadDaySummaryFromNetwork({ silent: true });
       setStatus("");
     } catch (error) {
       console.warn("Contexte partagé non chargé depuis Sheets.", error);
