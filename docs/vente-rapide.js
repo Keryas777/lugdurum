@@ -2691,7 +2691,9 @@
     return false;
   };
 
+  let contextRequestVersion = 0;
   const loadContext = async () => {
+    const requestVersion = ++contextRequestVersion;
     state.contextLoaded = false;
     const context = readJson(STORAGE_KEYS.preparationContext, null);
     const url = new URLSearchParams(window.location.search || "");
@@ -2734,6 +2736,9 @@
     try {
       // Même sans aucune information locale : lire les journées communes.
       const remote = await loadRemoteContextBundle();
+      // Une ancienne lecture ne doit pas écraser un contexte rafraîchi
+      // après retour réseau (iOS/PWA peut reprendre deux requêtes).
+      if (requestVersion !== contextRequestVersion) return;
       state.missionsStock = remote.missionsStock;
       state.journees = remote.journees;
       // Snapshot dédié, sans historique des transactions et sans écraser
@@ -2803,6 +2808,7 @@
       void loadDaySummaryFromNetwork({ silent: true });
       setStatus("");
     } catch (error) {
+      if (requestVersion !== contextRequestVersion) return;
       console.warn("Contexte partagé non chargé depuis Sheets.", error);
       // Réseau déclaré disponible mais requête en échec : même repli
       // local strict que dans le mode hors ligne explicite.
@@ -2812,8 +2818,10 @@
         explicitUrl: Boolean(urlStockId || urlJourneeId)
       });
     } finally {
-      state.contextLoaded = true;
-      renderAll();
+      if (requestVersion === contextRequestVersion) {
+        state.contextLoaded = true;
+        renderAll();
+      }
     }
   };
 
