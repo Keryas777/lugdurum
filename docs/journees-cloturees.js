@@ -744,31 +744,59 @@
       return `<p class="statsEmpty compact">Aucun produit vendu renseigné.</p>`;
     }
 
+    const formatQuantity = (quantity) => quantity > 0
+      ? `<span class="closedSalesQty">${escapeHtml(String(quantity))}</span>`
+      : `<span class="closedSalesQtyEmpty" aria-label="0">—</span>`;
+
+    const total50 = products.reduce((total, product) => total + product.q50, 0);
+    const total20 = products.reduce((total, product) => total + product.q20, 0);
+    const otherFormats = products.reduce((total, product) => total + product.autres, 0);
+
     return `
-      <div class="closedSalesMatrix" role="table" aria-label="Ventes par produit">
-        <div class="closedSalesMatrixHead" role="row">
-          <span>Réf</span>
-          <span>50 cL</span>
-          <span>20 cL</span>
-        </div>
+      <div class="closedSalesTableFrame">
+        <table class="closedSalesTable">
+          <caption class="closedSalesCaption">Quantités vendues par gamme, référence et format</caption>
+          <colgroup><col /><col /><col /></colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Réf.</th>
+              <th scope="col">50 cL</th>
+              <th scope="col">20 cL</th>
+            </tr>
+          </thead>
 
-        ${getProductsByGamme(products).map(([gamme, items]) => `
-          <div class="closedSalesMatrixGroup">
-            <div class="closedSalesMatrixGroupTitle">${escapeHtml(gamme)}</div>
+          ${getProductsByGamme(products).map(([gamme, items]) => `
+            <tbody class="closedSalesSection">
+              <tr class="closedSalesGroupRow">
+                <th scope="rowgroup" colspan="3">
+                  <span class="closedSalesGroupName">${escapeHtml(gamme)}</span>
+                  <span class="closedSalesGroupCount">${items.length} réf.</span>
+                </th>
+              </tr>
+              ${items.map((product) => `
+                <tr class="closedSalesRow">
+                  <th scope="row">${escapeHtml(product.parfum_code)}</th>
+                  <td>${formatQuantity(product.q50)}</td>
+                  <td>${formatQuantity(product.q20)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          `).join("")}
 
-            ${items.map((product) => `
-              <div class="closedSalesMatrixRow" role="row">
-                <strong>${escapeHtml(product.parfum_code)}</strong>
-                <span>${product.q50 ? escapeHtml(String(product.q50)) : "—"}</span>
-                <span>${product.q20 ? escapeHtml(String(product.q20)) : "—"}</span>
-              </div>
-            `).join("")}
-          </div>
-        `).join("")}
+          <tfoot>
+            <tr class="closedSalesTotalRow">
+              <th scope="row">Total</th>
+              <td>${escapeHtml(String(total50))}</td>
+              <td>${escapeHtml(String(total20))}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
+      ${otherFormats > 0
+        ? `<div class="closedSalesOtherFormats" role="note">Autres formats non affichés : ${escapeHtml(String(otherFormats))} bouteille(s).</div>`
+        : ""}
     `;
   };
-
   const renderDetailFees = (day) => {
     if (!day.fraisItems.length) {
       return `
