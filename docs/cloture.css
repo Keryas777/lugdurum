@@ -529,3 +529,23 @@
   text-align: center;
   line-height: 1.25;
 }
+
+
+/* Le stock peut être consulté en cache, mais la validation reste distante. */
+.closeDataFreshness {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(179, 92, 58, 0.24);
+  border-radius: 12px;
+  background: rgba(179, 92, 58, 0.07);
+  color: #894a34;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.closeDataFreshness.isVerified {
+  border-color: rgba(63, 111, 79, 0.22);
+  background: rgba(63, 111, 79, 0.08);
+  color: #3f6f4f;
+}

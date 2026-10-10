@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Clôture V6 :
+    Clôture V7 :
     - Charge lugdurum-api.js avant ce fichier.
     - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
     - Lit missions_stock, missions_vente, journees_vente, transactions,
@@ -74,7 +74,6 @@
     "missionsStock",
     "journees",
     "transactions",
-    "ventesLignes",
     "frais",
     "mouvementsStock",
     "clotures"
@@ -102,7 +101,8 @@
     existingClosure: null,
 
     isSaving: false,
-    dataLoaded: false
+    dataLoaded: false,
+    hasEditedCounts: false
   };
 
   const els = {
@@ -134,6 +134,7 @@
     carryNextDayBtn: document.getElementById("carryNextDayBtn"),
     closeNoteInput: document.getElementById("closeNoteInput"),
     closeStatus: document.getElementById("closeStatus"),
+    closeDataFreshness: document.getElementById("closeDataFreshness"),
     legacyRecoveryPanel: document.getElementById("legacyRecoveryPanel")
   };
 
@@ -338,6 +339,15 @@
     if (type) {
       els.closeStatus.classList.add(type);
     }
+  };
+
+  const renderDataFreshness = (message = "") => {
+    if (!els.closeDataFreshness) return;
+    els.closeDataFreshness.textContent = message ||
+      (state.dataLoaded
+        ? "Données de vente vérifiées depuis Google Sheets"
+        : "Stock en cache local provisoire · vérification des ventes en cours");
+    els.closeDataFreshness.classList.toggle("isVerified", state.dataLoaded && !message);
   };
 
   const setSaving = (isSaving) => {
@@ -1057,14 +1067,17 @@
     `;
   };
 
-  const renderStockRows = () => {
+  const renderStockSummary = () => {
     const totals = getStockTotals();
-
     els.stockInitialTotal.textContent = String(totals.initial);
     els.stockSoldTotal.textContent = String(totals.sold);
     els.stockTheoryTotal.textContent = String(totals.theory);
     els.stockCountedTotal.textContent =
       totals.hasCounted > 0 ? String(totals.counted) : "—";
+  };
+
+  const renderStockRows = () => {
+    renderStockSummary();
 
     if (state.stockRows.length === 0) {
       els.stockCloseRows.innerHTML =
@@ -1857,17 +1870,14 @@
   };
 
   const loadLocalData = () => {
-    const localPendingTransactions = getArray(STORAGE_KEYS.pendingTransactions);
     const cachedTransactions = getArray(STORAGE_KEYS.transactionsCache);
-    const backedUpTransactions = getArray(STORAGE_KEYS.transactionsBackup);
-
+    // À l'ouverture, seules les transactions du dernier cache principal
+    // sont prévisualisées. Les sauvegardes legacy ne doivent pas faire
+    // réapparaître les anciens tickets tests dans le CA provisoire.
     state.events = getArray(STORAGE_KEYS.events);
     state.stockMissions = getArray(STORAGE_KEYS.stockMissions);
     state.journees = getArray(STORAGE_KEYS.journees);
-    state.allTransactions = mergeById(
-      [cachedTransactions, backedUpTransactions, localPendingTransactions],
-      "transaction_id"
-    );
+    state.allTransactions = mergeById([cachedTransactions], "transaction_id");
     state.ventesLignes = getArray(STORAGE_KEYS.ventesLignes);
     state.frais = getArray(STORAGE_KEYS.frais);
     state.mouvementsStock = getArray(STORAGE_KEYS.mouvementsStock);
@@ -1891,7 +1901,11 @@
       throw new Error("LugdurumAPI.getCoreData() indisponible.");
     }
 
-    const coreData = await api().getCoreData(CORE_TABLES);
+    // Les écritures en attente se rejouent déjà automatiquement via API.
+    // Ne pas retarder le chargement d'une page consultative pour les flusher.
+    const coreData = await api().getCoreData(CORE_TABLES, {
+      flushBeforeRead: false
+    });
 
     if (!coreData || typeof coreData !== "object" || Array.isArray(coreData)) {
       throw new Error("Réponse getCoreData invalide.");
@@ -1908,7 +1922,7 @@
       stockMissions: normalizeCoreArray(coreData, "missionsStock", state.stockMissions),
       journees: normalizeCoreArray(coreData, "journees", state.journees),
       transactions: coreData.transactions,
-      ventesLignes: normalizeCoreArray(coreData, "ventesLignes", state.ventesLignes),
+      ventesLignes: [],
       frais: normalizeCoreArray(coreData, "frais", state.frais),
       mouvementsStock: normalizeCoreArray(coreData, "mouvementsStock", state.mouvementsStock),
       clotures: normalizeCoreArray(coreData, "clotures", state.clotures)
@@ -1944,7 +1958,6 @@
       stockMissions,
       journees,
       transactions,
-      ventesLignes,
       frais,
       mouvementsStock,
       clotures
@@ -1953,7 +1966,6 @@
       optionalApiArray("getMissionsStock", state.stockMissions),
       optionalApiArray("getJournees", state.journees),
       loadRequiredRemoteTransactions(),
-      optionalApiArray("getVentesLignes", state.ventesLignes),
       optionalApiArray("getFrais", state.frais),
       optionalApiArray("getMouvementsStock", state.mouvementsStock),
       optionalApiArray("getClotures", state.clotures)
@@ -1964,11 +1976,50 @@
       stockMissions,
       journees,
       transactions,
-      ventesLignes,
+      ventesLignes: [],
       frais,
       mouvementsStock,
       clotures
     };
+  };
+
+  // Les ventes récentes portent déjà leur détail de produit dans les tickets.
+  // L'onglet ventes_lignes (potentiellement volumineux et lent) n'est lu
+  // que pour les tickets de la journée sans lignes ni détail exploitable.
+  const needsRemoteSaleLines = (transactions, dayId) =>
+    transactions.some((transaction) => {
+      if (String(transaction?.journee_id || "").trim() !== dayId ||
+          isInvalidSaleTransaction(transaction)) return false;
+      if (Array.isArray(transaction.lignes) && transaction.lignes.length) return false;
+      const items = parseDetailTicket(transaction);
+      if (!items.length) return true;
+      return items.some((item) => {
+        if (item?.type === "box") {
+          return !Array.isArray(item.composition) || !item.composition.length ||
+            item.composition.some((part) => !part?.sku_id);
+        }
+        return !item?.sku_id;
+      });
+    });
+
+  const loadRequiredSaleLinesIfNeeded = async (remote) => {
+    const dayId = String(getActiveIds().journeeId || "").trim();
+    if (!dayId || !needsRemoteSaleLines(remote.transactions, dayId)) return [];
+    if (!hasApi() || typeof api().getVentesLignes !== "function") {
+      throw new Error("Détails des ventes indisponibles pour clôturer cette journée.");
+    }
+    const lines = await api().getVentesLignes();
+    if (!Array.isArray(lines)) throw new Error("Réponse ventes_lignes invalide.");
+    const requiredIds = remote.transactions
+      .filter((transaction) => String(transaction?.journee_id || "").trim() === dayId)
+      .filter((transaction) => !isInvalidSaleTransaction(transaction))
+      .filter((transaction) => needsRemoteSaleLines([transaction], dayId))
+      .map((transaction) => String(transaction.transaction_id || "").trim())
+      .filter(Boolean);
+    if (requiredIds.some((id) => !lines.some((line) => String(line.transaction_id || "").trim() === id))) {
+      throw new Error("Lignes produit manquantes pour certains tickets : stock non confirmé.");
+    }
+    return lines;
   };
 
   const loadRemoteData = async () => {
@@ -1983,6 +2034,8 @@
     } catch {
       remote = await loadRemoteDataWithSeparateCalls();
     }
+
+    remote.ventesLignes = await loadRequiredSaleLinesIfNeeded(remote);
 
     state.events = remote.events;
     state.stockMissions = remote.stockMissions;
@@ -2066,10 +2119,22 @@
     } else {
       state.counts.set(skuId, toNumber(input.value, 0));
     }
+    state.hasEditedCounts = true;
 
+    // Ne pas régénérer le champ actif : Safari perdrait le focus / clavier.
+    const stockRow = state.stockRows.find((row) => row.sku_id === skuId);
+    const gapEl = input.closest(".stockCloseRow")?.querySelector(".stockGap");
+    if (stockRow && gapEl) {
+      const counted = getCountedValue(skuId);
+      const gap = counted === "" ? null : Number(counted) - stockRow.stock_theorique;
+      gapEl.classList.toggle("isOk", gap === 0);
+      gapEl.classList.toggle("isAlert", gap !== null && gap !== 0);
+      const gapValue = gapEl.querySelector("strong");
+      if (gapValue) gapValue.textContent = gap === null ? "—" : `${gap > 0 ? "+" : ""}${gap}`;
+    }
     setStatus("");
     renderHero();
-    renderStockRows();
+    renderStockSummary();
   });
 
   els.fillTheoreticalBtn.addEventListener("click", fillTheoreticalCounts);
@@ -2091,20 +2156,32 @@
     loadLocalData();
     loadContext();
     renderAll();
+    renderDataFreshness();
 
     try {
-      setStatus("Chargement...");
+      setStatus("Actualisation des données...");
       await loadRemoteData();
 
+      // L'utilisateur peut avoir commencé le comptage pendant le réseau.
+      // Ne jamais effacer ses valeurs lors de la reconstruction des lignes.
+      const editedDayId = state.journee?.journee_id;
+      const editedCounts = state.hasEditedCounts ? new Map(state.counts) : null;
       loadContext();
+      if (editedCounts && editedDayId === state.journee?.journee_id) {
+        const skus = new Set(state.stockRows.map((row) => row.sku_id));
+        editedCounts.forEach((value, sku) => {
+          if (skus.has(sku)) state.counts.set(sku, value);
+        });
+      }
       renderAll();
+      renderDataFreshness();
       setStatus("");
     } catch (error) {
+      renderDataFreshness("Impossible de vérifier Sheets · stock local provisoire");
       setStatus(
         `Lecture Sheets impossible. Données locales affichées : ${error.message}`,
         "isError"
       );
-      renderAll();
     }
   };
 
