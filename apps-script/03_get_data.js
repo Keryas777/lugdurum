@@ -582,7 +582,7 @@ function getHomeData_(params) {
 
   const selectedContext = getSelectedContextGetData_(selectedItem);
 
-  const active = buildActiveContextGetData_(tables, selectedItem);
+  const active = buildActiveContextGetData_(tables, selectedItem, today);
   const resume = buildResumeGetData_(tables, active);
   const progress = buildProgressGetData_(selectedItem, active);
   const selectedSummary = buildSelectedSummaryGetData_(selectedItem, active, resume);
@@ -786,7 +786,7 @@ function resolveSelectedItemGetData_(upcomingItems, selection) {
   return upcomingItems[0] || null;
 }
 
-function buildActiveContextGetData_(tables, selectedItem) {
+function buildActiveContextGetData_(tables, selectedItem, today) {
   const selectedType = getSelectedItemTypeGetData_(selectedItem);
   const selectedId = getSelectedItemIdGetData_(selectedItem);
 
@@ -849,11 +849,25 @@ function buildActiveContextGetData_(tables, selectedItem) {
     ? getMissionJourneesGetData_(stockMission, tables.journees)
     : [];
 
+  // Priorité à la réalité des journées, jamais à un ancien ID stocké
+  // sur le téléphone. Une journée fermée ne doit pas recevoir de ventes.
+  const openDays = linkedDays.filter(function (day) {
+    return !isClosedStatusGetData_(day) &&
+      !String(day.closed_at || "").trim() &&
+      !isCancelledStatusGetData_(day);
+  });
+  const targetDate = String(today || "").slice(0, 10);
   journee =
-    linkedDays.find(function (day) {
-      return !isClosedStatusGetData_(day) && !isCancelledStatusGetData_(day);
+    // Ne pas passer automatiquement à J2 à minuit si J1 est EN_COURS.
+    openDays.find(function (day) {
+      return normalizeStatusGetData_(day.statut) === "en_cours";
     }) ||
-    linkedDays[0] ||
+    openDays.find(function (day) {
+      return targetDate && String(day.date || "").slice(0, 10) === targetDate;
+    }) ||
+    openDays[0] ||
+    // Toutes clôturées : afficher la dernière en lecture seule.
+    linkedDays[linkedDays.length - 1] ||
     null;
 
   const dayId = journee ? String(journee.journee_id || "").trim() : "";

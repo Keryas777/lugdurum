@@ -5,6 +5,9 @@ on:
     paths:
       - "apps-script/**"
       - "docs/cloture.js"
+      - "docs/home.js"
+      - "docs/index.html"
+      - "tests/home-j2.test.cjs"
       - "docs/cloture.html"
       - "tests/cloture-write.test.cjs"
       - ".github/workflows/apps-script-check.yml"
@@ -39,3 +42,5 @@ jobs:
         run: |
           node --check docs/cloture.js
           node --test tests/cloture-write.test.cjs
+          node --check docs/home.js
+          node --test tests/home-j2.test.cjs
