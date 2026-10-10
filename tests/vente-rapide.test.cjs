@@ -418,3 +418,16 @@ test("vendeurs distincts : l'ID de chaque ticket conserve son auteur propre", as
   assert.equal(anthony.calls[0].transaction.user_id, "U_ANTHONY");
   assert.notEqual(jerome.calls[0].transaction.transaction_id, anthony.calls[0].transaction.transaction_id);
 });
+
+test("Ventes de la journée : un seul bouton Fermer, modale accessible au clavier", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "docs", "vente-rapide.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "..", "docs", "vente-rapide.css"), "utf8");
+  const modal = html.split('id="dayDetailsOverlay"')[1]?.split('id="externalCbOverlay"')[0] || "";
+  assert.match(modal, /id="closeDayDetailsBtn"/);
+  assert.equal((modal.match(/class="saleDetailsClose"/g) || []).length, 1);
+  assert.doesNotMatch(modal, /closeDayDetailsFooterBtn|saleDetailsFooter/);
+  assert.doesNotMatch(source, /closeDayDetailsFooterBtn/);
+  assert.doesNotMatch(css, /saleDetailsFooter/);
+  assert.match(source, /event\.key === "Escape"/);
+  assert.match(source, /event\.key === "Tab" && els\.closeDayDetailsBtn/);
+});
