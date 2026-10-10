@@ -303,6 +303,10 @@ test("Antho sans cache : récupère J1 Gerzat, stock partagé et CA des deux ven
   app.api.state.journeeActive = { mission_id: "", journee_id: "", user_id: "U_ANTHO" };
   const stockId = "MST_GERZAT";
   const dayId = "J_GERZAT_1";
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const tomorrowIso = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
   app.window.LugdurumAPI.getCurrentUserId = () => "U_ANTHO";
   app.window.LugdurumAPI.getCoreData = async (tables) => {
     assert.equal(Array.from(tables).join(","), "missionsStock,journees,transactions");
@@ -316,8 +320,8 @@ test("Antho sans cache : récupère J1 Gerzat, stock partagé et CA des deux ven
         }
       ],
       journees: [
-        { journee_id: dayId, mission_id: "EVT_GERZAT", stock_mission_id: stockId, date: "2026-10-10", statut: "pret", jour_label: "J1" },
-        { journee_id: "J_GERZAT_2", mission_id: "EVT_GERZAT", stock_mission_id: stockId, date: "2026-10-11", statut: "pret", jour_label: "J2" }
+        { journee_id: dayId, mission_id: "EVT_GERZAT", stock_mission_id: stockId, date: todayIso, statut: "pret", jour_label: "J1" },
+        { journee_id: "J_GERZAT_2", mission_id: "EVT_GERZAT", stock_mission_id: stockId, date: tomorrowIso, statut: "pret", jour_label: "J2" }
       ],
       transactions: [
         { transaction_id: "TX_J", journee_id: dayId, user_id: "U_JEROME", statut: "validee", paiement_statut: "PAYE", total_encaisse_ttc: 45.99 },
