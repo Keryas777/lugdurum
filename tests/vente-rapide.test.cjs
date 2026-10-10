@@ -19,7 +19,8 @@ const code = source.replace(
   startup,
   "  window.__test = { state, els, saveTicket, confirmSumupSuccess, " +
     "confirmSumupFailure, reopenSumup, buildTransaction, " +
-    "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale };\n})();"
+    "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale, " +
+    "loadContext, resolveSharedSalesContext };\n})();"
 );
 
 function element() {
@@ -295,4 +296,99 @@ test("CB externe après refus de SumUp : panier restauré et pas de paiement lan
   assert.equal(app.calls.length, 1);
   assert.equal(app.calls[0].transaction.paiement_provider, "EXTERNE");
   assert.equal(app.calls[0].transaction.sumup_foreign_tx_id, "");
+});
+
+test("Antho sans cache : récupère J1 Gerzat, stock partagé et CA des deux vendeurs", async () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.journeeActive = { mission_id: "", journee_id: "", user_id: "U_ANTHO" };
+  const stockId = "MST_GERZAT";
+  const dayId = "J_GERZAT_1";
+  app.window.LugdurumAPI.getCurrentUserId = () => "U_ANTHO";
+  app.window.LugdurumAPI.getCoreData = async (tables) => {
+    assert.equal(Array.from(tables).join(","), "missionsStock,journees,transactions");
+    return {
+      missionsStock: [
+        { mission_id: "MST_OLD", statut: "annule", stock_prepare: false },
+        {
+          mission_id: stockId, nom: "Gerzat", statut: "pret", stock_prepare: true,
+          evenement_id: "EVT_GERZAT", total_bouteilles_preparees: 152,
+          total_50cl_prepare: 92, total_20cl_prepare: 60
+        }
+      ],
+      journees: [
+        { journee_id: dayId, mission_id: "EVT_GERZAT", stock_mission_id: stockId, date: "2026-10-10", statut: "pret", jour_label: "J1" },
+        { journee_id: "J_GERZAT_2", mission_id: "EVT_GERZAT", stock_mission_id: stockId, date: "2026-10-11", statut: "pret", jour_label: "J2" }
+      ],
+      transactions: [
+        { transaction_id: "TX_J", journee_id: dayId, user_id: "U_JEROME", statut: "validee", paiement_statut: "PAYE", total_encaisse_ttc: 45.99 },
+        { transaction_id: "TX_A", journee_id: dayId, user_id: "U_ANTHO", statut: "validee", paiement_statut: "PAYE", total_encaisse_ttc: 31.99 },
+        { transaction_id: "TX_OTHER", journee_id: "J_GERZAT_2", statut: "validee", paiement_statut: "PAYE", total_encaisse_ttc: 100 }
+      ]
+    };
+  };
+
+  await app.api.loadContext();
+  assert.equal(app.api.state.journeeActive.mission_id, stockId);
+  assert.equal(app.api.state.journeeActive.journee_id, dayId);
+  assert.equal(app.api.state.journeeActive.user_id, "U_ANTHO");
+  assert.equal(app.api.state.daySummary.revenue, 77.98);
+  assert.equal(app.api.state.daySummary.tickets, 2);
+  assert.equal(app.api.els.sharedStockLabel.textContent.includes("152 bouteilles"), true);
+  assert.equal(app.store.get("lugdurum_active_stock_mission_id"), stockId);
+  assert.equal(app.store.get("lugdurum_active_journee_id"), dayId);
+});
+
+test("Contexte partagé : privilégie une journée explicitement liée plutôt qu'un ancien cache", () => {
+  const app = setup(async () => ({ ok: true }));
+  const missions = [
+    { mission_id: "M1", statut: "pret", stock_prepare: true },
+    { mission_id: "M2", statut: "pret", stock_prepare: true }
+  ];
+  const days = [
+    { journee_id: "J1", date: "2026-10-10", stock_mission_id: "M1", statut: "pret" },
+    { journee_id: "J2", date: "2026-10-10", stock_mission_id: "M2", statut: "pret" }
+  ];
+  const selected = app.api.resolveSharedSalesContext(missions, days, {
+    explicitStockId: "M2", explicitDayId: "J2", localStockId: "M1", localDayId: "J1"
+  }, "2026-10-10");
+  assert.equal(selected.stock.mission_id, "M2");
+  assert.equal(selected.day.journee_id, "J2");
+});
+
+test("Contexte partagé : deux foires le même jour sans sélection => aucune attribution aléatoire", () => {
+  const app = setup(async () => ({ ok: true }));
+  const missions = [
+    { mission_id: "M1", statut: "pret", stock_prepare: true },
+    { mission_id: "M2", statut: "pret", stock_prepare: true }
+  ];
+  const days = [
+    { journee_id: "J1", date: "2026-10-10", stock_mission_id: "M1", statut: "pret" },
+    { journee_id: "J2", date: "2026-10-10", stock_mission_id: "M2", statut: "pret" }
+  ];
+  const selected = app.api.resolveSharedSalesContext(missions, days, {}, "2026-10-10");
+  assert.equal(selected, null);
+});
+
+test("Contexte partagé : jour du calendrier prioritaire sur l'ancien jour local", () => {
+  const app = setup(async () => ({ ok: true }));
+  const mission = [{ mission_id: "M1", statut: "pret", stock_prepare: true }];
+  const days = [
+    { journee_id: "J_OLD", date: "2026-10-09", stock_mission_id: "M1", statut: "pret" },
+    { journee_id: "J_TODAY", date: "2026-10-10", stock_mission_id: "M1", statut: "pret" }
+  ];
+  const selected = app.api.resolveSharedSalesContext(mission, days, {
+    localStockId: "M1", localDayId: "J_OLD"
+  }, "2026-10-10");
+  assert.equal(selected.day.journee_id, "J_TODAY");
+});
+
+test("Contexte partagé : ne sélectionne pas une mission annulée", () => {
+  const app = setup(async () => ({ ok: true }));
+  const selected = app.api.resolveSharedSalesContext(
+    [{ mission_id: "M_DELETED", statut: "annule", stock_prepare: true }],
+    [{ journee_id: "J1", date: "2026-10-10", stock_mission_id: "M_DELETED", statut: "pret" }],
+    { localStockId: "M_DELETED", localDayId: "J1" },
+    "2026-10-10"
+  );
+  assert.equal(selected, null);
 });
