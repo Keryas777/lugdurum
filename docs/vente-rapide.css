@@ -73,10 +73,49 @@
 }
 
 .saleSummary {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  gap: 12px;
   padding: 18px;
+}
+
+.saleSummaryStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.saleSummaryStats .ticketTotalBox {
+  min-width: 0;
+  padding: 10px 6px;
+  text-align: center;
+}
+
+.saleSummaryStats .ticketTotalBox strong {
+  font-size: clamp(1.4rem, 6vw, 1.9rem);
+}
+
+.saleSummaryStats .ticketTotalBox small {
+  display: block;
+  font-size: 0.73rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.saleRefreshBtn {
+  justify-self: end;
+  min-height: 38px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(63, 111, 79, 0.35);
+  background: #f6f1e8;
+  color: #3f6f4f;
+  font: inherit;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.saleRefreshBtn:disabled {
+  opacity: 0.5;
 }
 
 .saleSummary h2 {
