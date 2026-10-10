@@ -22,7 +22,7 @@ const BASE = {
   transaction_code: "TEST123"
 };
 
-function runSumup({ tx = BASE, httpCode = 200, hasKey = true, params = {} } = {}) {
+function runSumup({ tx = BASE, httpCode = 200, hasKey = true, params = {}, fetchError = false } = {}) {
   const requests = [];
   const context = {
     PropertiesService: {
@@ -38,6 +38,7 @@ function runSumup({ tx = BASE, httpCode = 200, hasKey = true, params = {} } = {}
     UrlFetchApp: {
       fetch(url, opts) {
         requests.push({ url, opts });
+        if (fetchError) throw new Error("Timeout test");
         return {
           getResponseCode() { return httpCode; },
           getContentText() { return JSON.stringify(tx); }
@@ -64,6 +65,30 @@ test("paiement réussi, même référence/marchand/montant/devise", () => {
   assert.equal(requests.length, 1);
   assert.ok(requests[0].url.includes("foreign_transaction_id="));
   assert.equal(requests[0].opts.headers.Authorization, "Bearer FAKE_TEST_KEY");
+  assert.equal(requests[0].opts.timeoutSeconds, 6);
+  assert.equal(typeof response.timing.apps_script_ms, "number");
+  assert.equal(typeof response.timing.sumup_fetch_ms, "number");
+  assert.ok(!JSON.stringify(response).includes("FAKE_TEST_KEY"));
+});
+
+test("timing interne exposé sans secret et sans faux succès", () => {
+  const timeout = runSumup({ fetchError: true });
+  assert.equal(timeout.response.verified, false);
+  assert.equal(timeout.response.status, "UNAVAILABLE");
+  assert.equal(timeout.response.retryable, true);
+  assert.equal(timeout.response.timing.apps_script_ms >= 0, true);
+  assert.equal(timeout.response.timing.sumup_fetch_ms >= 0, true);
+  assert.equal(timeout.requests[0].opts.timeoutSeconds, 6);
+
+  const invalid = runSumup({ params: { foreign_tx_id: "REFERENCE_FAIBLE" } });
+  assert.equal(invalid.response.verified, false);
+  assert.equal(invalid.response.timing.sumup_fetch_ms, null);
+  assert.equal(invalid.requests.length, 0);
+
+  const notFound = runSumup({ httpCode: 404 });
+  assert.equal(notFound.response.verified, false);
+  assert.equal(notFound.response.status, "NOT_FOUND");
+  assert.equal(typeof notFound.response.timing.sumup_fetch_ms, "number");
 });
 
 test("transaction non encore disponible", () => {
@@ -232,24 +257,20 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
   } else {
     assert.ok(original.includes("verificationEnabled: true,"), "Verification globale attendue");
   }
-  const start = [
-    "  handleSumupCallbackParams();",
-    "  renderAll();",
-    "  loadContext();",
-    "  loadData();",
-    "  checkPendingSumup();",
-    "})();"
-  ].join("\n");
+  // Neutraliser uniquement le bootstrap : les tests contrôlent le contexte.
+  const start = enabled.slice(enabled.lastIndexOf("  handleSumupCallbackParams();"));
   assert.ok(enabled.includes(start), "Demarrage du frontend non reconnu");
   const source = enabled.replace(
     start,
-    "  window.__test = { state, els, verifyPendingSumup, buildTransaction, buildForeignTxId, sumupPilotEnabled: SUMUP_CONFIG.verificationEnabled };\n})();"
+    "  window.__test = { state, els, verifyPendingSumup, confirmSumupSuccess, confirmSumupFailure, buildTransaction, buildForeignTxId, sumupPilotEnabled: SUMUP_CONFIG.verificationEnabled };\n})();"
   );
   const memory = new Map();
   if (options.previouslyEnabled) memory.set("lugdurum_sumup_pilot_enabled", "1");
   const elements = new Map();
   const saved = [];
+  const queued = [];
   const timers = [];
+  const timerDelays = [];
   const fakeElement = () => ({
     value: "", textContent: "", innerHTML: "", hidden: true, disabled: false,
     dataset: {}, children: [], style: {},
@@ -272,15 +293,32 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
     crypto: { randomUUID: () => "123E4567-E89B-12D3-A456-426614174000" },
     location: { href: options.url || "https://example.test/vente-rapide.html" },
     history: { replaceState() {} },
-    setTimeout(callback) { timers.push(callback); return timers.length; },
+    setTimeout(callback, delay) {
+      timers.push(callback);
+      timerDelays.push(delay);
+      return timers.length;
+    },
     clearTimeout() {},
     addEventListener() {},
     LugdurumAPI: {
-      async verifySumupPayment() { return verifiedResult; },
+      async verifySumupPayment() {
+        if (options.verificationSequence) {
+          const next = options.verificationSequence.shift();
+          if (next instanceof Error) throw next;
+          return next || verifiedResult;
+        }
+        return options.verifyPromise || verifiedResult;
+      },
       async saveVenteRapideBundle(payload) {
         saved.push(payload);
+        if (options.manualSavePromise) return options.manualSavePromise;
+        if (options.manualSaveError) throw new Error("Écriture incertaine");
         return { ok: true };
       },
+      queueVerifiedSumupSale: options.fastQueue ? (payload) => {
+        queued.push(payload);
+        return { queued: true, pending_count: 1 };
+      } : undefined,
       async getTransactions() { return []; },
       getPendingWritesCount() { return 0; }
     }
@@ -316,7 +354,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
     sumup_url: "sumupmerchant://pay/1.0",
     transaction
   }));
-  return { app, memory, saved, timers };
+  return { app, memory, saved, queued, timers, timerDelays, elements };
 }
 
 test("PWA pilote : paiement API SUCCESSFUL => un ticket valide et panier vide", async () => {
@@ -388,4 +426,139 @@ test("production : anciens liens et stockage pilote ne peuvent desactiver l'API"
 test("secours : parcours manuel conserve des references courtes en mode OFF simule", () => {
   const h = createSumupFrontendHarness({}, false);
   assert.match(h.app.buildForeignTxId(), /^LUG_[0-9]{13}_[A-Z0-9]{6}$/);
+});
+
+test("PWA rapide : SumUp confirmé => ticket en file sans attendre Sheets", async () => {
+  const h = createSumupFrontendHarness({
+    verified: true,
+    status: "SUCCESSFUL",
+    foreign_tx_id: ID,
+    transaction_code: "TEST123"
+  }, true, { fastQueue: true });
+
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.saved.length, 0, "Aucun POST direct dans le chemin critique");
+  assert.equal(h.queued[0].transaction.transaction_id, ID);
+  assert.equal(h.queued[0].transaction.statut, "validee");
+  assert.equal(h.queued[0].mouvements_stock.length, 1);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+  assert.equal(h.app.state.lastQueuedVerifiedSumupId, ID);
+});
+
+test("PWA rapide : MISMATCH SumUp ne met jamais de ticket payé en file", async () => {
+  const h = createSumupFrontendHarness(
+    { verified: false, status: "MISMATCH" }, true, { fastQueue: true }
+  );
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("UI API : coche verte, résultat SumUp séparé de Sheets", async () => {
+  const h = createSumupFrontendHarness({
+    verified: true, status: "SUCCESSFUL", foreign_tx_id: ID, transaction_code: "TEST123"
+  }, true, { fastQueue: true });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.app.els.sumupConfirmOverlay.hidden, false);
+  assert.equal(h.app.els.sumupSuccessHero.hidden, false);
+  assert.equal(h.app.els.sumupPendingActions.hidden, true);
+  assert.equal(h.app.els.sumupSuccessActions.hidden, false);
+  assert.equal(h.app.els.sumupConfirmTitle.textContent, "PAIEMENT VALIDÉ !");
+  assert.match(h.app.els.sumupConfirmText.textContent, /Paiement vérifié par SumUp/);
+  assert.match(h.app.els.sumupConfirmText.textContent, /Google Sheets/);
+});
+
+test("UI manuelle : sans affirmer vérification par API", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "NOT_FOUND" }, true, { fastQueue: true });
+  await h.app.confirmSumupSuccess();
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.app.els.sumupConfirmTitle.textContent, "Paiement confirmé");
+  assert.match(h.app.els.sumupConfirmText.textContent, /confirmé manuellement/);
+  assert.ok(!h.app.els.sumupConfirmText.textContent.includes("vérifié par SumUp"));
+});
+
+test("MISMATCH API : la confirmation manuelle est interdite", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "MISMATCH" }, true, { fastQueue: true });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.app.els.sumupConfirmSuccessBtn.disabled, true);
+  await h.app.confirmSumupSuccess();
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("Concurrence : manuel engagé puis réponse API => un seul ticket", async () => {
+  let finishVerification, finishSave;
+  const verifyPromise = new Promise(resolve => { finishVerification = resolve; });
+  const manualSavePromise = new Promise(resolve => { finishSave = resolve; });
+  const h = createSumupFrontendHarness({}, true, { fastQueue: true, verifyPromise, manualSavePromise });
+  const verification = h.app.verifyPendingSumup();
+  const manual = h.app.confirmSumupSuccess();
+  assert.equal(h.saved.length, 1);
+  finishVerification({ verified: true, status: "SUCCESSFUL", foreign_tx_id: ID, transaction_code: "TEST123" });
+  await verification;
+  assert.equal(h.queued.length, 0);
+  finishSave({ ok: true });
+  await manual;
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+});
+
+test("Concurrence : erreur manuelle puis réponse tardive de l'API => pas de doublon", async () => {
+  let finishVerification, failSave;
+  const verifyPromise = new Promise(resolve => { finishVerification = resolve; });
+  const manualSavePromise = new Promise((resolve, reject) => { failSave = reject; });
+  const h = createSumupFrontendHarness({}, true, { fastQueue: true, verifyPromise, manualSavePromise });
+  const verification = h.app.verifyPendingSumup();
+  const manual = h.app.confirmSumupSuccess();
+  failSave(new Error("Écriture incertaine"));
+  await manual;
+  finishVerification({ verified: true, status: "SUCCESSFUL", foreign_tx_id: ID });
+  await verification;
+  assert.equal(h.saved.length, 1);
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+});
+
+test("Performance SumUp : NOT_FOUND déclenche un nouveau contrôle en 600 ms", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "NOT_FOUND", retryable: true });
+  await h.app.verifyPendingSumup();
+  assert.ok(h.timerDelays.includes(600), "Délai de relance trop long");
+  assert.match(h.app.els.sumupConfirmText.textContent, /Transaction encore absente de l'API SumUp/);
+  assert.match(h.app.els.sumupConfirmText.textContent, /tentative 1\/5/);
+});
+
+test("Performance SumUp : erreur réseau tente de nouveau après 900 ms, sans valider le ticket", async () => {
+  const h = createSumupFrontendHarness({}, true, {
+    verificationSequence: [new Error("JSONP temporairement indisponible")]
+  });
+  await h.app.verifyPendingSumup();
+  assert.ok(h.timerDelays.includes(900), "Délai de secours imprévu");
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.queued.length, 0);
+  assert.match(h.app.els.sumupConfirmText.textContent, /Vérification SumUp momentanément indisponible/);
+});
+
+test("Performance SumUp : première lecture NOT_FOUND, seconde SUCCESSFUL = une seule vente", async () => {
+  const h = createSumupFrontendHarness({}, true, {
+    fastQueue: true,
+    verificationSequence: [
+      { verified: false, status: "NOT_FOUND", retryable: true },
+      { verified: true, status: "SUCCESSFUL", foreign_tx_id: ID, transaction_code: "TEST123" }
+    ]
+  });
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 0);
+  assert.equal(h.timerDelays[0], 600);
+  h.timers[0]();
+  // La lecture lancée par le timer est asynchrone.
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.app.els.sumupConfirmTitle.textContent, "PAIEMENT VALIDÉ !");
 });

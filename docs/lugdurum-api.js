@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Lugdurum API V19 — SYNC RETRY AUTO + VENTE RAPIDE SINGLE ACTION + JSONP GET
+    Lugdurum API V20 — SYNC RETRY ROBUSTE + VENTE RAPIDE SINGLE ACTION + JSONP GET
 
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
@@ -786,6 +786,10 @@
     return error;
   };
 
+  // Les erreurs de verrou ou de disponibilité serveur sont transitoires.
+  const isTransientApiError = (message) =>
+    /lock timeout|verrou|too many times|too many requests|quota exceeded|service unavailable|temporarily unavailable|internal error|timed?\s*out|délai d.attente|delai d.attente/i.test(String(message || ""));
+
   const normaliseResponse = (result, action) => {
     if (!result || typeof result !== "object") {
       throw new Error(`Réponse API invalide sur ${action}`);
@@ -793,7 +797,7 @@
 
     if (!result.ok) {
       const error = new Error(result.error || `Erreur API sur ${action}`);
-      error.queueable = false;
+      error.queueable = isTransientApiError(result.error);
       error.api_result = result;
       error.action = action;
       throw error;
@@ -1036,13 +1040,15 @@
     return [];
   };
 
-  const findBatchResultForItem = (results, queuedItem, index) => {
-    return (
-      results.find((item) => item.queue_id === queuedItem.id) ||
-      results[index] ||
-      results.find((item) => item.action === queuedItem.action) ||
-      null
+  const findBatchResultForItem = (results, queuedItem) => {
+    // Jamais de déduction à partir de la position : queue_id doit correspondre.
+    const matches = results.filter((item) =>
+      item && String(item.queue_id || "") === String(queuedItem.id || "")
     );
+    if (matches.length !== 1) return null;
+    const result = matches[0];
+    if (result.action && result.action !== queuedItem.action) return null;
+    return result;
   };
 
   const flushPendingWrites = async () => {
@@ -1130,18 +1136,13 @@
 
           const okIds = [];
           const errorsById = {};
-          let mustStop = false;
-
-          batch.forEach((queuedItem, index) => {
-            if (mustStop) return;
-
-            const result = findBatchResultForItem(results, queuedItem, index);
+          batch.forEach((queuedItem) => {
+            const result = findBatchResultForItem(results, queuedItem);
 
             if (!result) {
               failedCount += 1;
               errorsById[queuedItem.id] =
                 "Résultat absent dans la réponse batchActions.";
-              mustStop = true;
               return;
             }
 
@@ -1154,9 +1155,10 @@
             failedCount += 1;
             errorsById[queuedItem.id] =
               result.error || `Erreur API sur ${queuedItem.action}`;
-            mustStop = true;
           });
 
+          // Toutes les actions batchActions sont traitées par Apps Script :
+          // conserver les échecs, et acquitter même les succès qui les suivent.
           if (okIds.length > 0) {
             removePendingWritesByIds(okIds, {
               status: "syncing",
@@ -1183,7 +1185,7 @@
             });
           }
 
-          if (mustStop) break;
+          if (Object.keys(errorsById).length > 0) break;
         } catch (error) {
           const firstItem = batch[0];
 

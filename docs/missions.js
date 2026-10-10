@@ -68,6 +68,7 @@
     journees: [],
     isLoading: false,
     isSaving: false,
+    isNavigating: false,
     usingCache: false,
     routeHandled: false
   };
@@ -389,12 +390,19 @@
 
   const setSaving = (isSaving) => {
     state.isSaving = isSaving;
-
-    [
+    const locked = state.isSaving || state.isNavigating;
+    const buttons = [
       els.resetStockMissionBtn,
-      els.stockMissionForm?.querySelector("[type='submit']")
-    ].forEach((button) => {
-      if (button) button.disabled = isSaving;
+      ...document.querySelectorAll("[data-prepare-event], [data-select-event-days], [data-resume-stock-mission], [data-stock-submit-action]"),
+      ...els.stockMissionForm.querySelectorAll("button[type='submit']")
+    ];
+
+    buttons.forEach((button) => {
+      if (!button) return;
+      button.disabled = locked;
+      button.style.filter = locked ? "grayscale(1)" : "";
+      button.style.opacity = locked ? "0.5" : "";
+      button.setAttribute("aria-busy", locked ? "true" : "false");
     });
   };
 
@@ -580,6 +588,8 @@
   };
 
   const createStockMission = async ({ fromDays = null, nameOverride = "" } = {}) => {
+    // Empêche la création d'une nouvelle mission lors d'un double tap.
+    if (state.isSaving || state.isNavigating) return null;
     const selectedDays = getSelectedDays(fromDays);
     const payload = buildStockMissionPayload({
       selectedDays,
@@ -597,7 +607,8 @@
       state.selectedDayIds = new Set();
 
       setStockStatus("Mission de stock enregistrée.", "isSuccess");
-
+      // Conserver les boutons bloqués si la page va être quittée.
+      state.isNavigating = Boolean(fromDays) || state.stockSubmitAction === "prepare";
       return payload;
     } catch (error) {
       setStockStatus(`Erreur enregistrement : ${error.message}`, "isError");
@@ -608,6 +619,7 @@
   };
 
   const prepareEventStock = async (eventId) => {
+    if (state.isSaving || state.isNavigating) return;
     const eventItem = getEventById(eventId);
 
     if (!eventItem) {
@@ -628,6 +640,7 @@
     });
 
     renderAll();
+    setSaving(false);
 
     if (result?.mission && result?.jours?.[0]) {
       setPreparationContext(result.mission.mission_id, result.jours[0].journee_id);
@@ -1064,6 +1077,7 @@
   };
 
   document.addEventListener("click", async (event) => {
+    if (state.isSaving || state.isNavigating) return;
     const stockSubmitButton = event.target.closest("[data-stock-submit-action]");
     if (stockSubmitButton) {
       state.stockSubmitAction = stockSubmitButton.dataset.stockSubmitAction;
@@ -1124,13 +1138,14 @@
   els.stockMissionForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    if (state.isSaving) return;
+    if (state.isSaving || state.isNavigating) return;
 
     const result = await createStockMission();
 
     if (!result) return;
 
     renderAll();
+    setSaving(false);
 
     if (state.stockSubmitAction === "prepare") {
       setPreparationContext(result.mission.mission_id, result.jours[0].journee_id);

@@ -34,8 +34,8 @@
     mission_id: "",
     label: "Aucune journée active",
     date_label: "Retourne dans Missions ou Préparation stock pour démarrer une journée.",
-    user_id: "U_JEROME",
-    vendeur: "Jérôme"
+    user_id: "",
+    vendeur: ""
   };
 
   const SHEETS = {
@@ -58,7 +58,9 @@
     // Verification SumUp commune a tous les vendeurs, avec confirmation
     // manuelle en secours si le paiement n'est pas confirme par l'API.
     verificationEnabled: true,
-    verificationRetryMs: 1800,
+    // Après une réponse NOT_FOUND/PENDING, ne pas ajouter presque 2 s
+    // d'attente alors que SumUp peut publier la transaction entre-temps.
+    verificationRetryMs: 600,
     verificationMaxAttempts: 5
   };
 
@@ -119,9 +121,17 @@
     mouvementsStock: [],
     dataLoaded: false,
     contextLoaded: false,
+    catalogueSource: "loading",
+    pendingProductRefresh: false,
+    pendingCatalogueUpdate: null,
     saveInProgress: false,
     failedTicket: null,
+    lastQueuedVerifiedSumupId: "",
+    deferredLoadForSumup: false,
+    sumupManualBlocked: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
+    sharedStock: null,
+    dayTransactions: [],
     daySummary: {
       isLoading: false,
       isLoaded: false,
@@ -139,7 +149,16 @@
     ticketPanelTotal: document.getElementById("ticketPanelTotal"),
     dayRevenueTotal: document.getElementById("dayRevenueTotal"),
     dayTicketCount: document.getElementById("dayTicketCount"),
+    openDayDetailsBtn: document.getElementById("openDayDetailsBtn"),
+    dayDetailsOverlay: document.getElementById("dayDetailsOverlay"),
+    dayDetailsContent: document.getElementById("dayDetailsContent"),
+    closeDayDetailsBtn: document.getElementById("closeDayDetailsBtn"),
+    stockPreparedTotal: document.getElementById("stockPreparedTotal"),
+    stockPreparedBreakdown: document.getElementById("stockPreparedBreakdown"),
+    refreshDaySummaryBtn: document.getElementById("refreshDaySummaryBtn"),
     saleSummaryTitle: document.getElementById("saleSummaryTitle"),
+    saleSellerBtn: document.getElementById("saleSellerBtn"),
+    saleSellerName: document.getElementById("saleSellerName"),
     missionMeta: document.querySelector(".saleSummary .missionMeta"),
     packComposer: document.getElementById("packComposer"),
     packProgressLabel: document.getElementById("packProgressLabel"),
@@ -151,11 +170,22 @@
     clearTicketBtn: document.getElementById("clearTicketBtn"),
     undoBtn: document.getElementById("undoBtn"),
     saveTicketBtn: document.getElementById("saveTicketBtn"),
+    externalCbBtn: document.getElementById("externalCbBtn"),
+    externalCbOverlay: document.getElementById("externalCbOverlay"),
+    externalCbAmount: document.getElementById("externalCbAmount"),
+    externalCbConfirmBtn: document.getElementById("externalCbConfirmBtn"),
+    externalCbCancelBtn: document.getElementById("externalCbCancelBtn"),
+    externalCbStatus: document.getElementById("externalCbStatus"),
     amountPaidInput: document.getElementById("amountPaidInput"),
     saveStatus: document.getElementById("saveStatus"),
 
     sumupConfirmOverlay: document.getElementById("sumupConfirmOverlay"),
+    sumupConfirmTitle: document.getElementById("sumupConfirmTitle"),
     sumupConfirmText: document.getElementById("sumupConfirmText"),
+    sumupSuccessHero: document.getElementById("sumupSuccessHero"),
+    sumupPendingActions: document.getElementById("sumupPendingActions"),
+    sumupSuccessActions: document.getElementById("sumupSuccessActions"),
+    sumupContinueBtn: document.getElementById("sumupContinueBtn"),
     sumupPendingAmount: document.getElementById("sumupPendingAmount"),
     sumupPendingReference: document.getElementById("sumupPendingReference"),
     sumupConfirmSuccessBtn: document.getElementById("sumupConfirmSuccessBtn"),
@@ -382,6 +412,13 @@
     );
   };
 
+  const hasSelectedSeller = () =>
+    Boolean(String(state.journeeActive?.user_id || "").trim());
+
+  const showMissingSellerStatus = () => {
+    setStatus("Choisis d'abord le vendeur sur cet appareil avant d'enregistrer ou d'encaisser un ticket.", "isError");
+  };
+
   const syncAmountPaidInput = (total) => {
     if (state.amountManuallyEdited) return;
     els.amountPaidInput.value = total > 0 ? formatAmountInput(total) : "";
@@ -505,7 +542,8 @@
     if (!journeeId) {
       return {
         revenue: 0,
-        tickets: 0
+        tickets: 0,
+        transactions: []
       };
     }
 
@@ -526,12 +564,15 @@
         (sum, transaction) => sum + getTransactionAmount(transaction),
         0
       ),
-      tickets: validTransactions.length
+      tickets: validTransactions.length,
+      transactions: validTransactions
     };
   };
 
   const setDaySummaryFromTransactions = (transactions = []) => {
     const summary = computeDaySummaryFromTransactions(transactions);
+    // Exactement les mêmes tickets que le CA : jamais de cache local ou de doublons.
+    state.dayTransactions = summary.transactions;
 
     state.daySummary = {
       isLoading: false,
@@ -548,7 +589,10 @@
   };
 
   const renderDaySummary = () => {
+    // Rien à calculer ni à dessiner tant que la fenêtre est fermée.
+    if (els.dayDetailsOverlay && !els.dayDetailsOverlay.hidden) renderDayDetails();
     if (!els.dayRevenueTotal || !els.dayTicketCount) return;
+    if (els.openDayDetailsBtn) els.openDayDetailsBtn.disabled = !hasActiveSalesContext();
 
     if (!hasActiveSalesContext()) {
       els.dayRevenueTotal.textContent = "—";
@@ -603,12 +647,14 @@
         tickets: 0,
         lastError: "Aucune journée active."
       };
+      state.dayTransactions = [];
       renderDaySummary();
       return state.daySummary;
     }
 
     const requestId = ++currentSummaryRequest;
     const journeeId = state.journeeActive.journee_id;
+    if (els.refreshDaySummaryBtn) els.refreshDaySummaryBtn.disabled = true;
     state.daySummary = {
       ...state.daySummary,
       isLoading: true,
@@ -640,6 +686,8 @@
       }
 
       return state.daySummary;
+    } finally {
+      if (els.refreshDaySummaryBtn) els.refreshDaySummaryBtn.disabled = false;
     }
   };
 
@@ -651,6 +699,214 @@
       summaryRefreshTimer = null;
       loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
     }, 700);
+  };
+
+
+  // Détail consultatif. On réutilise detail_ticket (panier conservé dans
+  // transactions) : pas de lecture ventes_lignes supplémentaire à l'ouverture.
+  const readTicketItems = (transaction) => {
+    let detail = transaction?.detail_ticket;
+    if (typeof detail === "string") {
+      try { detail = JSON.parse(detail); }
+      catch (_error) { return []; }
+    }
+    if (Array.isArray(detail)) return detail;
+    if (Array.isArray(detail?.items)) return detail.items;
+    if (Array.isArray(detail?.ticketItems)) return detail.ticketItems;
+    return [];
+  };
+
+  const getSellerLabel = (transaction) => {
+    const id = String(transaction?.user_id || "").trim();
+    if (!id) return "Vendeur non renseigné";
+    const user = window.LugdurumUsers?.list()?.find((item) => item.user_id === id);
+    if (user?.nom) return user.nom;
+    // Certains historiques utilisent cet ancien identifiant.
+    if (id === "U_ANTHO") return "Anthony";
+    return id;
+  };
+
+  const getPaymentLabel = (transaction) => ({
+    ESP: "Espèces",
+    CB: "CB",
+    CHQ: "Chèque"
+  }[String(transaction?.mode_paiement || "").trim().toUpperCase()] ||
+    String(transaction?.mode_paiement || "Paiement non renseigné"));
+
+  const getTicketTime = (transaction) => {
+    const raw = transaction?.date_heure || transaction?.created_at || "";
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime())
+      ? "Heure non renseignée"
+      : new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  };
+
+  const getSoldItemDetails = (item) => {
+    if (!item || typeof item !== "object") return { html: "", products: [] };
+    const isBox = item.type === "box" || Array.isArray(item.composition);
+    if (isBox) {
+      const composition = Array.isArray(item.composition) ? item.composition : [];
+      const size = toNumber(item.box_size, composition.length);
+      const format = toNumber(item.format_cl, 20);
+      const label = String(item.label || ("Coffret " + size + "×" + format + " cL"));
+      const products = composition.map((p) => {
+        const code = typeof p === "string" ? p : String(p?.parfum_code || "").trim();
+        const name = typeof p === "string" ? p : String(p?.parfum_nom || code || p?.sku_id || "").trim();
+        return { code, name, format, qty: 1 };
+      }).filter((p) => p.name);
+      const compositionText = products.length
+        ? products.map((p) => p.name).join(", ")
+        : "Composition non renseignée";
+      return {
+        html: "<strong>1 × " + escapeHtml(label) + "</strong> <span>· " +
+          escapeHtml(compositionText) + "</span>",
+        products
+      };
+    }
+
+    const sku = String(item.sku_id || "").trim();
+    const catalogueProduct = sku ? findProductBySku(sku) : null;
+    const name = String(item.parfum_nom || catalogueProduct?.parfum_nom ||
+      item.parfum_code || sku || "Produit").trim();
+    const code = String(item.parfum_code || catalogueProduct?.parfum_code || sku).trim();
+    const format = toNumber(item.format_cl, catalogueProduct?.format_cl || 0);
+    const qty = Math.max(0, Math.trunc(toNumber(item.quantite, 1)));
+    if (!qty) return { html: "", products: [] };
+    return {
+      html: "<strong>" + qty + " × " + escapeHtml(name) +
+        (format ? " · " + format + " cL" : "") + "</strong>",
+      products: [{ code, name, format, qty }]
+    };
+  };
+
+  const renderDayDetails = () => {
+    if (!els.dayDetailsContent || els.dayDetailsOverlay?.hidden) return;
+    const content = els.dayDetailsContent;
+    const previousScroll = content.scrollTop;
+    const journeeId = String(state.journeeActive?.journee_id || "").trim();
+    const transactions = state.dayTransactions
+      .filter((tx) => String(tx?.journee_id || "").trim() === journeeId)
+      .sort((a, b) => String(b.date_heure || b.created_at || "")
+        .localeCompare(String(a.date_heure || a.created_at || "")));
+    const sellers = new Map();
+    const products = new Map();
+    let detailedTickets = 0;
+    let bottleCount = 0;
+
+    const ticketsHtml = transactions.map((tx, index) => {
+      const seller = getSellerLabel(tx);
+      const sellerKey = String(tx.user_id || "").trim() || "inconnu";
+      const prior = sellers.get(sellerKey) || { label: seller, count: 0, amount: 0 };
+      prior.count += 1;
+      prior.amount += getTransactionAmount(tx);
+      sellers.set(sellerKey, prior);
+
+      const items = readTicketItems(tx);
+      if (items.length) detailedTickets += 1;
+      const itemDetails = items.map(getSoldItemDetails);
+      itemDetails.forEach((item) => {
+        item.products.forEach((product) => {
+          const key = [product.code || product.name, product.format].join("|");
+          const existing = products.get(key) || { ...product, qty: 0 };
+          existing.qty += product.qty;
+          products.set(key, existing);
+          bottleCount += product.qty;
+        });
+      });
+
+      const lines = itemDetails.filter((item) => item.html)
+        .map((item) => "<li>" + item.html + "</li>").join("");
+      return '<li class="saleDetailsTicket">' +
+        '<div class="saleDetailsTicketHead"><strong>Ticket ' + (index + 1) +
+        ' · ' + escapeHtml(getTicketTime(tx)) + '</strong><strong>' +
+        formatCurrency(getTransactionAmount(tx)) + '</strong></div>' +
+        '<p class="saleDetailsTicketMeta">' + escapeHtml(seller) + ' · ' +
+        escapeHtml(getPaymentLabel(tx)) + '</p>' +
+        (lines
+          ? '<ul class="saleDetailsTicketProducts">' + lines + '</ul>'
+          : '<p class="saleDetailsProductHint">Détail des produits indisponible pour ce ticket.</p>') +
+        '</li>';
+    }).join("");
+
+    const sellersHtml = [...sellers.values()]
+      .sort((a, b) => b.amount - a.amount)
+      .map((seller) => '<li><span>' + escapeHtml(seller.label) +
+        ' <small>· ' + seller.count + ' ticket' + (seller.count > 1 ? 's' : '') +
+        '</small></span><strong>' + formatCurrency(seller.amount) + '</strong></li>').join("");
+
+    const productsHtml = [...products.values()]
+      .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name, "fr"))
+      .map((p) => '<li><span>' + escapeHtml(p.name) +
+        (p.format ? ' · ' + p.format + ' cL' : '') +
+        '</span><strong>×' + p.qty + '</strong></li>').join("");
+
+    const status = state.daySummary;
+    const notice = status.isLoading
+      ? 'Actualisation du CA partagé en cours…'
+      : status.lastError
+        ? (status.isLoaded ? 'Réseau indisponible : dernière lecture affichée, chiffres potentiellement incomplets.'
+          : 'Impossible de récupérer les tickets depuis Google Sheets.')
+        : status.isLoaded
+          ? 'Données partagées lues depuis Google Sheets. Les tickets non synchronisés ne sont pas encore comptés.'
+          : 'Lecture des tickets partagés en cours…';
+    const noticeClass = status.lastError ? " isError" : "";
+    const loaded = status.isLoaded;
+    const noTickets = loaded && transactions.length === 0;
+
+    content.innerHTML =
+      '<div class="saleDetailsSections">' +
+      '<p class="saleDetailsSubtitle">' + escapeHtml(state.journeeActive.label || "Journée") +
+      (state.journeeActive.date_label ? ' · ' + escapeHtml(state.journeeActive.date_label) : '') + '</p>' +
+      '<p class="saleDetailsNotice' + noticeClass + '">' + escapeHtml(notice) + '</p>' +
+      (loaded
+        ? '<div class="saleDetailsStatGrid">' +
+          '<div class="saleDetailsStat"><small>CA partagé</small><strong>' +
+          formatCurrency(status.revenue) + '</strong></div>' +
+          '<div class="saleDetailsStat"><small>Tickets</small><strong>' +
+          transactions.length + '</strong></div>' +
+          '<div class="saleDetailsStat"><small>Bouteilles détaillées</small><strong>' +
+          bottleCount + '</strong></div></div>' +
+          (noTickets
+            ? '<p class="saleDetailsNotice">Aucune vente validée pour cette journée.</p>'
+            : '<section class="saleDetailsSection"><h3>Par vendeur</h3><ul class="saleDetailsList">' +
+              sellersHtml + '</ul></section>' +
+              '<section class="saleDetailsSection"><h3>Produits vendus</h3>' +
+              (productsHtml
+                ? '<ul class="saleDetailsList">' + productsHtml + '</ul>'
+                : '<p class="saleDetailsProductHint">Aucun détail produit disponible.</p>') +
+              (detailedTickets < transactions.length
+                ? '<p class="saleDetailsProductHint">Détail disponible sur ' +
+                  detailedTickets + ' ticket(s) sur ' + transactions.length +
+                  ' : les quantités de produits peuvent être incomplètes.</p>'
+                : '') + '</section>' +
+              '<section class="saleDetailsSection"><h3>Tickets (' + transactions.length +
+              ')</h3><ol class="saleDetailsTickets">' + ticketsHtml + '</ol></section>')
+        : '') + '</div>';
+    content.scrollTop = previousScroll;
+  };
+
+  const openDayDetails = () => {
+    if (!els.dayDetailsOverlay || !hasActiveSalesContext()) return;
+    els.dayDetailsOverlay.hidden = false;
+    document.body.classList.add("saleDetailsOpen");
+    renderDayDetails();
+    els.closeDayDetailsBtn?.focus({ preventScroll: true });
+
+    // Affichage immédiat de la dernière lecture : aucune attente au clic.
+    // Rafraîchissement seulement si nécessaire, sans gêner un encaissement.
+    const lastRead = Date.parse(state.daySummary.lastLoadedAt || "");
+    const outdated = !Number.isFinite(lastRead) || Date.now() - lastRead > 15000;
+    if (outdated && !state.daySummary.isLoading &&
+        !state.saveInProgress && !getPendingSumup()) {
+      loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    }
+  };
+
+  const closeDayDetails = () => {
+    if (!els.dayDetailsOverlay || els.dayDetailsOverlay.hidden) return;
+    els.dayDetailsOverlay.hidden = true;
+    document.body.classList.remove("saleDetailsOpen");
+    els.openDayDetailsBtn?.focus({ preventScroll: true });
   };
 
   const getVisibleProducts = () => {
@@ -715,6 +971,17 @@
     }
 
     renderDaySummary();
+    const stock = state.sharedStock;
+    if (els.stockPreparedTotal) {
+      els.stockPreparedTotal.textContent = stock
+        ? String(toNumber(stock.total_bouteilles_preparees, 0))
+        : "—";
+    }
+    if (els.stockPreparedBreakdown) {
+      els.stockPreparedBreakdown.textContent = stock
+        ? `${toNumber(stock.total_50cl_prepare, 0)} × 50 cL · ${toNumber(stock.total_20cl_prepare, 0)} × 20 cL`
+        : "En attente du stock commun";
+    }
   };
 
   const renderModes = () => {
@@ -723,6 +990,37 @@
       button.classList.toggle("isActive", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
+  };
+
+  // Les images hors écran ne doivent pas ralentir les premiers produits.
+  // Les tuiles (texte et prix) restent immédiatement utilisables.
+  let productImageObserver = null;
+  const revealProductImage = (button) => {
+    const src = button.dataset.imageSrc;
+    if (!src) return;
+    const safeUrl = src.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    button.style.setProperty("--product-bg", `url("${safeUrl}")`);
+    delete button.dataset.imageSrc;
+  };
+
+  const observeProductImages = () => {
+    if (productImageObserver) productImageObserver.disconnect();
+
+    const buttons = els.productGrid.querySelectorAll(".productBtn[data-image-src]");
+    if (!("IntersectionObserver" in window)) {
+      buttons.forEach(revealProductImage);
+      return;
+    }
+
+    productImageObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        revealProductImage(entry.target);
+        productImageObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: "350px 0px", threshold: 0 });
+
+    buttons.forEach((button) => productImageObserver.observe(button));
   };
 
   const renderProducts = () => {
@@ -774,7 +1072,7 @@
             type="button"
             data-sku="${escapeAttr(product.sku_id)}"
             data-parfum="${escapeAttr(product.parfum_code)}"
-            style="--product-bg: url('${escapeAttr(getProductImageSrc(product))}')"
+            data-image-src="${escapeAttr(getProductImageSrc(product))}"
           >
             <span class="productCode">${escapeHtml(product.parfum_code)}</span>
             <span class="productName">${escapeHtml(product.parfum_nom)}</span>
@@ -786,6 +1084,7 @@
         `;
       })
       .join("");
+    observeProductImages();
   };
 
   const updateProductQuantities = () => {
@@ -969,19 +1268,47 @@
     els.saveTicketBtn.classList.toggle("isSumupButton", isCb);
 
     if (state.saveInProgress) els.saveTicketBtn.textContent = "Enregistrement…";
-    els.saveTicketBtn.disabled = !hasActiveSalesContext() || state.saveInProgress;
+    els.saveTicketBtn.disabled =
+      !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+    if (els.externalCbBtn) {
+      els.externalCbBtn.hidden = !isCb;
+      els.externalCbBtn.disabled =
+        !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+    }
+    if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
+    if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
     els.amountPaidInput.disabled = state.saveInProgress;
     if (els.sumupConfirmSuccessBtn) els.sumupConfirmSuccessBtn.disabled = state.saveInProgress;
     if (els.sumupConfirmFailBtn) els.sumupConfirmFailBtn.disabled = state.saveInProgress;
     if (els.sumupReturnBtn) els.sumupReturnBtn.disabled = state.saveInProgress;
   };
 
-  const renderAll = ({ refreshProducts = false } = {}) => {
+  const renderAll = ({ refreshProducts = false, deferProductRefresh = false } = {}) => {
+    // Ne jamais changer les prix du catalogue au milieu d'un ticket.
+    // Le nouveau catalogue sera appliqué seulement après ce ticket.
+    if (state.pendingCatalogueUpdate &&
+        state.ticketItems.length === 0 &&
+        state.draftPack.length === 0 &&
+        !state.saveInProgress) {
+      state.catalogue = state.pendingCatalogueUpdate.catalogue;
+      state.offresVente = state.pendingCatalogueUpdate.offresVente;
+      lastTilesSignature = state.pendingCatalogueUpdate.signature;
+      state.pendingCatalogueUpdate = null;
+      state.pendingProductRefresh = true;
+    }
     renderContext();
     renderModes();
     renderPackComposer();
 
-    if (refreshProducts || els.productGrid.children.length === 0) {
+    const mayRefreshInBackground = state.ticketItems.length === 0 && state.draftPack.length === 0;
+    if (refreshProducts && deferProductRefresh && !mayRefreshInBackground) {
+      state.pendingProductRefresh = true;
+    }
+
+    if ((refreshProducts && (!deferProductRefresh || mayRefreshInBackground)) ||
+        (state.pendingProductRefresh && mayRefreshInBackground) ||
+        els.productGrid.children.length === 0) {
+      state.pendingProductRefresh = false;
       renderProducts();
     } else {
       updateProductQuantities();
@@ -1520,8 +1847,16 @@
 
   const showSumupConfirm = (pending, message = "") => {
     if (!pending || !pending.transaction || !els.sumupConfirmOverlay) return;
-    if (SUMUP_CONFIG.verificationEnabled && els.sumupConfirmSuccessBtn) {
+
+    els.sumupConfirmOverlay.classList.remove("isConfirmed", "isApiVerified");
+    if (els.sumupConfirmTitle) els.sumupConfirmTitle.textContent = "Paiement SumUp en cours";
+    if (els.sumupSuccessHero) els.sumupSuccessHero.hidden = true;
+    if (els.sumupPendingActions) els.sumupPendingActions.hidden = false;
+    if (els.sumupSuccessActions) els.sumupSuccessActions.hidden = true;
+
+    if (els.sumupConfirmSuccessBtn) {
       els.sumupConfirmSuccessBtn.textContent = "Confirmer manuellement";
+      els.sumupConfirmSuccessBtn.disabled = state.saveInProgress || state.sumupManualBlocked;
     }
 
     els.sumupPendingAmount.textContent = formatCurrency(pending.transaction.total_encaisse_ttc);
@@ -1530,8 +1865,34 @@
 
     els.sumupConfirmText.textContent =
       message ||
-      "Le paiement SumUp a été lancé. Confirme le résultat après ton retour dans Lugdurum.";
+      "Vérification SumUp en cours. Si le paiement est bien confirmé dans SumUp, la confirmation manuelle reste possible.";
 
+    els.sumupConfirmOverlay.hidden = false;
+  };
+
+  // L'API SumUp prouve le paiement ; Google Sheets peut encore être
+  // en attente. Ne jamais confondre ces deux validations.
+  const showSumupSuccess = (transaction, { apiVerified = false, pendingCount = 0 } = {}) => {
+    if (!els.sumupConfirmOverlay) return;
+
+    els.sumupConfirmOverlay.classList.add("isConfirmed");
+    els.sumupConfirmOverlay.classList.toggle("isApiVerified", apiVerified);
+    if (els.sumupConfirmTitle) {
+      els.sumupConfirmTitle.textContent = apiVerified
+        ? "PAIEMENT VALIDÉ !"
+        : "Paiement confirmé";
+    }
+    if (els.sumupSuccessHero) els.sumupSuccessHero.hidden = false;
+    if (els.sumupPendingActions) els.sumupPendingActions.hidden = true;
+    if (els.sumupSuccessActions) els.sumupSuccessActions.hidden = false;
+
+    els.sumupPendingAmount.textContent = formatCurrency(transaction.total_encaisse_ttc);
+    els.sumupPendingReference.textContent = `Réf. ${transaction.transaction_id}`;
+    els.sumupConfirmText.textContent = apiVerified
+      ? "Paiement vérifié par SumUp. Ticket sauvegardé sur cet appareil." +
+        (pendingCount ? " Synchronisation Google Sheets en cours." : " Synchronisation Google Sheets terminée.")
+      : "Paiement confirmé manuellement dans Lugdurum." +
+        (pendingCount ? " Synchronisation Google Sheets en cours." : " Ticket enregistré dans Google Sheets.");
     els.sumupConfirmOverlay.hidden = false;
   };
 
@@ -1561,6 +1922,7 @@
   let sumupVerificationAttempts = 0;
   let sumupVerificationCurrentId = "";
   let sumupVerificationStopped = false;
+  let sumupVerificationStartedAt = 0;
 
   const resetSumupVerification = () => {
     if (sumupVerificationTimer) window.clearTimeout(sumupVerificationTimer);
@@ -1568,15 +1930,16 @@
     sumupVerificationAttempts = 0;
     sumupVerificationCurrentId = "";
     sumupVerificationStopped = false;
+    sumupVerificationStartedAt = 0;
   };
 
-  const scheduleSumupVerification = () => {
+  const scheduleSumupVerification = (delayMs = SUMUP_CONFIG.verificationRetryMs) => {
     if (sumupVerificationTimer || sumupVerificationStopped ||
         sumupVerificationAttempts >= SUMUP_CONFIG.verificationMaxAttempts) return;
     sumupVerificationTimer = window.setTimeout(() => {
       sumupVerificationTimer = null;
       verifyPendingSumup();
-    }, SUMUP_CONFIG.verificationRetryMs);
+    }, Math.max(350, Math.min(3000, delayMs)));
   };
 
   const verifyPendingSumup = async () => {
@@ -1601,6 +1964,8 @@
 
     sumupVerificationAttempts++;
     const expectedId = pending.foreign_tx_id;
+    const requestStartedAt = Date.now();
+    if (!sumupVerificationStartedAt) sumupVerificationStartedAt = requestStartedAt;
     showSumupConfirm(pending, "Vérification du paiement auprès de SumUp… (" +
       sumupVerificationAttempts + "/" + SUMUP_CONFIG.verificationMaxAttempts +
       "). La confirmation manuelle reste disponible.");
@@ -1613,8 +1978,17 @@
 
     try {
       const result = await sumupVerificationPromise;
+      const requestMs = Date.now() - requestStartedAt;
+      const timing = result?.timing || null;
+      const sumupMs = Number(timing?.sumup_fetch_ms);
+      const backendMs = Number(timing?.apps_script_ms);
+      const backendTiming = timing && timing.sumup_fetch_ms !== null &&
+        Number.isFinite(sumupMs) && Number.isFinite(backendMs)
+          ? " (SumUp " + (sumupMs / 1000).toFixed(1).replace(".", ",") +
+            " s, Apps Script " + (backendMs / 1000).toFixed(1).replace(".", ",") + " s)"
+          : "";
       const current = getPendingSumup();
-      if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress) return;
+      if (!current || current.foreign_tx_id !== expectedId || state.saveInProgress || sumupVerificationStopped) return;
 
       if (result?.verified === true && result?.status === "SUCCESSFUL" &&
           result?.foreign_tx_id === expectedId) {
@@ -1627,10 +2001,12 @@
       const status = String(result?.status || "").toUpperCase();
       if (status === "MISMATCH") {
         sumupVerificationStopped = true;
+        state.sumupManualBlocked = true;
         showSumupConfirm(current, "Attention : montant, devise, compte ou référence incohérents. " +
           "Aucun ticket automatique créé. Vérifie dans SumUp avant toute confirmation.");
       } else if (["FAILED", "CANCELLED", "REFUNDED", "CHARGEBACK"].includes(status)) {
         sumupVerificationStopped = true;
+        state.sumupManualBlocked = true;
         showSumupConfirm(current, "SumUp signale : " + status +
           ". Aucune vente automatique enregistrée.");
       } else if (["UNSUPPORTED_ID", "INVALID_REQUEST", "NOT_CONFIGURED", "NOT_AUTHORIZED"].includes(status)) {
@@ -1638,20 +2014,49 @@
         showSumupConfirm(current, "Vérification impossible avec cette référence ; " +
           "confirmation manuelle disponible.");
       } else if (sumupVerificationAttempts < SUMUP_CONFIG.verificationMaxAttempts) {
-        showSumupConfirm(current, "SumUp n'a pas encore confirmé ce paiement (" +
-          (status || "en attente") + "). Nouvelle vérification automatique…");
-        scheduleSumupVerification();
+        const notIndexed = status === "NOT_FOUND";
+        const awaiting = status === "PENDING" || status === "IN_PROGRESS";
+        const reason = notIndexed
+          ? "Transaction encore absente de l'API SumUp"
+          : awaiting
+            ? "Paiement encore en attente dans l'API SumUp"
+            : "Réponse de vérification SumUp : " + (status || "INCONNU");
+        showSumupConfirm(
+          current,
+          reason + " (tentative " + sumupVerificationAttempts + "/" +
+          SUMUP_CONFIG.verificationMaxAttempts + ", " +
+          (requestMs / 1000).toFixed(1).replace(".", ",") +
+          " s)" + backendTiming + ". Nouvelle tentative automatique… Tu peux confirmer manuellement si SumUp affiche déjà le règlement comme validé."
+        );
+        // Retenter vite après NOT_FOUND (indexation retardée), un peu plus
+        // prudemment après erreur du serveur. Ne jamais valider sans SUCCESSFUL.
+        scheduleSumupVerification(
+          notIndexed || awaiting ? SUMUP_CONFIG.verificationRetryMs : 1100
+        );
       } else {
-        showSumupConfirm(current, "Statut SumUp non confirmé automatiquement. " +
-          "Vérifie le paiement dans SumUp puis utilise la confirmation manuelle.");
+        showSumupConfirm(
+          current,
+          "Vérification automatique terminée sans succès (dernier statut : " +
+          (status || "INCONNU") + ", en " +
+          ((Date.now() - sumupVerificationStartedAt) / 1000).toFixed(1).replace(".", ",") +
+          " s)" + backendTiming + ". Vérifie le résultat dans SumUp avant toute confirmation manuelle."
+        );
       }
     } catch (error) {
       const current = getPendingSumup();
-      if (current?.foreign_tx_id === expectedId) {
-        showSumupConfirm(current, "Contrôle SumUp indisponible (" +
-          String(error?.message || "réseau") + "). Le paiement n'est pas annulé ; " +
-          "confirmation manuelle possible après vérification dans SumUp.");
-        scheduleSumupVerification();
+      if (current?.foreign_tx_id === expectedId && !sumupVerificationStopped) {
+        const requestMs = Date.now() - requestStartedAt;
+        const hasRetry = sumupVerificationAttempts < SUMUP_CONFIG.verificationMaxAttempts;
+        showSumupConfirm(
+          current,
+          "Vérification SumUp momentanément indisponible (" +
+          String(error?.message || "réseau") + ", tentative " +
+          sumupVerificationAttempts + "/" + SUMUP_CONFIG.verificationMaxAttempts +
+          ", " + (requestMs / 1000).toFixed(1).replace(".", ",") + " s)." +
+          (hasRetry ? " Nouvelle tentative automatique…" : " Dernière tentative terminée.") +
+          " Si SumUp confirme le paiement, tu peux le valider manuellement."
+        );
+        if (hasRetry) scheduleSumupVerification(900);
       }
     } finally {
       sumupVerificationPromise = null;
@@ -1715,6 +2120,10 @@
       showMissingContextStatus();
       return;
     }
+    if (!hasSelectedSeller()) {
+      showMissingSellerStatus();
+      return;
+    }
 
     if (state.ticketItems.length === 0) {
       setStatus("Ajoute au moins un produit avant d’encaisser.", "isError");
@@ -1737,6 +2146,7 @@
     }
 
     resetSumupVerification();
+    state.sumupManualBlocked = false;
     const foreignTxId = buildForeignTxId();
     const transaction = buildTransaction({
       provider: "SUMUP",
@@ -1778,6 +2188,13 @@
     const isApiVerified = verification?.verified === true &&
       verification?.status === "SUCCESSFUL" &&
       verification?.foreign_tx_id === pending.foreign_tx_id;
+    if (!isApiVerified && state.sumupManualBlocked) {
+      showSumupConfirm(
+        pending,
+        "SumUp a signalé un refus ou une incohérence. Impossible de confirmer manuellement ce paiement : vérifie dans SumUp."
+      );
+      return;
+    }
     const transaction = {
       ...pending.transaction,
       statut: "validee",
@@ -1800,24 +2217,55 @@
       return;
     }
 
+    // Le premier chemin (manuel ou API) verrouille avant tout appel réseau.
+    // Une réponse API concurrente ne doit jamais lancer un deuxième ticket.
+    sumupVerificationStopped = true;
+    if (sumupVerificationTimer) window.clearTimeout(sumupVerificationTimer);
+    sumupVerificationTimer = null;
     state.saveInProgress = true;
     renderPayment();
+    showSumupConfirm(pending, isApiVerified
+      ? "Paiement vérifié par SumUp. Sécurisation du ticket…"
+      : "Confirmation manuelle : enregistrement du ticket…");
 
     try {
-      await saveTransactionToApi(transaction);
+      // Après preuve API positive de SumUp : écrire durablement l'opération
+      // dans la file locale, puis libérer la caisse sans attendre Google Sheets.
+      // Confirmation manuelle : garder le chemin d'écriture existant.
+      const queueFastPath = isApiVerified &&
+        typeof api()?.queueVerifiedSumupSale === "function";
+      if (queueFastPath) {
+        const movements = buildStockMovementsFromTransaction(transaction);
+        const result = api().queueVerifiedSumupSale({
+          transaction,
+          mouvements_stock: movements,
+          mouvementsStock: movements
+        });
+        if (!result?.queued) {
+          throw new Error("Le ticket n'a pas pu être conservé localement.");
+        }
+        upsertLocalMouvementsStock(movements);
+        saveLocalTransactionBackup(transaction);
+        state.lastQueuedVerifiedSumupId = transaction.transaction_id;
+      } else {
+        await saveTransactionToApi(transaction);
+      }
 
       clearPendingSumup();
-      hideSumupConfirm();
 
       const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
         ? api().getPendingWritesCount()
         : 0;
 
+      showSumupSuccess(transaction, { apiVerified: isApiVerified, pendingCount });
+
       setStatus(
-        pendingCount > 0
-          ? `Paiement SumUp validé · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
-          : `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
-        pendingCount > 0 ? "isError" : "isSuccess"
+        queueFastPath
+          ? `Paiement confirmé par SumUp · ticket sauvegardé sur cet appareil · synchronisation en cours (${pendingCount} en attente) · ${formatCurrency(transaction.total_encaisse_ttc)}`
+          : pendingCount > 0
+            ? `Paiement SumUp validé · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
+            : `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
+        queueFastPath || pendingCount > 0 ? "isError" : "isSuccess"
       );
 
       state.ticketItems = [];
@@ -1825,12 +2273,18 @@
       els.amountPaidInput.value = "";
       state.amountManuallyEdited = false;
       renderAll();
-      refreshDaySummaryAfterSale();
+      if (!queueFastPath) refreshDaySummaryAfterSale();
+      if (state.deferredLoadForSumup) schedulePostSumupDataLoad();
     } catch (error) {
       setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}. Réessaie le même ticket après vérification.`, "isError");
     } finally {
       state.saveInProgress = false;
-      renderPayment();
+      if (state.pendingCatalogueUpdate &&
+          state.ticketItems.length === 0 && state.draftPack.length === 0) {
+        renderAll();
+      } else {
+        renderPayment();
+      }
     }
   };
 
@@ -1843,12 +2297,14 @@
     }
 
     clearPendingSumup();
+    state.sumupManualBlocked = false;
     hideSumupConfirm();
 
     setStatus(
       "Paiement SumUp non validé. Le panier est conservé : tu peux réessayer ou changer le paiement.",
       "isError"
     );
+    if (state.deferredLoadForSumup) schedulePostSumupDataLoad();
 
     renderAll({ refreshProducts: true });
   };
@@ -1866,6 +2322,56 @@
     window.location.href = pending.sumup_url;
   };
 
+  // CB encaissee sur un autre telephone (Tap to Pay / autre terminal).
+  // Ne pas initier de paiement bancaire ni attribuer une verification SumUp.
+  const showExternalCbConfirm = () => {
+    if (state.saveInProgress || state.paymentMode !== "CB") return;
+    if (!hasActiveSalesContext()) {
+      showMissingContextStatus();
+      return;
+    }
+    if (!state.ticketItems.length) {
+      setStatus("Ajoute au moins un produit avant d'enregistrer cette CB.", "isError");
+      return;
+    }
+    if (state.draftPack.length) {
+      setStatus("Termine ou vide le coffret en cours avant d'enregistrer cette CB.", "isError");
+      return;
+    }
+    if (getPendingSumup()) {
+      setStatus(
+        "Un paiement SumUp est encore en attente sur ce telephone. Termine ou annule d'abord cette tentative pour eviter une vente en double.",
+        "isError"
+      );
+      return;
+    }
+    if (!els.externalCbOverlay) return;
+
+    const inputAmount = Number(String(els.amountPaidInput.value).replace(",", "."));
+    const total = Number.isFinite(inputAmount) && inputAmount > 0
+      ? inputAmount : getTicketTotal();
+    els.externalCbAmount.textContent = formatCurrency(total);
+    els.externalCbStatus.textContent = "";
+    els.externalCbOverlay.hidden = false;
+  };
+
+  const closeExternalCbConfirm = () => {
+    if (state.saveInProgress || !els.externalCbOverlay) return;
+    els.externalCbOverlay.hidden = true;
+  };
+
+  const confirmExternalCbSale = async () => {
+    if (state.saveInProgress || !els.externalCbOverlay || els.externalCbOverlay.hidden) return;
+    if (state.paymentMode !== "CB" || getPendingSumup()) return;
+    const saved = await saveTicket({ externalCb: true });
+    if (saved) {
+      els.externalCbOverlay.hidden = true;
+    } else if (els.externalCbStatus) {
+      els.externalCbStatus.textContent =
+        "Enregistrement non confirme. Ne ressaisis pas la vente ailleurs : reessaie ici avec le meme ticket.";
+    }
+  };
+
   const getTicketFingerprint = () => JSON.stringify({
     mission_id: state.journeeActive.mission_id,
     journee_id: state.journeeActive.journee_id,
@@ -1874,16 +2380,24 @@
     items: state.ticketItems
   });
 
-  const saveTicket = async () => {
-    if (state.saveInProgress) return;
+  const saveTicket = async ({ externalCb = false } = {}) => {
+    if (state.saveInProgress) return false;
     if (!hasActiveSalesContext()) {
       showMissingContextStatus();
-      return;
+      return false;
+    }
+    if (!hasSelectedSeller()) {
+      showMissingSellerStatus();
+      return false;
     }
 
-    if (state.paymentMode === "CB") {
+    if (state.paymentMode === "CB" && !externalCb) {
       launchSumupPayment();
-      return;
+      return false;
+    }
+    if (externalCb && (state.paymentMode !== "CB" || getPendingSumup())) {
+      setStatus("Paiement CB externe impossible : mode incorrect ou tentative SumUp encore en attente.", "isError");
+      return false;
     }
 
     if (state.ticketItems.length === 0) {
@@ -1900,10 +2414,15 @@
     const transaction = state.failedTicket?.fingerprint === fingerprint
       ? state.failedTicket.transaction
       : buildTransaction({
-          provider: "",
+          provider: externalCb ? "EXTERNE" : "",
           paymentStatus: "PAYE",
           status: "validee"
         });
+
+    // Une CB externe est declaree par le vendeur, jamais verifiee par l'API SumUp.
+    if (externalCb && transaction.paiement_provider === "EXTERNE") {
+      transaction.note = "CB encaissee sur un autre appareil / Tap to Pay, confirmee manuellement dans Lugdurum.";
+    }
 
     // Une tentative rejouée sur le même panier garde son transaction_id.
     state.failedTicket = { fingerprint, transaction };
@@ -1920,8 +2439,8 @@
 
       setStatus(
         pendingCount > 0
-          ? `Ticket + sortie stock conservés dans la file d’attente · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`
-          : `Ticket enregistré + sortie de stock enregistrée · ${formatCurrency(transaction.total_encaisse_ttc)} · ${transaction.mode_paiement}`,
+          ? `${externalCb ? "CB externe déclarée" : "Ticket"} · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
+          : `${externalCb ? "CB externe enregistrée (sans SumUp sur cet appareil)" : "Ticket enregistré"} · sortie de stock enregistrée · ${formatCurrency(transaction.total_encaisse_ttc)}`,
         pendingCount > 0 ? "isError" : "isSuccess"
       );
 
@@ -1931,11 +2450,18 @@
       state.amountManuallyEdited = false;
       renderAll();
       refreshDaySummaryAfterSale();
+      return true;
     } catch (error) {
       setStatus(`Enregistrement incertain : ${error.message}. Réessaie SANS modifier le panier pour conserver le même ID et éviter un doublon.`, "isError");
+      return false;
     } finally {
       state.saveInProgress = false;
-      renderPayment();
+      if (state.pendingCatalogueUpdate &&
+          state.ticketItems.length === 0 && state.draftPack.length === 0) {
+        renderAll();
+      } else {
+        renderPayment();
+      }
     }
   };
 
@@ -1990,93 +2516,164 @@
     };
   };
 
+  // Les identifiants locaux sont propres à chaque iPhone. La relation
+  // journees_vente.stock_mission_id est la source de vérité pour deux vendeurs.
+  const selectSharedSalesContext = (
+    missionsStock,
+    journees,
+    { stockMissionId = "", journeeId = "", explicitUrl = false } = {}
+  ) => {
+    const ignore = (item) => {
+      const status = normalizeKey(item?.statut || "");
+      return status.includes("annule") || status.includes("clotur") ||
+        status.includes("clôtur");
+    };
+    const missions = (missionsStock || []).filter((mission) =>
+      !ignore(mission) && String(mission.mission_id || "").trim()
+    );
+    const byId = new Map(missions.map((mission) => [String(mission.mission_id).trim(), mission]));
+    const choices = (journees || [])
+      .filter((day) => !ignore(day))
+      .map((day) => {
+        const linkedId = String(day.stock_mission_id || day.mission_stock_id || "").trim();
+        const mission = byId.get(linkedId);
+        if (!mission) return null;
+        return { mission, journee: day };
+      })
+      .filter(Boolean);
+
+    const date = new Date();
+    const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const isToday = (choice) => String(choice.journee.date || "").slice(0, 10) === today;
+    const requestedDay = String(journeeId || "").trim();
+    const requestedStock = String(stockMissionId || "").trim();
+
+    // Un lien explicite depuis l'accueil l'emporte sur l'ancien cache.
+    if (explicitUrl && requestedDay) {
+      const matched = choices.find((choice) => choice.journee.journee_id === requestedDay);
+      if (matched) return matched;
+    }
+
+    if (requestedStock) {
+      const linked = choices.filter((choice) => choice.mission.mission_id === requestedStock);
+      const todayChoice = linked.find(isToday);
+      if (todayChoice) return todayChoice;
+      const requestedChoice = linked.find((choice) => choice.journee.journee_id === requestedDay);
+      if (requestedChoice) return requestedChoice;
+      if (linked.length === 1) return linked[0];
+    }
+
+    if (requestedDay) {
+      const matched = choices.find((choice) => choice.journee.journee_id === requestedDay);
+      if (matched && isToday(matched)) return matched;
+    }
+
+    const todayChoices = choices.filter(isToday);
+    const inProgress = todayChoices.filter((choice) => normalizeKey(choice.journee.statut) === "en_cours");
+    if (inProgress.length === 1) return inProgress[0];
+    if (todayChoices.length === 1) return todayChoices[0];
+
+    // Plusieurs événements en parallèle : ne surtout pas choisir au hasard.
+    return null;
+  };
+
   const loadContext = async () => {
     const context = readJson(STORAGE_KEYS.preparationContext, null);
-
-    const stockMissionId =
-      context?.stock_mission_id ||
-      context?.mission_id ||
+    const url = new URLSearchParams(window.location.search || "");
+    const urlStockId = url.get("stock_mission_id") || "";
+    const urlJourneeId = url.get("journee_id") || "";
+    const stockMissionId = urlStockId ||
+      context?.stock_mission_id || context?.mission_id ||
       localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
-      localStorage.getItem(STORAGE_KEYS.activeMissionId) ||
-      "";
-
-    const journeeId =
-      context?.journee_id ||
-      localStorage.getItem(STORAGE_KEYS.activeJourneeId) ||
-      "";
-
-    const currentUserId = hasApi() && typeof api().getCurrentUserId === "function"
-      ? api().getCurrentUserId()
-      : "";
+      localStorage.getItem(STORAGE_KEYS.activeMissionId) || "";
+    const journeeId = urlJourneeId ||
+      context?.journee_id || localStorage.getItem(STORAGE_KEYS.activeJourneeId) || "";
+    const currentUserId = window.LugdurumUsers?.getUserId() ||
+      (hasApi() && typeof api().getCurrentUserId === "function"
+        ? api().getCurrentUserId() : "");
 
     state.journeeActive = {
       ...EMPTY_JOURNEE_ACTIVE,
       user_id: currentUserId || EMPTY_JOURNEE_ACTIVE.user_id,
       mission_id: stockMissionId,
-      journee_id: journeeId
+      journee_id: journeeId,
+      label: stockMissionId && journeeId ? "Journée active" : "Recherche de la journée partagée…",
+      date_label: stockMissionId && journeeId ? "Contexte local, vérification réseau…" : "Recherche dans Google Sheets…"
     };
-
-    if (!stockMissionId || !journeeId) {
-      state.contextLoaded = true;
-      renderAll();
-      showMissingContextStatus();
-      return;
-    }
-
-    state.journeeActive = {
-      ...state.journeeActive,
-      label: "Journée active",
-      date_label: "Contexte local chargé"
-    };
-
-    state.daySummary = {
-      ...state.daySummary,
-      isLoading: true,
-      lastError: ""
-    };
-
+    state.daySummary = { ...state.daySummary, isLoading: true, lastError: "" };
     renderAll();
 
     try {
+      // Même sans aucune information locale : lire les journées communes.
       const remote = await loadRemoteContextBundle();
-
       state.missionsStock = remote.missionsStock;
       state.journees = remote.journees;
 
-      const mission = state.missionsStock.find(
-        (item) => String(item.mission_id || "") === String(stockMissionId || "")
+      const selected = selectSharedSalesContext(
+        state.missionsStock, state.journees,
+        {
+          stockMissionId,
+          journeeId,
+          explicitUrl: Boolean(urlStockId || urlJourneeId)
+        }
       );
 
-      const journee = state.journees.find(
-        (item) => String(item.journee_id || "") === String(journeeId || "")
-      );
-
-      if (mission || journee) {
+      if (!selected) {
         state.journeeActive = {
-          ...state.journeeActive,
-          label: [
-            mission?.nom || "Mission",
-            journee?.jour_label || ""
-          ].filter(Boolean).join(" — "),
-          date_label: journee?.date ? formatDisplayDateLong(journee.date) : state.journeeActive.date_label,
-          mission_id: stockMissionId,
-          journee_id: journeeId
+          ...state.journeeActive, mission_id: "", journee_id: "",
+          label: "Journée non sélectionnée",
+          date_label: "Sélectionne Gerzat sur l'accueil, puis ouvre Journée de vente."
         };
+        state.sharedStock = null;
+        state.dayTransactions = [];
+        state.daySummary = {
+          ...state.daySummary, isLoading: false, isLoaded: false,
+          revenue: 0, tickets: 0, lastError: "Aucune journée partagée unique pour aujourd'hui."
+        };
+        setStatus(
+          "Plusieurs journées possibles ou aucune journée aujourd'hui. Choisis l'événement sur l'accueil.",
+          "isError"
+        );
+        return;
       }
 
-      setDaySummaryFromTransactions(remote.transactions);
-      renderAll();
-    } catch (error) {
-      console.warn("Contexte journée non chargé depuis Sheets.", error);
-
-      state.daySummary = {
-        ...state.daySummary,
-        isLoading: false,
-        isLoaded: false,
-        lastError: error.message || "Lecture réseau impossible."
+      const mission = selected.mission;
+      const journee = selected.journee;
+      const resolvedStockId = String(mission.mission_id).trim();
+      const resolvedDayId = String(journee.journee_id).trim();
+      state.sharedStock = mission;
+      state.journeeActive = {
+        ...state.journeeActive,
+        mission_id: resolvedStockId,
+        journee_id: resolvedDayId,
+        label: [mission.nom || "Mission", journee.jour_label || ""].filter(Boolean).join(" — "),
+        date_label: journee.date ? formatDisplayDateLong(journee.date) : ""
       };
 
-      renderDaySummary();
+      // Le prochain lancement de la PWA sur CE téléphone retrouvera le même
+      // stock, sans partager une file offline ni une identité de vendeur.
+      localStorage.setItem(STORAGE_KEYS.activeMissionId, resolvedStockId);
+      localStorage.setItem(STORAGE_KEYS.activeStockMissionId, resolvedStockId);
+      localStorage.setItem(STORAGE_KEYS.activeJourneeId, resolvedDayId);
+      writeJson(STORAGE_KEYS.preparationContext, {
+        mission_id: resolvedStockId,
+        stock_mission_id: resolvedStockId,
+        journee_id: resolvedDayId,
+        step: "vente_rapide",
+        updated_at: new Date().toISOString()
+      });
+
+      setDaySummaryFromTransactions(remote.transactions);
+      setStatus("");
+    } catch (error) {
+      console.warn("Contexte partagé non chargé depuis Sheets.", error);
+      state.daySummary = {
+        ...state.daySummary, isLoading: false,
+        lastError: error.message || "Lecture réseau impossible."
+      };
+      if (!hasActiveSalesContext()) {
+        showMissingContextStatus();
+      }
     } finally {
       state.contextLoaded = true;
       renderAll();
@@ -2127,33 +2724,89 @@
     };
   };
 
+  // Signature de l'affichage : recharger les mêmes offres ne remplace pas les
+  // boutons (important pour éviter de perdre un tap pendant la synchronisation).
+  const getTilesSignature = (catalogue = state.catalogue, offresVente = state.offresVente) => JSON.stringify([
+    catalogue.map((product) => [
+      product.sku_id, product.parfum_nom, product.format_cl, product.actif,
+      product.visible_webapp, product.vendable_seul, product.composable_coffret,
+      product.ordre_affichage, product.gamme_tarif, product.image_src
+    ]),
+    offresVente.map((offer) => [
+      offer.offre_id, offer.actif, offer.type_offre, offer.format_cl,
+      offer.gamme_tarif, offer.prix_ttc, offer.prix_ht, offer.quantite_bouteilles
+    ])
+  ]);
+  let lastTilesSignature = "";
+
+  // Affichage instantané depuis les dernières données connues, sans requête.
+  // Les caches ne sont JAMAIS utilisés pour dédupliquer les ventes : les tickets
+  // conservent leur transaction_id et leur file d'attente API indépendants.
+  const hydrateCatalogueFromCache = () => {
+    const catalogueRows = readCachedArray(STORAGE_KEYS.catalogueCache);
+    const offresRows = readCachedArray(STORAGE_KEYS.offresVenteCache);
+    if (!catalogueRows.length || !offresRows.length) return false;
+
+    state.catalogue = catalogueRows
+      .map((row, index) => normalizeProduct(row, index))
+      .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
+    state.offresVente = offresRows
+      .map((row, index) => normalizeOffer(row, index))
+      .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
+    if (!state.catalogue.length || !state.offresVente.length) return false;
+
+    state.dataLoaded = true;
+    state.catalogueSource = "cache";
+    lastTilesSignature = getTilesSignature();
+    renderAll({ refreshProducts: true });
+    setStatus("Produits disponibles (cache local) · vérification des tarifs en cours.");
+    return true;
+  };
+
   const loadData = async () => {
-    renderProducts();
+    if (state.catalogue.length === 0) renderProducts();
 
     try {
       const { catalogueRows, offresRows } = await loadVenteRapideData();
 
-      state.catalogue = catalogueRows
+      const catalogue = catalogueRows
         .map((row, index) => normalizeProduct(row, index))
         .filter((product) => product.sku_id && product.parfum_code && product.format_cl);
-
-      state.offresVente = offresRows
+      const offresVente = offresRows
         .map((row, index) => normalizeOffer(row, index))
         .filter((offer) => offer.offre_id && offer.type_offre && offer.format_cl);
 
+      const signature = getTilesSignature(catalogue, offresVente);
+      const tilesChanged = signature !== lastTilesSignature;
+      const hasActiveTicket = state.ticketItems.length > 0 ||
+        state.draftPack.length > 0 || state.saveInProgress;
+
       state.mouvementsStock = [];
       state.dataLoaded = true;
+      state.catalogueSource = "online";
 
-      writeCachedArray(STORAGE_KEYS.catalogueCache, state.catalogue);
-      writeCachedArray(STORAGE_KEYS.offresVenteCache, state.offresVente);
+      if (tilesChanged && hasActiveTicket && state.catalogue.length > 0) {
+        // Ne pas afficher un prix cache tout en utilisant un prix réseau différent.
+        state.pendingCatalogueUpdate = { catalogue, offresVente, signature };
+      } else {
+        state.catalogue = catalogue;
+        state.offresVente = offresVente;
+        lastTilesSignature = signature;
+        state.pendingCatalogueUpdate = null;
+      }
 
-      if (state.offresVente.length === 0) {
+      writeCachedArray(STORAGE_KEYS.catalogueCache, catalogue);
+      writeCachedArray(STORAGE_KEYS.offresVenteCache, offresVente);
+
+      if (offresVente.length === 0) {
         setStatus("Catalogue chargé, mais aucune offre de vente active trouvée.", "isError");
+      } else if (state.pendingCatalogueUpdate) {
+        setStatus("Tarifs mis à jour : ils seront appliqués après le ticket en cours.");
       } else if (hasActiveSalesContext()) {
         setStatus("");
       }
 
-      renderAll({ refreshProducts: true });
+      renderAll({ refreshProducts: tilesChanged && !state.pendingCatalogueUpdate, deferProductRefresh: true });
     } catch (error) {
       const cachedCatalogue = readCachedArray(STORAGE_KEYS.catalogueCache);
       const cachedOffres = readCachedArray(STORAGE_KEYS.offresVenteCache);
@@ -2163,16 +2816,18 @@
         state.offresVente = cachedOffres.map((row, index) => normalizeOffer(row, index));
         state.mouvementsStock = [];
         state.dataLoaded = true;
+        state.catalogueSource = "cache";
 
         setStatus(
-          "Catalogue chargé depuis le cache local. Le CA jour reste basé uniquement sur la lecture réseau.",
+          "Connexion catalogue indisponible · produits et tarifs du cache local.",
           "isError"
         );
-        renderAll({ refreshProducts: true });
+        renderAll({ refreshProducts: state.pendingProductRefresh });
         return;
       }
 
       state.dataLoaded = true;
+      state.catalogueSource = "error";
       state.catalogue = [];
       state.offresVente = [];
       state.mouvementsStock = [];
@@ -2253,7 +2908,31 @@
   els.addPackBtn.addEventListener("click", () => { if (!state.saveInProgress) addPackToTicket(); });
   els.clearTicketBtn.addEventListener("click", () => { if (!state.saveInProgress) clearTicket(); });
   els.undoBtn.addEventListener("click", () => { if (!state.saveInProgress) undoLast(); });
-  els.saveTicketBtn.addEventListener("click", saveTicket);
+  els.saveTicketBtn.addEventListener("click", () => saveTicket());
+  els.openDayDetailsBtn?.addEventListener("click", openDayDetails);
+  els.closeDayDetailsBtn?.addEventListener("click", closeDayDetails);
+  els.dayDetailsOverlay?.addEventListener("click", (event) => {
+    if (event.target === els.dayDetailsOverlay) closeDayDetails();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (els.dayDetailsOverlay?.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDayDetails();
+    }
+    if (event.key === "Tab" && els.closeDayDetailsBtn) {
+      // Une seule action dans cette modale : conserver le focus sur Fermer.
+      event.preventDefault();
+      els.closeDayDetailsBtn.focus();
+    }
+  });
+  els.refreshDaySummaryBtn?.addEventListener("click", () => {
+    if (state.saveInProgress || getPendingSumup()) return;
+    loadContext().catch(console.warn);
+  });
+  els.externalCbBtn?.addEventListener("click", showExternalCbConfirm);
+  els.externalCbConfirmBtn?.addEventListener("click", confirmExternalCbSale);
+  els.externalCbCancelBtn?.addEventListener("click", closeExternalCbConfirm);
 
   if (els.sumupConfirmSuccessBtn) {
     els.sumupConfirmSuccessBtn.addEventListener("click", () => {
@@ -2268,36 +2947,122 @@
   if (els.sumupReturnBtn) {
     els.sumupReturnBtn.addEventListener("click", reopenSumup);
   }
+  if (els.sumupContinueBtn) {
+    els.sumupContinueBtn.addEventListener("click", () => {
+      if (!state.saveInProgress) hideSumupConfirm();
+    });
+  }
+
+  // Sur iOS, focus et visibilitychange arrivent souvent ensemble au retour
+  // de SumUp. Une seule lecture des transactions suffit.
+  let resumeSummaryTimer = null;
+  const refreshSummaryOnResume = () => {
+    // Vérification du paiement prioritaire : ne pas lancer une lecture
+    // de toutes les transactions au même moment qu'un retour SumUp.
+    if (!hasActiveSalesContext() || getPendingSumup() || state.saveInProgress) return;
+    if (resumeSummaryTimer) window.clearTimeout(resumeSummaryTimer);
+    resumeSummaryTimer = window.setTimeout(() => {
+      resumeSummaryTimer = null;
+      loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    }, 350);
+  };
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      checkPendingSumup();
-
-      if (hasActiveSalesContext()) {
-        loadDaySummaryFromNetwork({ silent: true });
-      }
-    }
+    if (document.visibilityState !== "visible") return;
+    checkPendingSumup();
+    refreshSummaryOnResume();
   });
 
   window.addEventListener("focus", () => {
     checkPendingSumup();
+    refreshSummaryOnResume();
+  });
 
-    if (hasActiveSalesContext()) {
-      loadDaySummaryFromNetwork({ silent: true });
+  window.LugdurumUsers?.mount({
+    button: els.saleSellerBtn,
+    nameElement: els.saleSellerName,
+    canChange() {
+      return !state.saveInProgress && !getPendingSumup() && !state.failedTicket;
+    },
+    onBlocked() {
+      setStatus("Termine ou annule le paiement en cours avant de changer de vendeur.", "isError");
+    },
+    onChange(user) {
+      state.journeeActive.user_id = user.user_id;
+      state.journeeActive.vendeur = user.nom;
+      setStatus("Vendeur actif sur cet appareil : " + user.nom, "isSuccess");
+      renderPayment();
     }
   });
+  // Pas de requête utilisateurs bloquante au démarrage des ventes.
+
+  // Le CA est commun aux deux vendeurs, pas aux caches de leurs téléphones.
+  // Réseau seulement en avant-plan et sans concurrence avec SumUp / sync.
+  window.setInterval?.(() => {
+    if (document.visibilityState === "hidden" ||
+        state.daySummary.isLoading || state.saveInProgress ||
+        getPendingSumup() || !hasActiveSalesContext()) return;
+    loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+  }, 90000);
 
   window.addEventListener("lugdurum:sync-status", (event) => {
     const detail = event.detail || {};
+    const pendingCount = Number(detail.pending_count || 0);
 
-    if (Number(detail.pending_count || 0) > 0 && state.ticketItems.length === 0) {
-      setStatus(`${detail.pending_count} écriture(s) en attente de synchronisation.`, "isError");
+    if (state.lastQueuedVerifiedSumupId) {
+      if (pendingCount === 0 && ["synced", "idle"].includes(detail.status)) {
+        state.lastQueuedVerifiedSumupId = "";
+        setStatus("Ticket SumUp et sorties de stock synchronisés avec Google Sheets.", "isSuccess");
+        refreshDaySummaryAfterSale();
+      } else if (detail.status === "error") {
+        setStatus(
+          `Paiement SumUp confirmé, mais synchronisation en erreur (${pendingCount} en attente). Conserve les données locales et consulte le diagnostic synchro.`,
+          "isError"
+        );
+      }
+      return;
+    }
+
+    if (pendingCount > 0 && state.ticketItems.length === 0 && !getPendingSumup()) {
+      setStatus(`${pendingCount} écriture(s) en attente de synchronisation.`, "isError");
     }
   });
 
+  // Une PWA relancée au retour de SumUp ne doit pas concurrencer la
+  // vérification du paiement avec getCoreData (parfois plusieurs secondes).
+  let postSumupLoadTimer = null;
+  const schedulePostSumupDataLoad = () => {
+    if (!state.deferredLoadForSumup || postSumupLoadTimer) return;
+    state.deferredLoadForSumup = false;
+    postSumupLoadTimer = window.setTimeout(() => {
+      postSumupLoadTimer = null;
+      loadContext();
+      loadData();
+    }, 2500);
+  };
+
   handleSumupCallbackParams();
-  renderAll();
-  loadContext();
-  loadData();
-  checkPendingSumup();
+  if (!hydrateCatalogueFromCache()) renderAll();
+
+  const waitingSumup = getPendingSumup();
+  if (waitingSumup?.transaction) {
+    // Contexte local fiable du ticket sauvegardé AVANT d'ouvrir SumUp.
+    // Aucun chargement des transactions Sheets avant vérification.
+    state.deferredLoadForSumup = true;
+    const transaction = waitingSumup.transaction;
+    state.journeeActive = {
+      ...state.journeeActive,
+      mission_id: transaction.stock_mission_id || transaction.mission_id || "",
+      journee_id: transaction.journee_id || "",
+      user_id: transaction.user_id || state.journeeActive.user_id,
+      label: "Journée active",
+      date_label: "Contexte local chargé"
+    };
+    renderAll();
+    checkPendingSumup();
+  } else {
+    loadContext();
+    loadData();
+    checkPendingSumup();
+  }
 })();

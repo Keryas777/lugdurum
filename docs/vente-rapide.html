@@ -19,10 +19,11 @@
     <title>Lugdurum — Journée de vente</title>
 
     <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./vente-rapide.css?v=15" />
+    <link rel="stylesheet" href="./vente-rapide.css?v=22" />
 
-    <script src="./lugdurum-api.js?v=19" defer></script>
-    <script src="./vente-rapide.js?v=23" defer></script>
+    <script src="./lugdurum-api.js?v=20" defer></script>
+    <script src="./lugdurum-users.js?v=1" defer></script>
+    <script src="./vente-rapide.js?v=33" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -50,6 +51,13 @@
       </header>
 
       <main class="saleLayout">
+        <div class="saleSellerBar">
+          <button class="userPill saleSellerPill" type="button"
+            id="saleSellerBtn" aria-label="Choisir le vendeur sur cet appareil">
+            <span aria-hidden="true">👤</span>
+            <span id="saleSellerName">Choisir vendeur</span>
+          </button>
+        </div>
         <section class="saleSummary" aria-labelledby="saleSummaryTitle">
           <div>
             <p class="sectionKicker">Journée en cours</p>
@@ -57,11 +65,23 @@
             <p class="missionMeta">Lecture du contexte journée.</p>
           </div>
 
-          <div class="ticketTotalBox daySalesBox" aria-live="polite">
-            <span>CA jour</span>
-            <strong id="dayRevenueTotal">0 €</strong>
-            <small id="dayTicketCount">0 ticket</small>
+          <div class="saleSummaryStats">
+            <button class="ticketTotalBox daySalesBox" type="button" id="openDayDetailsBtn"
+              aria-haspopup="dialog" aria-controls="dayDetailsOverlay">
+              <span>CA jour partagé</span>
+              <strong id="dayRevenueTotal">0 €</strong>
+              <small id="dayTicketCount">0 ticket</small>
+              <small class="daySalesHint">Voir le détail des ventes →</small>
+            </button>
+            <div class="ticketTotalBox stockTravelBox" aria-live="polite">
+              <span>Stock emporté</span>
+              <strong id="stockPreparedTotal">—</strong>
+              <small id="stockPreparedBreakdown">Données mission partagée</small>
+            </div>
           </div>
+          <button class="saleRefreshBtn" type="button" id="refreshDaySummaryBtn">
+            Actualiser CA et stock
+          </button>
         </section>
 
         <section class="salePanel" aria-labelledby="saleModeTitle">
@@ -205,11 +225,70 @@
             <button class="btn btnPrimary" type="button" id="saveTicketBtn">
               Enregistrer le ticket
             </button>
+            <button class="btn btnGhost externalCbBtn" type="button" id="externalCbBtn" hidden>
+              CB déjà encaissée ailleurs
+            </button>
           </div>
 
           <p class="saveStatus" id="saveStatus" role="status"></p>
         </section>
       </main>
+    </div>
+
+    <!-- Consultation uniquement : aucune action de modification des ventes. -->
+    <div class="saleDetailsOverlay" id="dayDetailsOverlay" role="dialog"
+      aria-modal="true" aria-labelledby="dayDetailsTitle" hidden>
+      <section class="saleDetailsDialog">
+        <header class="saleDetailsHeader">
+          <div>
+            <p class="sectionKicker">CA jour partagé</p>
+            <h2 id="dayDetailsTitle">Ventes de la journée</h2>
+          </div>
+          <button class="saleDetailsClose" id="closeDayDetailsBtn" type="button">Fermer</button>
+        </header>
+        <div class="saleDetailsContent" id="dayDetailsContent" aria-live="polite">
+          <p class="saleDetailsNotice">Chargement des ventes de la journée…</p>
+        </div>
+      </section>
+    </div>
+
+    <div
+      class="sumupOverlay cbExternalOverlay"
+      id="externalCbOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="externalCbTitle"
+      aria-describedby="externalCbText"
+      hidden
+    >
+      <div class="sumupDialog">
+        <div class="sumupDialogHeader">
+          <p class="sectionKicker">CB sur un autre appareil</p>
+          <h2 id="externalCbTitle">Encaissement déjà effectué ?</h2>
+          <p id="externalCbText">
+            À utiliser uniquement si le paiement CB est réellement accepté
+            sur l'autre téléphone ou terminal. Aucun paiement ne sera demandé
+            à SumUp depuis Lugdurum.
+          </p>
+        </div>
+        <div class="sumupRecap">
+          <span>Montant CB encaissé</span>
+          <strong id="externalCbAmount">0 €</strong>
+          <small>Le ticket et les sorties de stock seront enregistrés comme CB externe.</small>
+        </div>
+        <p class="externalCbWarning">
+          Vérifie qu'aucune vente identique n'est déjà enregistrée dans Lugdurum.
+        </p>
+        <div class="sumupActions">
+          <button class="sumupBtn sumupBtnSuccess" type="button" id="externalCbConfirmBtn">
+            Oui, enregistrer cette CB
+          </button>
+          <button class="sumupBtn sumupBtnGhost" type="button" id="externalCbCancelBtn">
+            Retour au ticket
+          </button>
+        </div>
+        <p class="saveStatus" id="externalCbStatus" role="status" aria-live="polite"></p>
+      </div>
     </div>
 
     <div
@@ -218,9 +297,13 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="sumupConfirmTitle"
+      aria-describedby="sumupConfirmText"
       hidden
     >
       <div class="sumupDialog">
+        <div class="sumupSuccessHero" id="sumupSuccessHero" aria-hidden="true" hidden>
+          <span class="sumupSuccessCheck">✓</span>
+        </div>
         <div class="sumupDialogHeader">
           <p class="sectionKicker">Paiement CB</p>
           <h2 id="sumupConfirmTitle">Paiement SumUp lancé</h2>
@@ -235,7 +318,7 @@
           <small id="sumupPendingReference">Référence en attente</small>
         </div>
 
-        <div class="sumupActions">
+        <div class="sumupActions" id="sumupPendingActions">
           <button class="sumupBtn sumupBtnSuccess" type="button" id="sumupConfirmSuccessBtn">
             Paiement validé
           </button>
@@ -246,6 +329,11 @@
 
           <button class="sumupBtn sumupBtnGhost" type="button" id="sumupReturnBtn">
             Retourner dans SumUp
+          </button>
+        </div>
+        <div class="sumupSuccessActions" id="sumupSuccessActions" hidden>
+          <button class="sumupBtn sumupBtnSuccess" type="button" id="sumupContinueBtn">
+            Nouvelle vente
           </button>
         </div>
       </div>
