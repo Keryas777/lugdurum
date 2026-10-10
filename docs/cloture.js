@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Clôture V7 :
+    Clôture V8 :
     - Charge lugdurum-api.js avant ce fichier.
     - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
     - Lit missions_stock, missions_vente, journees_vente, transactions,
@@ -281,6 +281,7 @@
       paymentStatus.includes("annule") ||
       paymentStatus.includes("refuse") ||
       paymentStatus.includes("rembourse") ||
+      paymentStatus.includes("attente") ||
       paymentStatus.includes("lance")
     );
   };
@@ -1896,6 +1897,68 @@
     return fallback;
   };
 
+  // L'action ciblée est déployée séparément d'une mise à jour GitHub.
+  // Ne revenir à l'ancienne API QUE lorsque le serveur annonce
+  // explicitement que l'action n'existe pas encore. Une erreur réseau,
+  // un contexte invalide ou une réponse incomplète restent des erreurs.
+  const isClotureActionNotDeployed = (error) =>
+    /action GET inconnue\\s*:\\s*getClotureData|action inconnue\\s*:\\s*getClotureData/i
+      .test(String(error?.message || ""));
+
+  const loadRemoteDataWithClotureData = async () => {
+    const context = getActiveIds();
+    const journeeId = String(context.journeeId || "").trim();
+    const stockMissionId = String(context.missionId || "").trim();
+
+    if (!journeeId || !stockMissionId) {
+      throw new Error("Impossible de vérifier la clôture : journée ou mission de stock manquante.");
+    }
+
+    const payload = await api().getClotureData({
+      journee_id: journeeId,
+      stock_mission_id: stockMissionId
+    }, {
+      flushBeforeRead: false,
+      timeoutMs: 15000
+    });
+
+    if (!payload || payload.api_mode !== "getClotureData" ||
+        String(payload.journee_id || "") !== journeeId ||
+        String(payload.stock_mission_id || "") !== stockMissionId) {
+      throw new Error("Réponse getClotureData invalide : contexte incohérent.");
+    }
+
+    const required = [
+      "missions", "missionsStock", "journees", "transactions",
+      "ventesLignes", "frais", "mouvementsStock", "clotures"
+    ];
+    if (required.some((key) => !Array.isArray(payload[key]))) {
+      throw new Error("Réponse getClotureData incomplète : données de clôture non confirmées.");
+    }
+    if (!payload.missionsStock.some((mission) =>
+      String(mission.mission_id || "") === stockMissionId) ||
+        !payload.journees.some((day) =>
+          String(day.journee_id || "") === journeeId &&
+          String(day.stock_mission_id || day.mission_stock_id || day.mission_id || "") === stockMissionId)) {
+      throw new Error("Réponse getClotureData incohérente : mission ou journée absente.");
+    }
+    if (payload.transactions.some((tx) =>
+      String(tx.journee_id || "") !== journeeId)) {
+      throw new Error("Réponse getClotureData incohérente : transactions hors journée.");
+    }
+
+    return {
+      events: payload.missions,
+      stockMissions: payload.missionsStock,
+      journees: payload.journees,
+      transactions: payload.transactions,
+      ventesLignes: payload.ventesLignes,
+      frais: payload.frais,
+      mouvementsStock: payload.mouvementsStock,
+      clotures: payload.clotures
+    };
+  };
+
   const loadRemoteDataWithCoreData = async () => {
     if (!hasApi() || typeof api().getCoreData !== "function") {
       throw new Error("LugdurumAPI.getCoreData() indisponible.");
@@ -2028,14 +2091,32 @@
     }
 
     let remote;
+    let targeted = false;
 
-    try {
-      remote = await loadRemoteDataWithCoreData();
-    } catch {
-      remote = await loadRemoteDataWithSeparateCalls();
+    if (typeof api().getClotureData === "function") {
+      try {
+        remote = await loadRemoteDataWithClotureData();
+        targeted = true;
+      } catch (error) {
+        if (!isClotureActionNotDeployed(error)) throw error;
+        console.info("getClotureData non déployée : chargement de compatibilité.");
+      }
     }
 
-    remote.ventesLignes = await loadRequiredSaleLinesIfNeeded(remote);
+    if (!remote) {
+      try {
+        remote = await loadRemoteDataWithCoreData();
+      } catch {
+        remote = await loadRemoteDataWithSeparateCalls();
+      }
+      remote.ventesLignes = await loadRequiredSaleLinesIfNeeded(remote);
+    }
+
+    // La réponse ciblée inclut déjà les lignes nécessaires si le détail
+    // des tickets n'était pas suffisant. Ne pas refaire un GET lourd.
+    if (targeted && !Array.isArray(remote.ventesLignes)) {
+      throw new Error("Lignes de stock absentes dans getClotureData.");
+    }
 
     state.events = remote.events;
     state.stockMissions = remote.stockMissions;
@@ -2048,14 +2129,10 @@
     state.allTransactions = mergeById([remote.transactions], "transaction_id");
     state.ventesLignes = remote.ventesLignes;
     state.frais = remote.frais;
-    state.mouvementsStock = mergeById(
-      [state.mouvementsStock, remote.mouvementsStock],
-      "mouvement_stock_id"
-    );
-    state.clotures = mergeById(
-      [state.clotures, remote.clotures],
-      "salon_id"
-    );
+    // Après lecture confirmée, le serveur est autoritaire : ne pas
+    // ressusciter un ancien mouvement ou une ancienne clôture locale.
+    state.mouvementsStock = mergeById([remote.mouvementsStock], "mouvement_stock_id");
+    state.clotures = mergeById([remote.clotures], "salon_id");
 
     state.dataLoaded = true;
     cacheCoreData();
