@@ -2448,6 +2448,16 @@
       );
     },
 
+    // Lecture ciblée de la clôture, à utiliser en priorité après déploiement
+    // de la version Apps Script correspondant à cette webapp.
+    getClotureData({ journee_id, stock_mission_id }, options = {}) {
+      return requestGet(
+        "getClotureData",
+        { journee_id, stock_mission_id },
+        { flushBeforeRead: false, timeoutMs: 15000, ...options }
+      );
+    },
+
     getCoreTable,
 
     getClients,
