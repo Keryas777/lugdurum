@@ -2039,7 +2039,7 @@ function isValidClotureTransaction_(tx) {
   const paymentStatus = norm(tx && tx.paiement_statut);
   const badStatus = ["annule", "refuse", "rembourse", "attente"];
   if (badStatus.some(function (word) { return status.indexOf(word) >= 0; })) return false;
-  if (["annule", "refuse", "rembourse", "lance"].some(function (word) {
+  if (["annule", "refuse", "rembourse", "attente", "lance"].some(function (word) {
     return paymentStatus.indexOf(word) >= 0;
   })) return false;
   return true;
