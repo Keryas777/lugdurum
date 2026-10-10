@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Clôture V4 :
+    Clôture V5 :
     - Charge lugdurum-api.js avant ce fichier.
     - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
     - Lit missions_stock, missions_vente, journees_vente, transactions,
@@ -264,6 +264,24 @@
 
   const isActiveMovement = (movement) => !isCancelledStatus(movement);
 
+  // Même exclusion que le CA partagé de vente rapide. Ne PAS changer
+  // isCancelledStatus, également utilisé pour les missions et mouvements.
+  const isInvalidSaleTransaction = (transaction) => {
+    const status = normalizeStatus(transaction?.statut);
+    const paymentStatus = normalizeStatus(transaction?.paiement_statut);
+
+    return (
+      status.includes("annule") ||
+      status.includes("refuse") ||
+      status.includes("rembourse") ||
+      status.includes("attente") ||
+      paymentStatus.includes("annule") ||
+      paymentStatus.includes("refuse") ||
+      paymentStatus.includes("rembourse") ||
+      paymentStatus.includes("lance")
+    );
+  };
+
   const normalizeSkuId = (line) =>
     String(line.sku_id || line.sku || "").trim();
 
@@ -412,7 +430,7 @@
     state.allTransactions.filter((transaction) => {
       return (
         String(transaction.journee_id || "") === journeeId &&
-        !isCancelledStatus(transaction)
+        !isInvalidSaleTransaction(transaction)
       );
     });
 
@@ -484,16 +502,14 @@
   const getRemoteSaleLinesForDay = () => {
     const transactionIds = getTransactionLineIdsForDay();
 
+    // Ne jamais soustraire le stock d'un ticket exclu/annulé seulement
+    // parce qu'une ancienne ligne conserve le même journee_id.
+    // La relation ventes_lignes.transaction_id est la source de vérité.
     return state.ventesLignes
       .filter((line) => !isCancelledStatus(line))
       .filter((line) => {
-        const lineDayId = String(line.journee_id || "").trim();
         const transactionId = String(line.transaction_id || "").trim();
-
-        return (
-          lineDayId === String(state.journee?.journee_id || "") ||
-          (transactionId && transactionIds.has(transactionId))
-        );
+        return Boolean(transactionId) && transactionIds.has(transactionId);
       });
   };
 
@@ -1470,10 +1486,33 @@
     }
   };
 
+  const getUnmatchedLegacyPendingCount = () => {
+    const remoteIds = new Set(
+      state.allTransactions.map((transaction) =>
+        String(transaction.transaction_id || "").trim()
+      ).filter(Boolean)
+    );
+    return getArray(STORAGE_KEYS.pendingTransactions).filter((transaction) => {
+      const id = String(transaction?.transaction_id || "").trim();
+      return !id || !remoteIds.has(id);
+    }).length;
+  };
+
   const saveClosure = async (status) => {
     if (!state.mission || !state.journee || state.isSaving) return null;
 
-    if (status === "cloturee" && !validateCountsBeforeClose()) return null;
+    if (status === "cloturee") {
+      if (!state.dataLoaded) {
+        setStatus("Clôture finale impossible : lecture Google Sheets non confirmée. Réessaie avec une connexion active.", "isError");
+        return null;
+      }
+      const pendingCount = getPendingWritesCount() + getUnmatchedLegacyPendingCount();
+      if (pendingCount > 0) {
+        setStatus(`Clôture finale bloquée : ${pendingCount} écriture(s) locales à synchroniser sur cet appareil.`, "isError");
+        return null;
+      }
+      if (!validateCountsBeforeClose()) return null;
+    }
 
     const closure = buildClosure(status);
     const movements = status === "cloturee" ? buildClosureMovements(closure) : [];
@@ -1750,11 +1789,17 @@
       throw new Error("Réponse getCoreData invalide.");
     }
 
+    // Une réponse partielle ne doit pas être confondue avec une journée
+    // sans ventes : la clôture exige un tableau de tickets distant complet.
+    if (!Array.isArray(coreData.transactions)) {
+      throw new Error("Transactions absentes dans la réponse getCoreData.");
+    }
+
     return {
       events: normalizeCoreArray(coreData, "missions", state.events),
       stockMissions: normalizeCoreArray(coreData, "missionsStock", state.stockMissions),
       journees: normalizeCoreArray(coreData, "journees", state.journees),
-      transactions: normalizeCoreArray(coreData, "transactions", []),
+      transactions: coreData.transactions,
       ventesLignes: normalizeCoreArray(coreData, "ventesLignes", state.ventesLignes),
       frais: normalizeCoreArray(coreData, "frais", state.frais),
       mouvementsStock: normalizeCoreArray(coreData, "mouvementsStock", state.mouvementsStock),
@@ -1773,6 +1818,18 @@
     }
   };
 
+  const loadRequiredRemoteTransactions = async () => {
+    if (!hasApi() || typeof api().getTransactions !== "function") {
+      throw new Error("Lecture des transactions Google Sheets indisponible.");
+    }
+
+    const transactions = await api().getTransactions();
+    if (!Array.isArray(transactions)) {
+      throw new Error("Réponse transactions invalide : clôture non confirmée.");
+    }
+    return transactions;
+  };
+
   const loadRemoteDataWithSeparateCalls = async () => {
     const [
       events,
@@ -1787,7 +1844,7 @@
       optionalApiArray("getMissions", state.events),
       optionalApiArray("getMissionsStock", state.stockMissions),
       optionalApiArray("getJournees", state.journees),
-      optionalApiArray("getTransactions", []),
+      loadRequiredRemoteTransactions(),
       optionalApiArray("getVentesLignes", state.ventesLignes),
       optionalApiArray("getFrais", state.frais),
       optionalApiArray("getMouvementsStock", state.mouvementsStock),
@@ -1819,16 +1876,15 @@
       remote = await loadRemoteDataWithSeparateCalls();
     }
 
-    const localPendingTransactions = getArray(STORAGE_KEYS.pendingTransactions);
-    const backedUpTransactions = getArray(STORAGE_KEYS.transactionsBackup);
-
     state.events = remote.events;
     state.stockMissions = remote.stockMissions;
     state.journees = remote.journees;
-    state.allTransactions = mergeById(
-      [remote.transactions, backedUpTransactions, localPendingTransactions],
-      "transaction_id"
-    );
+
+    // Les anciennes sauvegardes locales ne sont pas une preuve de vente.
+    // En ligne, Sheets est prioritaire et EXCLUSIF : les sauvegardes peuvent
+    // encore contenir des tickets tests annulés depuis un autre appareil.
+    // On ne supprime aucune sauvegarde pour préserver la récupération offline.
+    state.allTransactions = mergeById([remote.transactions], "transaction_id");
     state.ventesLignes = remote.ventesLignes;
     state.frais = remote.frais;
     state.mouvementsStock = mergeById(
