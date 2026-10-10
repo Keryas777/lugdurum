@@ -1267,7 +1267,8 @@
       inscriptions,
       events: uniqueBy([...events, ...extraEvents], getEventId),
       stockMissions: uniqueBy([...stockMissions, ...extraStockMissions], getStockMissionId),
-      journees: uniqueBy([...journees, ...extraJournees], getDayId),
+      // Les lignes complètes de journees_vente priment sur un ancien contexte active.journee.
+      journees: uniqueBy([...extraJournees, ...journees], getDayId),
       transactions: uniqueBy([...transactions, ...extraTransactions], getTransactionId),
       mouvementsStock: [...mouvementsStock, ...extraMouvements]
     });
@@ -1634,10 +1635,19 @@
 
   const getFirstOpenDay = (mission, journees) => {
     const linkedDays = getMissionJournees(mission, journees);
+    const openDays = linkedDays.filter((day) =>
+      !isClosedStatus(day) &&
+      !String(day.closed_at || "").trim() &&
+      !isCancelledStatus(day)
+    );
 
+    // Une journée réellement commencée ne bascule pas à minuit sans clôture.
+    // Sinon, privilégier la journée du jour (ou la première encore ouverte).
     return (
-      linkedDays.find((journee) => !isClosedStatus(journee) && !isCancelledStatus(journee)) ||
-      linkedDays[0] ||
+      openDays.find((day) => normalizeStatus(day.statut) === "en_cours") ||
+      openDays.find((day) => String(day.date || "").slice(0, 10) === todayIso()) ||
+      openDays[0] ||
+      linkedDays[linkedDays.length - 1] ||
       null
     );
   };
@@ -2117,9 +2127,11 @@
     if (mission && journee) {
       return {
         statOneLabel: "CA jour",
-        statOneValue: formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0)),
+        statOneValue: homeState.summaryReliable
+          ? formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0))
+          : "—",
         statTwoLabel: "Tickets",
-        statTwoValue: String(dayTransactions.length || 0),
+        statTwoValue: homeState.summaryReliable ? String(dayTransactions.length || 0) : "—",
         statThreeLabel: "À synchro",
         statThreeValue: String(homeState.pending.total || 0)
       };
@@ -2140,6 +2152,9 @@
     const server = state.runtime.selectedSummary;
 
     if (!fallback) return null;
+    // Le résumé renvoyé par Apps Script peut encore concerner J1 alors
+    // que les lignes Sheets indiquent J1 clôturée et J2 active.
+    if (!homeState.runtimeDayMatches) return fallback;
     // Ne pas afficher "Stock à faire" sur une mission validée lorsque
     // l'API Apps Script n'a pas encore reçu son correctif.
     if (homeState.mission && homeState.journee && homeState.stockPrepared &&
@@ -2272,21 +2287,22 @@
     }
     if (mission && isCancelledStatus(mission)) mission = null;
 
-    let journee = null;
-
-    if (state.runtime.active?.journee) {
-      journee = state.runtime.active.journee;
-    }
-
-    if (!journee && state.runtime.active?.activeJournee) {
-      journee = state.runtime.active.activeJournee;
-    }
-
-    if (!journee && mission) {
-      journee = getFirstOpenDay(mission, data.journees);
-    }
-
+    // L'API peut conserver J1 dans active.journee malgré sa clôture.
+    // Ne JAMAIS réutiliser directement cette copie pour l'action de vente.
+    // Les lignes journees_vente lues dans le même appel sont prioritaires.
     const linkedDays = mission ? getMissionJournees(mission, data.journees) : [];
+    const journee = mission ? getFirstOpenDay(mission, data.journees) : null;
+    const serverJournee =
+      state.runtime.active?.journee ||
+      state.runtime.active?.activeJournee ||
+      state.runtime.active?.active_journee ||
+      null;
+    const serverJourneeId = getDayId(serverJournee);
+    const runtimeDayMatches = !serverJourneeId ||
+      Boolean(journee && getDayId(journee) === serverJourneeId);
+    // En cas de désaccord, getHomeData ne fournit que les transactions J1.
+    // Ne pas présenter un faux CA J2 à zéro avant déploiement Apps Script.
+    const summaryReliable = runtimeDayMatches || state.apiMode !== "getHomeData";
     const dayTransactions = getDayTransactions(journee?.journee_id || "", data.transactions);
     const revenue = getRevenueForTransactions(dayTransactions);
     const stockPrepared = isStockPrepared(mission, data.mouvementsStock);
@@ -2299,8 +2315,11 @@
       toNumber(state.legacyPendingTransactionsCount, 0);
 
     const resume = {
-      ca_jour_ttc: toNumber(state.runtime.resume?.ca_jour_ttc, revenue),
-      nb_transactions: toNumber(state.runtime.resume?.nb_transactions, dayTransactions.length),
+      ca_jour_ttc: runtimeDayMatches
+        ? toNumber(state.runtime.resume?.ca_jour_ttc, revenue) : revenue,
+      nb_transactions: runtimeDayMatches
+        ? toNumber(state.runtime.resume?.nb_transactions, dayTransactions.length)
+        : dayTransactions.length,
       ventes_en_attente_sync: legacyPendingTransactions.length,
       total_pending_sync: totalPendingSync
     };
@@ -2334,6 +2353,8 @@
       linkedDays,
       mission,
       journee,
+      runtimeDayMatches,
+      summaryReliable,
       stockPrepared,
       dayTransactions,
 
@@ -2360,6 +2381,7 @@
     if (
       serverUi &&
       (serverUi.title || serverUi.code || serverUi.step) &&
+      homeState.runtimeDayMatches &&
       !(homeState.mission && homeState.journee && homeState.stockPrepared && normalizeStep(serverUi.step) === "stock")
     ) {
       return {
@@ -2742,7 +2764,7 @@
   };
 
   const buildWatchItems = (homeState, uiState) => {
-    const serverWatch = state.runtime.watchItems
+    const serverWatch = (homeState.runtimeDayMatches ? state.runtime.watchItems : [])
       .map((item) => String(item || "").trim())
       .filter(Boolean);
 
@@ -2986,7 +3008,9 @@
     const uiState = getUiState(homeState);
     const serverStep = normalizeStep(state.runtime.ui?.step || "");
     const progress = normalizeProgress(
-      serverStep && serverStep !== normalizeStep(uiState.step) ? [] : state.runtime.progress,
+      !homeState.runtimeDayMatches ||
+      (serverStep && serverStep !== normalizeStep(uiState.step))
+        ? [] : state.runtime.progress,
       uiState
     );
 
