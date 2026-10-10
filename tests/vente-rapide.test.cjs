@@ -18,7 +18,8 @@ assert.ok(source.includes(startup), "Point d'injection du banc de test introuvab
 const code = source.replace(
   startup,
   "  window.__test = { state, els, saveTicket, confirmSumupSuccess, " +
-    "confirmSumupFailure, reopenSumup, buildTransaction };\n})();"
+    "confirmSumupFailure, reopenSumup, buildTransaction, " +
+    "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale };\n})();"
 );
 
 function element() {
@@ -179,4 +180,119 @@ test("SumUp : boutons annuler / retour bloques durant la sauvegarde", async () =
   await saving;
   assert.equal(app.api.state.saveInProgress, false);
   assert.equal(app.store.has("lugdurum_pending_sumup_ticket"), false);
+});
+
+test("CB externe : confirmation volontaire, aucun appel SumUp, ticket CB et stock", async () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.paymentMode = "CB";
+  app.api.showExternalCbConfirm();
+  assert.equal(app.api.els.externalCbOverlay.hidden, false);
+  assert.equal(app.api.els.externalCbAmount.textContent, "25 €");
+  assert.equal(app.calls.length, 0, "L'ouverture n'enregistre rien");
+
+  await app.api.confirmExternalCbSale();
+
+  assert.equal(app.calls.length, 1);
+  const payload = app.calls[0];
+  assert.equal(payload.transaction.mode_paiement, "CB");
+  assert.equal(payload.transaction.paiement_provider, "EXTERNE");
+  assert.equal(payload.transaction.source, "WEBAPP_CB_MANUEL");
+  assert.equal(payload.transaction.paiement_statut, "PAYE");
+  assert.equal(payload.transaction.statut, "validee");
+  assert.equal(payload.transaction.sumup_foreign_tx_id, "");
+  assert.match(payload.transaction.note, /confirmee manuellement/);
+  assert.equal(payload.transaction.total_encaisse_ttc, 25);
+  assert.equal(payload.transaction.lignes.length, 1);
+  assert.equal(payload.mouvements_stock.length, 1);
+  assert.equal(payload.mouvements_stock[0].sku_id, "SKU_TEST");
+  assert.equal(app.window.location.href, "https://example.test/vente-rapide.html");
+  assert.equal(app.api.els.externalCbOverlay.hidden, true);
+  assert.equal(app.api.state.ticketItems.length, 0);
+  assert.equal(JSON.parse(app.store.get("lugdurum_transactions_backup")).length, 1);
+});
+
+test("CB externe : annuler ne sauvegarde rien et conserve le panier", async () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.paymentMode = "CB";
+  app.api.showExternalCbConfirm();
+  app.api.closeExternalCbConfirm();
+  await app.api.confirmExternalCbSale();
+
+  assert.equal(app.api.els.externalCbOverlay.hidden, true);
+  assert.equal(app.calls.length, 0);
+  assert.equal(app.api.state.ticketItems.length, 1);
+});
+
+test("CB externe : double appui pendant POST ne duplique ni transaction ni stock", async () => {
+  let resolve;
+  const app = setup(() => new Promise((done) => { resolve = done; }));
+  app.api.state.paymentMode = "CB";
+  app.api.showExternalCbConfirm();
+  const first = app.api.confirmExternalCbSale();
+  await app.api.confirmExternalCbSale();
+
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.api.els.externalCbConfirmBtn.disabled, true);
+  assert.equal(app.api.els.externalCbCancelBtn.disabled, true);
+  assert.equal(app.api.state.saveInProgress, true);
+  resolve({ ok: true });
+  await first;
+  assert.equal(app.api.els.externalCbOverlay.hidden, true);
+  assert.equal(app.api.state.saveInProgress, false);
+});
+
+test("CB externe : POST incertain puis reprise = mêmes ID transaction et mouvement", async () => {
+  let attempts = 0;
+  const app = setup(async () => {
+    if (++attempts === 1) throw new Error("Perte reseau");
+    return { ok: true };
+  });
+  app.api.state.paymentMode = "CB";
+  app.api.showExternalCbConfirm();
+  await app.api.confirmExternalCbSale();
+
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.api.els.externalCbOverlay.hidden, false);
+  assert.equal(app.api.state.ticketItems.length, 1);
+  await app.api.confirmExternalCbSale();
+
+  assert.equal(app.calls.length, 2);
+  assert.equal(app.calls[0].transaction.transaction_id, app.calls[1].transaction.transaction_id);
+  assert.equal(app.calls[0].mouvements_stock[0].mouvement_stock_id,
+               app.calls[1].mouvements_stock[0].mouvement_stock_id);
+  assert.equal(app.api.els.externalCbOverlay.hidden, true);
+});
+
+test("CB externe : interdiction si paiement SumUp encore en attente sur ce téléphone", async () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.paymentMode = "CB";
+  app.store.set("lugdurum_pending_sumup_ticket", JSON.stringify({
+    foreign_tx_id: "LUG_PENDING", transaction: { transaction_id: "LUG_PENDING" }
+  }));
+  app.api.showExternalCbConfirm();
+  assert.equal(app.api.els.externalCbOverlay.hidden, true);
+  assert.equal(app.calls.length, 0);
+});
+
+test("CB externe après refus de SumUp : panier restauré et pas de paiement lancé", async () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.paymentMode = "CB";
+  const pending = app.api.buildTransaction({
+    provider: "SUMUP",
+    paymentStatus: "SUMUP_LANCE",
+    status: "paiement_en_attente",
+    foreignTxId: "LUG_PENDING"
+  });
+  app.store.set("lugdurum_pending_sumup_ticket", JSON.stringify({
+    foreign_tx_id: "LUG_PENDING",
+    transaction: pending,
+    sumup_url: "sumupmerchant://pay"
+  }));
+  app.api.confirmSumupFailure();
+  assert.equal(app.store.has("lugdurum_pending_sumup_ticket"), false);
+  app.api.showExternalCbConfirm();
+  await app.api.confirmExternalCbSale();
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.calls[0].transaction.paiement_provider, "EXTERNE");
+  assert.equal(app.calls[0].transaction.sumup_foreign_tx_id, "");
 });
