@@ -14,7 +14,7 @@ assert.match(source, bootstrap, "Bootstrap de la page introuvable");
 
 const instrumented = source.replace(
   bootstrap,
-  "\n  window.__test = { renderDetailProducts };\n})();"
+  "\n  window.__test = { renderDetailProducts, renderDayCard };\n})();"
 );
 
 const window = {};
@@ -24,7 +24,7 @@ vm.runInNewContext(instrumented, {
   console
 }, { filename: "journees-cloturees.js" });
 
-const { renderDetailProducts } = window.__test;
+const { renderDetailProducts, renderDayCard } = window.__test;
 
 const products = [
   { parfum_code: "MV", gamme: "Collection", q50: 0, q20: 1, autres: 0 },
@@ -67,7 +67,28 @@ test("Les références sont échappées et les CSS sont reliés à la page", () 
   const css = fs.readFileSync(path.join(docs, "journees-cloturees.css"), "utf8");
   const page = fs.readFileSync(path.join(docs, "journees-cloturees.html"), "utf8");
   assert.match(css, /\.closedSalesTable \.closedSalesRow td/);
-  assert.match(page, /journees-cloturees\.css\?v=2/);
-  assert.match(page, /journees-cloturees\.js\?v=3/);
+  assert.match(page, /journees-cloturees\.css\?v=3/);
+  assert.match(page, /journees-cloturees\.js\?v=4/);
   assert.match(page, /class="detailBlock isSalesTable"/);
+});
+
+test("La carte récapitulative ne montre plus les chips produits", () => {
+  const html = renderDayCard({
+    key: "JR-TEST", journee_id: "JR-TEST",
+    label: "Foire aux pansettes de Gerzat — J1",
+    date: "2024-10-13", ville: "Gerzat",
+    ca: 561, frais: 0, tickets: 3,
+    paiements: [{ label: "Espèces", total: 398.02 }, { label: "CB", total: 99 }],
+    products
+  });
+  assert.ok(!html.includes("closedProductsGrid"));
+  assert.ok(!html.includes("closedProductChip"));
+  assert.ok(!html.includes(">VB<"));
+  assert.match(html, /Foire aux pansettes de Gerzat/);
+  assert.match(html, /Voir détail/);
+  assert.match(html, /Modifier/);
+  assert.match(html, /Frais/);
+  assert.match(html, /Net/);
+  assert.match(html, /Espèces/);
+  assert.match(renderDetailProducts(products), /<th scope="row">VB<\/th>/);
 });

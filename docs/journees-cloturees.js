@@ -697,27 +697,6 @@
     return [...groups.entries()].filter(([, items]) => items.length > 0);
   };
 
-  const renderProducts = (products) => {
-    if (!products.length) {
-      return `<p class="statsEmpty compact">Aucun produit vendu renseigné.</p>`;
-    }
-
-    return `
-      <div class="closedProductsGrid">
-        ${products.map((product) => {
-          const total = product.q50 + product.q20 + product.autres;
-
-          return `
-            <span class="closedProductChip">
-              <strong>${escapeHtml(product.parfum_code)}</strong>
-              ${escapeHtml(String(total))}
-            </span>
-          `;
-        }).join("")}
-      </div>
-    `;
-  };
-
   const renderPayments = (payments) => {
     if (!payments.length) return `<span>Aucun paiement</span>`;
 
@@ -911,8 +890,6 @@
         <div class="statsMeta closedPayments">
           ${renderPayments(day.paiements)}
         </div>
-
-        ${renderProducts(day.products)}
 
         <div class="statsMeta">
           <span>${escapeHtml(pluralizeEncaissements(day.tickets))}</span>
