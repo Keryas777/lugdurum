@@ -3143,7 +3143,7 @@
     }
   });
   // Mise à jour distante optionnelle ; liste connue disponible même hors ligne.
-  window.LugdurumUsers?.refreshFromSheet();
+  // Pas de requête utilisateurs bloquante au démarrage des ventes.
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initHome);
