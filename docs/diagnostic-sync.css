@@ -25,6 +25,12 @@
   box-sizing: border-box;
 }
 
+/* Même protection anti-rebond que les pages métier, sans verrouiller le scroll. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
 html {
   min-height: 100%;
   background: var(--bg);
