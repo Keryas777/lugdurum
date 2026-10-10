@@ -19,10 +19,10 @@
     <title>Lugdurum — Journée de vente</title>
 
     <link rel="stylesheet" href="./style.css?v=14" />
-    <link rel="stylesheet" href="./vente-rapide.css?v=18" />
+    <link rel="stylesheet" href="./vente-rapide.css?v=19" />
 
     <script src="./lugdurum-api.js?v=11" defer></script>
-    <script src="./vente-rapide.js?v=29" defer></script>
+    <script src="./vente-rapide.js?v=30" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -55,12 +55,15 @@
             <p class="sectionKicker">Journée en cours</p>
             <h2 id="saleSummaryTitle">Chargement…</h2>
             <p class="missionMeta">Lecture du contexte journée.</p>
+            <p class="sharedStockLabel" id="sharedStockLabel">Stock emporté : en attente des données partagées…</p>
           </div>
 
           <div class="ticketTotalBox daySalesBox" aria-live="polite">
             <span>CA jour</span>
             <strong id="dayRevenueTotal">0 €</strong>
             <small id="dayTicketCount">0 ticket</small>
+            <button type="button" class="refreshSharedDayBtn" id="refreshSharedDayBtn"
+              aria-label="Actualiser le chiffre d'affaires partagé">↻ Actualiser</button>
           </div>
         </section>
 
