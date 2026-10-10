@@ -34,6 +34,7 @@
 
     pendingTransactions: "lugdurum_pending_transactions",
     closureIgnoredLegacy: "lugdurum_cloture_legacy_tests_ignores",
+    closureSnapshot: "lugdurum_cloture_snapshot_v1",
     transactionsCache: "lugdurum_transactions_cache",
     transactionsBackup: "lugdurum_transactions_backup",
     ventesLignes: "lugdurum_ventes_lignes",
@@ -1870,6 +1871,28 @@
     writeJson(STORAGE_KEYS.transactionsCache, state.allTransactions);
   };
 
+  const cacheTargetedClosureData = () => {
+    const active = getActiveIds();
+    if (!active.journeeId || !active.missionId) return;
+    // Cache strictement dédié à la clôture : ne jamais remplacer les
+    // caches globaux missions/journées par des tableaux filtrés.
+    writeJson(STORAGE_KEYS.closureSnapshot, {
+      journee_id: active.journeeId,
+      stock_mission_id: active.missionId,
+      checked_at: new Date().toISOString(),
+      data: {
+        missions: state.events,
+        missionsStock: state.stockMissions,
+        journees: state.journees,
+        transactions: state.allTransactions,
+        ventesLignes: state.ventesLignes,
+        frais: state.frais,
+        mouvementsStock: state.mouvementsStock,
+        clotures: state.clotures
+      }
+    });
+  };
+
   const loadLocalData = () => {
     const cachedTransactions = getArray(STORAGE_KEYS.transactionsCache);
     // À l'ouverture, seules les transactions du dernier cache principal
@@ -1883,6 +1906,28 @@
     state.frais = getArray(STORAGE_KEYS.frais);
     state.mouvementsStock = getArray(STORAGE_KEYS.mouvementsStock);
     state.clotures = getArray(STORAGE_KEYS.clotures);
+
+    // Prévisualisation rapide d'un dernier état Sheets confirmé.
+    // Il reste PROVISOIRE jusqu'à une nouvelle lecture réseau réussie.
+    const snapshot = getObject(STORAGE_KEYS.closureSnapshot);
+    const active = getActiveIds();
+    const stored = snapshot.data;
+    const keys = [
+      "missions", "missionsStock", "journees", "transactions",
+      "ventesLignes", "frais", "mouvementsStock", "clotures"
+    ];
+    if (snapshot.journee_id === active.journeeId &&
+        snapshot.stock_mission_id === active.missionId &&
+        stored && keys.every((key) => Array.isArray(stored[key]))) {
+      state.events = stored.missions;
+      state.stockMissions = stored.missionsStock;
+      state.journees = stored.journees;
+      state.allTransactions = mergeById([stored.transactions], "transaction_id");
+      state.ventesLignes = stored.ventesLignes;
+      state.frais = stored.frais;
+      state.mouvementsStock = stored.mouvementsStock;
+      state.clotures = stored.clotures;
+    }
   };
 
   const normalizeCoreArray = (coreData, key, fallback = []) => {
@@ -2135,7 +2180,11 @@
     state.clotures = mergeById([remote.clotures], "salon_id");
 
     state.dataLoaded = true;
-    cacheCoreData();
+    if (targeted) {
+      cacheTargetedClosureData();
+    } else {
+      cacheCoreData();
+    }
   };
 
   const loadContext = () => {
