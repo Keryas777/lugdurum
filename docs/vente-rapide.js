@@ -1870,8 +1870,13 @@
 
   const saveLocalTransactionBackup = (transaction) => {
     const backup = readCachedArray(STORAGE_KEYS.localTransactionsBackup);
-    backup.push(transaction);
-    writeJson(STORAGE_KEYS.localTransactionsBackup, backup);
+    const id = String(transaction?.transaction_id || "").trim();
+    // Une reprise après retour SumUp ne doit pas empiler des copies du ticket.
+    const next = backup.filter((item) =>
+      String(item?.transaction_id || "").trim() !== id
+    );
+    next.push(transaction);
+    writeJson(STORAGE_KEYS.localTransactionsBackup, next);
     writeJson(STORAGE_KEYS.lastTicket, transaction);
   };
 
