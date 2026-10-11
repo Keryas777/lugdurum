@@ -68,7 +68,7 @@ function getHomeData_(params) {
 
   const selectedContext = getSelectedContextHomeData_(selectedItem);
   const active = buildActiveContextHomeData_(tables, selectedItem, today);
-  const resume = buildResumeHomeData_(active);
+  const resume = buildResumeHomeData_(active, tables);
   const progress = buildProgressHomeData_(selectedItem, active);
   const selectedSummary = buildSelectedSummaryHomeData_(selectedItem, active, resume);
   const ui = buildUiStateHomeData_(selectedItem, active);
@@ -447,7 +447,7 @@ function buildActiveContextHomeData_(tables, selectedItem, today) {
    Résumé / stats accueil
    ============================== */
 
-function buildResumeHomeData_(active) {
+function buildResumeHomeData_(active, tables) {
   const transactions = Array.isArray(active.transactions)
     ? active.transactions
     : [];
@@ -456,8 +456,36 @@ function buildResumeHomeData_(active) {
     return sum + getTransactionAmountHomeData_(transaction);
   }, 0);
 
+  // Le cumul suit l'évènement (journees_vente.mission_id), jamais la mission de stock.
+  // Une mission de stock peut être partagée entre plusieurs foires.
+  const eventId = String(
+    (active.journee && active.journee.mission_id) ||
+    (active.event && getEventIdHomeData_(active.event)) ||
+    ""
+  ).trim();
+  const eventDayIds = new Set(
+    (tables && Array.isArray(tables.journees) ? tables.journees : [])
+      .filter(function (day) {
+        return String(day.mission_id || "").trim() === eventId &&
+          !isCancelledStatusHomeData_(day);
+      })
+      .map(function (day) { return String(day.journee_id || "").trim(); })
+      .filter(Boolean)
+  );
+  const eventTransactions = eventId && eventDayIds.size
+    ? tables.transactions.filter(function (transaction) {
+        return eventDayIds.has(String(transaction.journee_id || "").trim()) &&
+          !isCancelledStatusHomeData_(transaction);
+      })
+    : [];
+  const caEvenementTtc = eventTransactions.reduce(function (sum, transaction) {
+    return sum + getTransactionAmountHomeData_(transaction);
+  }, 0);
+
   return {
     ca_jour_ttc: roundAmountHomeData_(caJourTtc),
+    ca_evenement_ttc: eventId ? roundAmountHomeData_(caEvenementTtc) : null,
+    nb_transactions_evenement: eventId ? eventTransactions.length : null,
     nb_transactions: transactions.length,
     ventes_en_attente_sync: 0,
     total_pending_sync: 0
