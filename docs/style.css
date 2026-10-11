@@ -55,8 +55,15 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-x: none;
-  /* iOS / PWA : interdit le rebond aux limites sans bloquer le défilement. */
-  overscroll-behavior-y: none;
+}
+
+/* Safari iOS/PWA uniquement : conserver l'anti-rebond sans affecter
+   le scroll natif Android (Chrome, Samsung Internet, WebView). */
+@supports (-webkit-touch-callout: none) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
 }
 
 html {
