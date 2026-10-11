@@ -20,7 +20,7 @@ const code = source.replace(
   "  window.__test = { state, els, saveTicket, confirmSumupSuccess, " +
     "confirmSumupFailure, reopenSumup, buildTransaction, " +
     "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale, " +
-    "selectSharedSalesContext, loadContext };\n})();"
+    "selectSharedSalesContext, loadContext, computeEventSummaryFromTransactions };\n})();"
 );
 
 function element() {
@@ -495,4 +495,35 @@ test("Ventes de la journée : un seul bouton Fermer, modale accessible au clavie
   assert.doesNotMatch(css, /saleDetailsFooter/);
   assert.match(source, /event\.key === "Escape"/);
   assert.match(source, /event\.key === "Tab" && els\.closeDayDetailsBtn/);
+});
+
+test("CA événement : J1 + J2, deux vendeurs, autre foire sur le même stock", () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.journeeActive.journee_id = "JV_GERZAT_J2";
+  app.api.state.journees = [
+    { journee_id: "JV_GERZAT_J1", mission_id: "EV_GERZAT", stock_mission_id: "MS_COMMUN", statut: "cloture" },
+    { journee_id: "JV_GERZAT_J2", mission_id: "EV_GERZAT", stock_mission_id: "MS_COMMUN", statut: "en_cours" },
+    { journee_id: "JV_AUTRE_J1", mission_id: "EV_AUTRE", stock_mission_id: "MS_COMMUN", statut: "en_cours" },
+    { journee_id: "JV_ANNULEE", mission_id: "EV_GERZAT", stock_mission_id: "MS_COMMUN", statut: "annule" }
+  ];
+  const tx = (id, day, amount, user, status = "validee") => ({
+    transaction_id: id, journee_id: day, mission_id: "MS_COMMUN", user_id: user,
+    total_encaisse_ttc: amount, statut: status, paiement_statut: "PAYE"
+  });
+  const transactions = [
+    tx("T1", "JV_GERZAT_J1", 75.01, "U_ANTHONY"),
+    tx("T2", "JV_GERZAT_J2", 29.99, "U_JEROME"),
+    tx("T2", "JV_GERZAT_J2", 29.99, "U_JEROME"),
+    tx("T3", "JV_AUTRE_J1", 120, "U_ANTHONY"),
+    tx("T4", "JV_GERZAT_J2", 8, "U_JEROME", "annulee"),
+    tx("T5", "JV_ANNULEE", 12, "U_JEROME")
+  ];
+  const result = app.api.computeEventSummaryFromTransactions(transactions);
+  assert.equal(result.revenue, 105);
+  assert.equal(result.tickets, 2);
+});
+
+test("CA événement : pas de total trompeur sans journée liée à un événement", () => {
+  const app = setup(async () => ({ ok: true }));
+  assert.equal(app.api.computeEventSummaryFromTransactions([]).revenue, null);
 });
