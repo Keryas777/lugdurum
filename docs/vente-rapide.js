@@ -144,6 +144,8 @@
       source: "", fromCache: false, lastLoadedAt: "", lastError: ""
     },
     dayTransactions: [],
+    eventTransactions: [],
+    detailsScope: "day",
     daySummary: {
       isLoading: false,
       isLoaded: false,
@@ -167,6 +169,8 @@
     eventRevenueTotal: document.getElementById("eventRevenueTotal"),
     eventRevenueStatus: document.getElementById("eventRevenueStatus"),
     openDayDetailsBtn: document.getElementById("openDayDetailsBtn"),
+    dayDetailsKicker: document.getElementById("dayDetailsKicker"),
+    dayDetailsTitle: document.getElementById("dayDetailsTitle"),
     dayDetailsOverlay: document.getElementById("dayDetailsOverlay"),
     dayDetailsContent: document.getElementById("dayDetailsContent"),
     closeDayDetailsBtn: document.getElementById("closeDayDetailsBtn"),
@@ -600,35 +604,35 @@
     };
   };
 
-  // CA de l'évènement : regroupement par journees_vente.mission_id.
-  // transaction.mission_id / journee.stock_mission_id désignent la mission de stock.
+  // Journées de l'événement d'origine, indépendamment de la mission de stock.
+  const getEventDays = () => {
+    const currentId = String(state.journeeActive?.journee_id || "").trim();
+    const day = state.journees.find((d) => String(d.journee_id || "").trim() === currentId);
+    const eventId = String(day?.mission_id || "").trim();
+    if (!eventId) return [];
+    return state.journees
+      .filter((d) => String(d.mission_id || "").trim() === eventId &&
+        !normalizeKey(d.statut).includes("annule"))
+      .filter((d) => String(d.journee_id || "").trim())
+      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) ||
+        String(a.jour_label || "").localeCompare(String(b.jour_label || ""), "fr"));
+  };
+
   const computeEventSummaryFromTransactions = (transactions = []) => {
-    const currentDayId = String(state.journeeActive?.journee_id || "").trim();
-    const currentDay = state.journees.find(
-      (day) => String(day.journee_id || "").trim() === currentDayId
-    );
-    const eventId = String(currentDay?.mission_id || "").trim();
-    if (!eventId) return { revenue: null, tickets: null };
-
-    const eventDayIds = new Set(
-      state.journees
-        .filter((day) => String(day.mission_id || "").trim() === eventId &&
-          !normalizeKey(day.statut).includes("annule"))
-        .map((day) => String(day.journee_id || "").trim())
-        .filter(Boolean)
-    );
-    const uniqueTransactions = new Map();
+    const days = getEventDays();
+    if (!days.length) return { revenue: null, tickets: null, transactions: [] };
+    const ids = new Set(days.map((d) => String(d.journee_id).trim()));
+    const byId = new Map();
     transactions
-      .filter((tx) => eventDayIds.has(String(tx?.journee_id || "").trim()))
+      .filter((tx) => ids.has(String(tx?.journee_id || "").trim()))
       .filter((tx) => !isInvalidTransactionForDaySummary(tx))
-      .forEach((tx, index) => {
-        uniqueTransactions.set(getTransactionId(tx) || `TX_INDEX_${index}`, tx);
-      });
-
-    const valid = [...uniqueTransactions.values()];
+      .forEach((tx, index) =>
+        byId.set(getTransactionId(tx) || `TX_INDEX_${index}`, tx));
+    const valid = [...byId.values()];
     return {
       revenue: valid.reduce((sum, tx) => sum + getTransactionAmount(tx), 0),
-      tickets: valid.length
+      tickets: valid.length,
+      transactions: valid
     };
   };
 
@@ -637,6 +641,7 @@
     const eventSummary = computeEventSummaryFromTransactions(transactions);
     // Exactement les mêmes tickets que le CA : jamais de cache local ou de doublons.
     state.dayTransactions = summary.transactions;
+    state.eventTransactions = eventSummary.transactions;
 
     state.daySummary = {
       isLoading: false,
@@ -657,6 +662,8 @@
   const renderDaySummary = () => {
     if (els.eventRevenueStrip) {
       els.eventRevenueStrip.hidden = !hasActiveSalesContext();
+      els.eventRevenueStrip.disabled = !hasActiveSalesContext() ||
+        (state.daySummary.isLoaded && state.daySummary.eventRevenue == null);
     }
     if (els.eventRevenueTotal) {
       const summary = state.daySummary;
@@ -674,7 +681,7 @@
             ? "Lecture du cumul partagé…"
             : summary.eventRevenue == null
               ? "Cumul indisponible sans lien d'évènement"
-              : `${summary.eventTickets} ticket${summary.eventTickets > 1 ? "s" : ""} sur toutes les journées`;
+              : `${summary.eventTickets} ticket${summary.eventTickets > 1 ? "s" : ""} sur toutes les journées · Voir le détail`;
       }
     }
     // Rien à calculer ni à dessiner tant que la fenêtre est fermée.
@@ -736,6 +743,7 @@
         lastError: "Aucune journée active."
       };
       state.dayTransactions = [];
+      state.eventTransactions = [];
       renderDaySummary();
       return state.daySummary;
     }
@@ -1003,15 +1011,19 @@
     content.scrollTop = previousScroll;
   };
 
-  const openDayDetails = () => {
+  const openDetails = (scope = "day") => {
     if (!els.dayDetailsOverlay || !hasActiveSalesContext()) return;
+    if (scope === "event" && state.daySummary.isLoaded &&
+        state.daySummary.eventRevenue == null) return;
+    state.detailsScope = scope;
+    if (els.dayDetailsKicker) els.dayDetailsKicker.textContent =
+      scope === "event" ? "CA événement cumulé" : "CA jour partagé";
+    if (els.dayDetailsTitle) els.dayDetailsTitle.textContent =
+      scope === "event" ? "Ventes de l'événement" : "Ventes de la journée";
     els.dayDetailsOverlay.hidden = false;
     document.body.classList.add("saleDetailsOpen");
     renderDayDetails();
     els.closeDayDetailsBtn?.focus({ preventScroll: true });
-
-    // Affichage immédiat de la dernière lecture : aucune attente au clic.
-    // Rafraîchissement seulement si nécessaire, sans gêner un encaissement.
     const lastRead = Date.parse(state.daySummary.lastLoadedAt || "");
     const outdated = !Number.isFinite(lastRead) || Date.now() - lastRead > 15000;
     if (outdated && !state.daySummary.isLoading &&
@@ -1024,7 +1036,8 @@
     if (!els.dayDetailsOverlay || els.dayDetailsOverlay.hidden) return;
     els.dayDetailsOverlay.hidden = true;
     document.body.classList.remove("saleDetailsOpen");
-    els.openDayDetailsBtn?.focus({ preventScroll: true });
+    (state.detailsScope === "event" ? els.eventRevenueStrip : els.openDayDetailsBtn)
+      ?.focus({ preventScroll: true });
   };
 
   const getVisibleProducts = () => {
@@ -3127,6 +3140,7 @@
         };
         state.sharedStock = null;
         state.dayTransactions = [];
+        state.eventTransactions = [];
         state.daySummary = {
           ...state.daySummary, isLoading: false, isLoaded: false,
           revenue: 0, tickets: 0, eventRevenue: null, eventTickets: null,
@@ -3429,7 +3443,8 @@
   els.clearTicketBtn.addEventListener("click", () => { if (!state.saveInProgress) clearTicket(); });
   els.undoBtn.addEventListener("click", () => { if (!state.saveInProgress) undoLast(); });
   els.saveTicketBtn.addEventListener("click", () => saveTicket());
-  els.openDayDetailsBtn?.addEventListener("click", openDayDetails);
+  els.openDayDetailsBtn?.addEventListener("click", () => openDetails("day"));
+  els.eventRevenueStrip?.addEventListener("click", () => openDetails("event"));
   els.closeDayDetailsBtn?.addEventListener("click", closeDayDetails);
   els.dayDetailsOverlay?.addEventListener("click", (event) => {
     if (event.target === els.dayDetailsOverlay) closeDayDetails();
