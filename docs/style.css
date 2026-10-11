@@ -845,6 +845,48 @@ video {
   color: var(--red);
 }
 
+.homeEventRevenue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 10px;
+  border: 1px solid rgba(138, 90, 43, 0.22);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  background: linear-gradient(120deg, rgba(168, 143, 104, 0.18), rgba(255, 250, 241, 0.72));
+}
+
+.homeEventRevenue[hidden] { display: none; }
+
+.homeEventRevenue span,
+.homeEventRevenue small {
+  display: block;
+}
+
+.homeEventRevenue span {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.homeEventRevenue small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.homeEventRevenue strong {
+  color: var(--rum);
+  font-size: clamp(1.25rem, 5.5vw, 2rem);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .homeEventRevenue { flex-wrap: wrap; }
+}
+
 .heroActions {
   display: grid;
   grid-template-columns: 1fr;
