@@ -134,7 +134,7 @@
     pendingCatalogueUpdate: null,
     saveInProgress: false,
     failedTicket: null,
-    lastQueuedVerifiedSumupId: "",
+    lastQueuedSumupId: "",
     deferredLoadForSumup: false,
     sumupManualBlocked: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
@@ -1654,7 +1654,7 @@
     if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
     if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
     els.amountPaidInput.disabled = state.saveInProgress;
-    if (els.sumupConfirmSuccessBtn) els.sumupConfirmSuccessBtn.disabled = state.saveInProgress;
+    if (els.sumupConfirmSuccessBtn) els.sumupConfirmSuccessBtn.disabled = state.saveInProgress || state.sumupManualBlocked;
     if (els.sumupConfirmFailBtn) els.sumupConfirmFailBtn.disabled = state.saveInProgress;
     if (els.sumupReturnBtn) els.sumupReturnBtn.disabled = state.saveInProgress;
   };
@@ -2669,27 +2669,23 @@
       : "Confirmation manuelle : enregistrement du ticket…");
 
     try {
-      // Après preuve API positive de SumUp : écrire durablement l'opération
-      // dans la file locale, puis libérer la caisse sans attendre Google Sheets.
-      // Confirmation manuelle : garder le chemin d'écriture existant.
-      const queueFastPath = isApiVerified &&
-        typeof api()?.queueVerifiedSumupSale === "function";
-      if (queueFastPath) {
-        const movements = buildStockMovementsFromTransaction(transaction);
-        const result = api().queueVerifiedSumupSale({
-          transaction,
-          mouvements_stock: movements,
-          mouvementsStock: movements
-        });
-        if (!result?.queued) {
-          throw new Error("Le ticket n'a pas pu être conservé localement.");
-        }
-        upsertLocalMouvementsStock(movements);
-        saveLocalTransactionBackup(transaction);
-        state.lastQueuedVerifiedSumupId = transaction.transaction_id;
-      } else {
-        await saveTransactionToApi(transaction);
+      // Preuve API OU confirmation manuelle explicite : même sauvegarde
+      // locale immédiate. Jamais de POST de 90 s pendant l'encaissement.
+      // La synchronisation réseau se fera en arrière-plan, avec les mêmes IDs.
+      if (typeof api()?.queueSumupSale !== "function") {
+        throw new Error("Module de sauvegarde SumUp indisponible. Recharge la page sans effacer les données.");
       }
+      const movements = buildStockMovementsFromTransaction(transaction);
+      const result = api().queueSumupSale({
+        transaction,
+        mouvements_stock: movements
+      });
+      if (!result?.queued) {
+        throw new Error("Le ticket n'a pas pu être conservé localement.");
+      }
+      upsertLocalMouvementsStock(movements);
+      saveLocalTransactionBackup(transaction);
+      state.lastQueuedSumupId = transaction.transaction_id;
 
       clearPendingSumup();
 
@@ -2700,12 +2696,8 @@
       showSumupSuccess(transaction, { apiVerified: isApiVerified, pendingCount });
 
       setStatus(
-        queueFastPath
-          ? `Paiement confirmé par SumUp · ticket sauvegardé sur cet appareil · synchronisation en cours (${pendingCount} en attente) · ${formatCurrency(transaction.total_encaisse_ttc)}`
-          : pendingCount > 0
-            ? `Paiement SumUp validé · ticket et stock en attente de synchronisation · ${formatCurrency(transaction.total_encaisse_ttc)}`
-            : `Paiement SumUp validé · ${formatCurrency(transaction.total_encaisse_ttc)}`,
-        queueFastPath || pendingCount > 0 ? "isError" : "isSuccess"
+        `Paiement ${isApiVerified ? "vérifié par SumUp" : "confirmé manuellement"} · ticket sauvegardé sur cet appareil · ${pendingCount > 0 ? "synchronisation Sheets en attente" : "synchronisation Sheets terminée"} · ${formatCurrency(transaction.total_encaisse_ttc)}`,
+        pendingCount > 0 ? "isError" : "isSuccess"
       );
 
       state.ticketItems = [];
@@ -2713,10 +2705,15 @@
       els.amountPaidInput.value = "";
       state.amountManuallyEdited = false;
       renderAll();
-      if (!queueFastPath) refreshDaySummaryAfterSale();
+      if (!pendingCount) refreshDaySummaryAfterSale();
       if (state.deferredLoadForSumup) schedulePostSumupDataLoad();
     } catch (error) {
-      setStatus(`Paiement validé, mais erreur d’enregistrement : ${error.message}. Réessaie le même ticket après vérification.`, "isError");
+      const current = getPendingSumup();
+      if (current) {
+        showSumupConfirm(current, "Paiement reçu dans SumUp, mais la sauvegarde locale n'est pas confirmée : " +
+          error.message + " Ne relance pas le paiement. Conserve cette fenêtre et réessaie la confirmation.");
+      }
+      setStatus(`Paiement SumUp encaissé, sauvegarde incertaine : ${error.message}`, "isError");
     } finally {
       state.saveInProgress = false;
       if (state.pendingCatalogueUpdate &&
@@ -3605,9 +3602,9 @@
     const detail = event.detail || {};
     const pendingCount = Number(detail.pending_count || 0);
 
-    if (state.lastQueuedVerifiedSumupId) {
+    if (state.lastQueuedSumupId) {
       if (pendingCount === 0 && ["synced", "idle"].includes(detail.status)) {
-        state.lastQueuedVerifiedSumupId = "";
+        state.lastQueuedSumupId = "";
         setStatus("Ticket SumUp et sorties de stock synchronisés avec Google Sheets.", "isSuccess");
         refreshDaySummaryAfterSale();
       } else if (detail.status === "error") {
