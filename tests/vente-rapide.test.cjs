@@ -40,6 +40,7 @@ function setup(saveBundle, pendingCount = () => 0) {
   const id = ++nextDevice;
   let seq = 0;
   const calls = [];
+  const queuedSales = [];
   const store = new Map();
   const els = new Map();
   const timers = [];
@@ -65,6 +66,10 @@ function setup(saveBundle, pendingCount = () => 0) {
       saveVenteRapideBundle(payload) {
         calls.push(payload);
         return saveBundle(payload);
+      },
+      queueSumupSale(payload) {
+        queuedSales.push(payload);
+        return { queued: true, pending_count: 1 };
       },
       getPendingWritesCount: pendingCount,
       getTransactions: async () => []
@@ -96,7 +101,7 @@ function setup(saveBundle, pendingCount = () => 0) {
     quantite: 1, prix_unitaire_ttc: 25, prix_unitaire_ht: 25, taux_tva: 0
   }];
   api.els.amountPaidInput.value = "25";
-  return { api, calls, store, timers, window };
+  return { api, calls, queuedSales, store, timers, window };
 }
 
 
@@ -234,9 +239,8 @@ test("ecriture hors ligne mise en file : le ticket suivant reste disponible", as
   assert.equal(JSON.parse(app.store.get("lugdurum_transactions_backup")).length, 1);
 });
 
-test("SumUp : boutons annuler / retour bloques durant la sauvegarde", async () => {
-  let resolve;
-  const app = setup(() => new Promise((done) => { resolve = done; }));
+test("SumUp : sauvegarde locale immédiate, caisse débloquée sans POST Sheets", async () => {
+  const app = setup(() => { throw new Error("POST inattendu pendant SumUp"); });
   app.api.state.paymentMode = "CB";
 
   const foreignId = "LUG_123456789";
@@ -250,20 +254,17 @@ test("SumUp : boutons annuler / retour bloques durant la sauvegarde", async () =
     transaction
   }));
 
-  const saving = app.api.confirmSumupSuccess();
-  assert.equal(app.api.state.saveInProgress, true);
-  assert.equal(app.api.els.sumupConfirmFailBtn.disabled, true);
-  assert.equal(app.api.els.sumupReturnBtn.disabled, true);
+  await app.api.confirmSumupSuccess();
 
-  app.api.confirmSumupFailure();
-  app.api.reopenSumup();
-  assert.ok(app.store.has("lugdurum_pending_sumup_ticket"));
-  assert.equal(app.window.location.href, "https://example.test/vente-rapide.html");
-
-  resolve({ ok: true });
-  await saving;
+  assert.equal(app.calls.length, 0, "Aucun POST bloquant vers Sheets");
+  assert.equal(app.queuedSales.length, 1, "Un seul bundle local");
+  assert.equal(app.queuedSales[0].transaction.transaction_id, foreignId);
+  assert.equal(app.queuedSales[0].mouvements_stock.length, 1);
   assert.equal(app.api.state.saveInProgress, false);
+  assert.equal(app.api.els.sumupConfirmFailBtn.disabled, false);
+  assert.equal(app.api.els.sumupReturnBtn.disabled, false);
   assert.equal(app.store.has("lugdurum_pending_sumup_ticket"), false);
+  assert.equal(app.api.state.ticketItems.length, 0);
 });
 
 test("CB externe : confirmation volontaire, aucun appel SumUp, ticket CB et stock", async () => {

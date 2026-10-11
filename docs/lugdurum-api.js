@@ -907,6 +907,62 @@
     };
   };
 
+  // Encaissement SumUp : sécuriser immédiatement le bundle en local.
+  // Aucun POST Google Sheets sur le chemin critique de la caisse.
+  // Les IDs fixes assurent le rejeu idempotent lors de la synchronisation.
+  const queueSumupSale = (payload = {}) => {
+    const transaction = payload.transaction || {};
+    const transactionId = getTransactionId(transaction);
+    const foreignId = String(transaction.sumup_foreign_tx_id || "").trim();
+
+    if (!transactionId || transactionId !== foreignId ||
+        transaction.paiement_provider !== "SUMUP" ||
+        transaction.mode_paiement !== "CB" ||
+        transaction.statut !== "validee" ||
+        transaction.paiement_statut !== "PAYE") {
+      throw new Error("Ticket SumUp invalide : sauvegarde locale refusée.");
+    }
+
+    const writes = getPendingWrites();
+    const existing = writes.find((item) =>
+      item.action === "saveVenteRapideBundle" &&
+      getTransactionId(item.payload?.transaction) === transactionId
+    );
+
+    if (existing) {
+      const previous = existing.payload?.transaction || {};
+      if (String(previous.sumup_foreign_tx_id || "") !== foreignId ||
+          Number(previous.total_encaisse_ttc) !== Number(transaction.total_encaisse_ttc)) {
+        throw new Error("Ticket SumUp déjà en file avec un montant incohérent.");
+      }
+      return {
+        queued: true,
+        already_queued: true,
+        queue_id: existing.id,
+        pending_count: writes.length
+      };
+    }
+
+    const queued = enqueueWrite(
+      "saveVenteRapideBundle",
+      payload,
+      "Encaissement SumUp : synchronisation différée."
+    );
+
+    // safeLocalSet tolère l'indisponibilité du stockage sur iOS.
+    // Ne JAMAIS fermer le paiement si l'écriture locale n'a pas été relue.
+    const persisted = getPendingWrites().some((item) =>
+      item.id === queued.queue_id &&
+      item.action === "saveVenteRapideBundle" &&
+      getTransactionId(item.payload?.transaction) === transactionId
+    );
+    if (!persisted) {
+      throw new Error("Sauvegarde locale impossible sur cet appareil. Le ticket SumUp est conservé.");
+    }
+
+    return queued;
+  };
+
   const removePendingWritesByIds = (queueIds = [], patch = {}) => {
     const ids = new Set(queueIds.filter(Boolean));
 
@@ -2561,6 +2617,8 @@
 
     saveTransaction,
     saveVenteRapideBundle,
+    queueSumupSale,
+    queueVerifiedSumupSale: queueSumupSale,
     saveVenteLigne,
     saveVentesLignes,
 

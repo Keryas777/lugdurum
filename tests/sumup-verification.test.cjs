@@ -315,10 +315,11 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
         if (options.manualSaveError) throw new Error("Écriture incertaine");
         return { ok: true };
       },
-      queueVerifiedSumupSale: options.fastQueue ? (payload) => {
+      queueSumupSale(payload) {
+        if (options.queueError) throw new Error(options.queueError);
         queued.push(payload);
         return { queued: true, pending_count: 1 };
-      } : undefined,
+      },
       async getTransactions() { return []; },
       getPendingWritesCount() { return 0; }
     }
@@ -365,10 +366,10 @@ test("PWA pilote : paiement API SUCCESSFUL => un ticket valide et panier vide", 
     transaction_code: "TEST123"
   });
   await h.app.verifyPendingSumup();
-  assert.equal(h.saved.length, 1);
-  assert.equal(h.saved[0].transaction.statut, "validee");
-  assert.equal(h.saved[0].transaction.paiement_statut, "PAYE");
-  assert.equal(h.saved[0].transaction.transaction_id, ID);
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.queued[0].transaction.statut, "validee");
+  assert.equal(h.queued[0].transaction.paiement_statut, "PAYE");
+  assert.equal(h.queued[0].transaction.transaction_id, ID);
   assert.equal(h.app.state.ticketItems.length, 0);
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
 });
@@ -444,7 +445,7 @@ test("PWA rapide : SumUp confirmé => ticket en file sans attendre Sheets", asyn
   assert.equal(h.queued[0].mouvements_stock.length, 1);
   assert.equal(h.app.state.ticketItems.length, 0);
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
-  assert.equal(h.app.state.lastQueuedVerifiedSumupId, ID);
+  assert.equal(h.app.state.lastQueuedSumupId, ID);
 });
 
 test("PWA rapide : MISMATCH SumUp ne met jamais de ticket payé en file", async () => {
@@ -474,8 +475,8 @@ test("UI API : coche verte, résultat SumUp séparé de Sheets", async () => {
 test("UI manuelle : sans affirmer vérification par API", async () => {
   const h = createSumupFrontendHarness({ verified: false, status: "NOT_FOUND" }, true, { fastQueue: true });
   await h.app.confirmSumupSuccess();
-  assert.equal(h.saved.length, 1);
-  assert.equal(h.queued.length, 0);
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.queued.length, 1);
   assert.equal(h.app.els.sumupConfirmTitle.textContent, "Paiement confirmé");
   assert.match(h.app.els.sumupConfirmText.textContent, /confirmé manuellement/);
   assert.ok(!h.app.els.sumupConfirmText.textContent.includes("vérifié par SumUp"));
@@ -491,38 +492,43 @@ test("MISMATCH API : la confirmation manuelle est interdite", async () => {
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
 });
 
-test("Concurrence : manuel engagé puis réponse API => un seul ticket", async () => {
-  let finishVerification, finishSave;
+test("Concurrence : confirmation manuelle puis réponse API tardive => un seul ticket", async () => {
+  let finishVerification;
   const verifyPromise = new Promise(resolve => { finishVerification = resolve; });
-  const manualSavePromise = new Promise(resolve => { finishSave = resolve; });
-  const h = createSumupFrontendHarness({}, true, { fastQueue: true, verifyPromise, manualSavePromise });
+  const h = createSumupFrontendHarness({}, true, { verifyPromise });
   const verification = h.app.verifyPendingSumup();
-  const manual = h.app.confirmSumupSuccess();
-  assert.equal(h.saved.length, 1);
+  await h.app.confirmSumupSuccess();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.saved.length, 0, "Aucun POST réseau dans le parcours manuel");
   finishVerification({ verified: true, status: "SUCCESSFUL", foreign_tx_id: ID, transaction_code: "TEST123" });
   await verification;
-  assert.equal(h.queued.length, 0);
-  finishSave({ ok: true });
-  await manual;
-  assert.equal(h.saved.length, 1);
+  assert.equal(h.queued.length, 1);
   assert.equal(h.app.state.ticketItems.length, 0);
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
 });
 
-test("Concurrence : erreur manuelle puis réponse tardive de l'API => pas de doublon", async () => {
-  let finishVerification, failSave;
-  const verifyPromise = new Promise(resolve => { finishVerification = resolve; });
-  const manualSavePromise = new Promise((resolve, reject) => { failSave = reject; });
-  const h = createSumupFrontendHarness({}, true, { fastQueue: true, verifyPromise, manualSavePromise });
-  const verification = h.app.verifyPendingSumup();
-  const manual = h.app.confirmSumupSuccess();
-  failSave(new Error("Écriture incertaine"));
-  await manual;
-  finishVerification({ verified: true, status: "SUCCESSFUL", foreign_tx_id: ID });
-  await verification;
-  assert.equal(h.saved.length, 1);
+test("Erreur de stockage local : conserver le ticket SumUp pour réessayer", async () => {
+  const h = createSumupFrontendHarness({}, true, { queueError: "Quota de stockage atteint" });
+  await h.app.confirmSumupSuccess();
   assert.equal(h.queued.length, 0);
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.app.state.saveInProgress, false);
   assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), true);
+  assert.equal(h.app.els.sumupConfirmOverlay.hidden, false);
+  assert.match(h.app.els.sumupConfirmText.textContent, /Quota de stockage atteint/);
+  assert.equal(h.app.state.ticketItems.length, 1);
+});
+
+test("Confirmation manuelle : même bundle transaction/lignes/stock, sans POST", async () => {
+  const h = createSumupFrontendHarness({ verified: false, status: "NOT_FOUND" });
+  await h.app.confirmSumupSuccess();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.queued[0].transaction.paiement_statut, "PAYE");
+  assert.equal(h.queued[0].transaction.lignes.length, 1);
+  assert.equal(h.queued[0].mouvements_stock.length, 1);
+  assert.equal(h.queued[0].mouvements_stock[0].transaction_id, ID);
+  assert.equal(h.app.state.lastQueuedSumupId, ID);
 });
 
 test("Performance SumUp : NOT_FOUND déclenche un nouveau contrôle en 600 ms", async () => {
@@ -561,4 +567,108 @@ test("Performance SumUp : première lecture NOT_FOUND, seconde SUCCESSFUL = une 
   assert.equal(h.queued.length, 1);
   assert.equal(h.saved.length, 0);
   assert.equal(h.app.els.sumupConfirmTitle.textContent, "PAIEMENT VALIDÉ !");
+});
+
+ 
+// Tester le VRAI module LugdurumAPI, pas uniquement son mock frontend.
+// Pas de fetch vers Apps Script : toute la sauvegarde doit être synchrone
+// et immédiatement lisible depuis la file locale.
+function createApiQueueHarness({ storageFails = false } = {}) {
+  const apiSource = fs.readFileSync(
+    path.join(__dirname, "..", "docs", "lugdurum-api.js"), "utf8"
+  );
+  const memory = new Map();
+  const storage = { failing: storageFails };
+  const localStorage = {
+    getItem(key) { return memory.get(key) || null; },
+    setItem(key, value) {
+      if (storage.failing && key === "lugdurum_pending_writes") {
+        throw new Error("QuotaExceededError");
+      }
+      memory.set(key, String(value));
+    },
+    removeItem(key) { memory.delete(key); }
+  };
+  let networkCalls = 0;
+  const window = {
+    addEventListener() {}, dispatchEvent() {},
+    setTimeout() { return 1; }, clearTimeout() {}
+  };
+  const document = {
+    body: null,
+    addEventListener() {}
+  };
+  class CustomEvent {
+    constructor(type, options = {}) { this.type = type; this.detail = options.detail; }
+  }
+  vm.runInNewContext(apiSource, {
+    window, document, localStorage, navigator: { onLine: false },
+    CustomEvent, console, URL, URLSearchParams,
+    fetch() { networkCalls++; throw new Error("Réseau interdit dans la caisse"); }
+  }, { filename: "lugdurum-api.js" });
+
+  const makeBundle = (id = ID, amount = 34.90) => ({
+    transaction: {
+      transaction_id: id,
+      sumup_foreign_tx_id: id,
+      paiement_provider: "SUMUP",
+      mode_paiement: "CB",
+      statut: "validee",
+      paiement_statut: "PAYE",
+      total_encaisse_ttc: amount,
+      lignes: [{ ligne_id: id + "_L01", sku_id: "P_50", quantite: 1 }]
+    },
+    mouvements_stock: [{
+      mouvement_stock_id: "MVT_" + id + "_L01_VENTE",
+      transaction_id: id, quantite: 1
+    }]
+  });
+  return { api: window.LugdurumAPI, makeBundle, memory, storage,
+    get networkCalls() { return networkCalls; } };
+}
+
+test("LugdurumAPI : paiement SumUp stocké durablement sans POST, avec lignes et sortie", () => {
+  const h = createApiQueueHarness();
+  const result = h.api.queueSumupSale(h.makeBundle());
+  assert.equal(result.queued, true);
+  assert.equal(h.networkCalls, 0);
+  const writes = JSON.parse(h.memory.get("lugdurum_pending_writes"));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].action, "saveVenteRapideBundle");
+  assert.equal(writes[0].payload.transaction.lignes.length, 1);
+  assert.equal(writes[0].payload.mouvements_stock.length, 1);
+  assert.equal(writes[0].payload.transaction.transaction_id, ID);
+});
+
+test("LugdurumAPI : retry du même paiement n'ajoute pas une seconde vente", () => {
+  const h = createApiQueueHarness();
+  h.api.queueSumupSale(h.makeBundle());
+  const replay = h.api.queueSumupSale(h.makeBundle());
+  assert.equal(replay.already_queued, true);
+  assert.equal(h.api.getPendingWritesCount(), 1);
+  assert.equal(h.networkCalls, 0);
+  const otherId = "LUG_1791450000001_123E4567-E89B-12D3-A456-426614174001";
+  h.api.queueSumupSale(h.makeBundle(otherId));
+  assert.equal(h.api.getPendingWritesCount(), 2, "Autre vendeur : ticket distinct");
+  assert.throws(() => h.api.queueSumupSale(h.makeBundle(ID, 99)), /incohérent/);
+});
+
+test("LugdurumAPI : refus si paiement non validé ou référence différente", () => {
+  const h = createApiQueueHarness();
+  const pending = h.makeBundle();
+  pending.transaction.paiement_statut = "SUMUP_LANCE";
+  assert.throws(() => h.api.queueSumupSale(pending), /invalide/);
+  const mismatch = h.makeBundle();
+  mismatch.transaction.sumup_foreign_tx_id = "INCONNUE";
+  assert.throws(() => h.api.queueSumupSale(mismatch), /invalide/);
+  assert.equal(h.api.getPendingWritesCount(), 0);
+});
+
+test("LugdurumAPI : localStorage plein ne fait jamais semblant de sauvegarder", () => {
+  const h = createApiQueueHarness({ storageFails: true });
+  assert.throws(() => h.api.queueSumupSale(h.makeBundle()), /Sauvegarde locale impossible/);
+  assert.equal(h.api.getPendingWritesCount(), 0);
+  h.storage.failing = false;
+  assert.equal(h.api.queueSumupSale(h.makeBundle()).queued, true);
+  assert.equal(h.api.getPendingWritesCount(), 1);
 });
