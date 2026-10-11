@@ -452,6 +452,15 @@
   const getActiveOffers = () =>
     state.offresVente.filter((offer) => offer.actif);
 
+  // Tarifs terrain des 20 cL à l'unité. Indépendants des prix de coffrets
+  // et des offres Google Sheets ; restent modifiables dans chaque ticket.
+  const UNIT_20_PRICE_TTC = 15;
+  const UNIT_20_PE_PRICE_TTC = 16;
+  const getUnit20PriceTtc = (product) =>
+    normalizeKey(product?.parfum_code) === "pe"
+      ? UNIT_20_PE_PRICE_TTC
+      : UNIT_20_PRICE_TTC;
+
   const findBottleOfferForProduct = (product) => {
     const productGamme = normalizeKey(product.gamme_tarif);
 
@@ -1322,13 +1331,17 @@
           : getTicketBottleQty(product.sku_id);
 
         const offer = isBoxMode() ? null : findBottleOfferForProduct(product);
-        const missingPrice = !isBoxMode() && !offer && product.format_cl !== 20;
+        const unit20Price = !isBoxMode() && product.format_cl === 20
+          ? getUnit20PriceTtc(product) : null;
+        const missingPrice = !isBoxMode() && !offer && unit20Price === null;
 
         const meta = isBoxMode()
           ? `${product.format_cl} cL · dans le coffret`
-          : !offer
-            ? `${product.format_cl} cL · prix à saisir au ticket`
-            : `${product.format_cl} cL · ${formatCurrency(offer.prix_ttc)}`;
+          : unit20Price !== null
+            ? `${product.format_cl} cL · ${formatCurrency(unit20Price)}`
+            : !offer
+              ? `${product.format_cl} cL · prix à saisir au ticket`
+              : `${product.format_cl} cL · ${formatCurrency(offer.prix_ttc)}`;
 
         const buttonClasses = [
           "productBtn",
@@ -1517,9 +1530,15 @@
             'aria-label="Prix unitaire 20 cL ' + escapeAttr(item.parfum_code) +
             '" data-item-price="' + escapeAttr(item.item_id) +
             '" value="' + (missingUnitPrice ? "" : formatAmountInput(item.prix_unitaire_ttc)) +
-            '" placeholder="À définir" /></label>' +
-            '<button class="giftBottleBtn" type="button" data-gift-item="' +
-            escapeAttr(item.item_id) + '">Offrir 1</button></div>';
+            '" placeholder="À définir" /></label></div>';
+        const giftButton = item.format_cl === 20 && !item.offert ? `
+          <button class="giftBottleBtn" type="button"
+            data-gift-item="${escapeAttr(item.item_id)}"
+            aria-label="Offrir une bouteille ${escapeAttr(item.parfum_code)} 20 cL">
+            <span class="giftBottleIcon" aria-hidden="true">🎁</span>
+            <span>Offrir 1 bouteille</span>
+          </button>
+        ` : "";
 
         return `
           <article class="ticketLine">
@@ -1535,6 +1554,7 @@
               <button type="button" data-action="increment" data-item="${escapeAttr(item.item_id)}">+</button>
             </div>
 
+            ${giftButton}
             <strong class="lineTotal">${formatCurrency(lineTotal)}</strong>
           </article>
         `;
@@ -1612,6 +1632,7 @@
 
   const addBottle = (product) => {
     const offer = findBottleOfferForProduct(product);
+    const unit20Price = product.format_cl === 20 ? getUnit20PriceTtc(product) : null;
 
     if (!offer && product.format_cl !== 20) {
       setStatus(
@@ -1631,8 +1652,8 @@
       state.ticketItems.push({
         item_id: `ITEM_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "bottle",
-        offre_id: offer?.offre_id || "",
-        offre_libelle: offer?.libelle || "20 cL à l’unité",
+        offre_id: unit20Price !== null ? "" : offer?.offre_id || "",
+        offre_libelle: unit20Price !== null ? "20 cL à l’unité" : offer?.libelle || "",
         sku_id: product.sku_id,
         parfum_code: product.parfum_code,
         parfum_nom: product.parfum_nom,
@@ -1640,8 +1661,8 @@
         gamme_tarif: product.gamme_tarif,
         quantite: 1,
         offert: false,
-        prix_unitaire_ttc: offer ? offer.prix_ttc : null,
-        prix_unitaire_ht: offer ? offer.prix_ht : null,
+        prix_unitaire_ttc: unit20Price !== null ? unit20Price : offer?.prix_ttc ?? null,
+        prix_unitaire_ht: unit20Price !== null ? unit20Price : offer?.prix_ht ?? null,
         taux_tva: offer?.taux_tva || 0,
         regime_tva: offer?.regime_tva || "franchise_base"
       });

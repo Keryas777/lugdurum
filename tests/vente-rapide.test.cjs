@@ -20,7 +20,8 @@ const code = source.replace(
   "  window.__test = { state, els, saveTicket, confirmSumupSuccess, " +
     "confirmSumupFailure, reopenSumup, buildTransaction, " +
     "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale, " +
-    "selectSharedSalesContext, loadContext, computeEventSummaryFromTransactions };\n})();"
+    "selectSharedSalesContext, loadContext, computeEventSummaryFromTransactions, " +
+    "addBottle, offerOneBottle, renderProducts };\n})();"
 );
 
 function element() {
@@ -97,6 +98,74 @@ function setup(saveBundle, pendingCount = () => 0) {
   api.els.amountPaidInput.value = "25";
   return { api, calls, store, timers, window };
 }
+
+
+const bottle20 = (code, order = 1) => ({
+  sku_id: code + "_20",
+  parfum_code: code,
+  parfum_nom: code === "PE" ? "Pain d'Épices" : "Vanille Tonka",
+  format_cl: 20,
+  gamme_tarif: "classique",
+  vendable_seul: false,
+  composable_coffret: true,
+  actif: true,
+  visible_webapp: true,
+  ordre_affichage: order
+});
+
+test("20 cL à l'unité : 15 € par défaut, sauf PE à 16 €, sans offres Sheets", () => {
+  const app = setup(async () => ({ ok: true }));
+  app.api.state.selectedMode = "BOTTLE_20";
+  app.api.state.ticketItems = [];
+  app.api.state.catalogue = [bottle20("VT"), bottle20("PE", 2)];
+  app.api.state.offresVente = [];
+  app.api.state.dataLoaded = true;
+
+  app.api.renderProducts();
+  const tiles = app.api.els.productGrid.innerHTML;
+  assert.match(tiles, /20 cL · 15\s*€/u);
+  assert.match(tiles, /20 cL · 16\s*€/u);
+  assert.doesNotMatch(tiles, /prix à saisir au ticket/);
+
+  app.api.addBottle(app.api.state.catalogue[0]);
+  app.api.addBottle(app.api.state.catalogue[1]);
+  assert.deepEqual(app.api.state.ticketItems.map((item) => item.prix_unitaire_ttc), [15, 16]);
+  assert.deepEqual(app.api.state.ticketItems.map((item) => item.prix_unitaire_ht), [15, 16]);
+});
+
+test("20 cL offert parmi les achats : 0 € uniquement pour la ligne cadeau et sortie stock", async () => {
+  const app = setup(async () => ({ ok: true }));
+  const vt = bottle20("VT");
+  const pe = bottle20("PE", 2);
+  app.api.state.selectedMode = "BOTTLE_20";
+  app.api.state.catalogue = [vt, pe];
+  app.api.state.offresVente = [];
+  app.api.state.ticketItems = [];
+  app.api.addBottle(vt);
+  app.api.addBottle(pe);
+  app.api.addBottle(pe);
+
+  const peLine = app.api.state.ticketItems.find((item) => item.parfum_code === "PE");
+  app.api.offerOneBottle(peLine.item_id);
+  const peItems = app.api.state.ticketItems.filter((item) => item.parfum_code === "PE");
+  assert.equal(peItems.length, 2);
+  assert.equal(peItems.find((item) => item.offert).prix_unitaire_ttc, 0);
+  assert.equal(peItems.find((item) => !item.offert).prix_unitaire_ttc, 16);
+  assert.match(app.api.els.ticketLines.innerHTML, /Offrir 1 bouteille/);
+
+  app.api.els.amountPaidInput.value = "";
+  await app.api.saveTicket();
+  assert.equal(app.calls.length, 1);
+  const saved = app.calls[0];
+  assert.equal(saved.transaction.total_encaisse_ttc, 31);
+  assert.equal(saved.transaction.lignes.length, 3);
+  assert.ok(saved.transaction.lignes.some((line) =>
+    line.parfum_code === "PE" && line.prix_unitaire_ttc === 0 && /Cadeau/.test(line.note)
+  ));
+  assert.equal(saved.mouvements_stock.length, 3);
+  assert.equal(saved.mouvements_stock.reduce((sum, m) => sum + m.quantite, 0), 3);
+  assert.equal(saved.mouvements_stock.filter((m) => m.sku_id === "PE_20").length, 2);
+});
 
 test("contexte local non vérifié : impossible d'encaisser même avec des IDs en cache", async () => {
   const app = setup(async () => ({ ok: true }));
