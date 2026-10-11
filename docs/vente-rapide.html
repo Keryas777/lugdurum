@@ -19,11 +19,11 @@
     <title>Lugdurum — Journée de vente</title>
 
     <link rel="stylesheet" href="./style.css?v=25" />
-    <link rel="stylesheet" href="./vente-rapide.css?v=27" />
+    <link rel="stylesheet" href="./vente-rapide.css?v=28" />
 
     <script src="./lugdurum-api.js?v=20" defer></script>
     <script src="./lugdurum-users.js?v=1" defer></script>
-    <script src="./vente-rapide.js?v=39" defer></script>
+    <script src="./vente-rapide.js?v=40" defer></script>
     <script src="./pwa.js?v=6" defer></script>
   </head>
 
@@ -79,13 +79,15 @@
               <small id="stockPreparedBreakdown">Données mission partagée</small>
             </div>
           </div>
-          <div class="eventRevenueStrip" id="eventRevenueStrip" hidden aria-live="polite">
-            <div>
-              <span>CA événement cumulé</span>
-              <small id="eventRevenueStatus">Toutes les journées de cette foire</small>
-            </div>
+          <button class="eventRevenueStrip" id="eventRevenueStrip" type="button" hidden
+            aria-haspopup="dialog" aria-controls="dayDetailsOverlay"
+            aria-label="Voir le détail des ventes de l'événement">
+            <span class="eventRevenueText">
+              <span>CA événement cumulé →</span>
+              <small id="eventRevenueStatus">Toutes les journées de cet événement</small>
+            </span>
             <strong id="eventRevenueTotal">—</strong>
-          </div>
+          </button>
           <button class="saleRefreshBtn" type="button" id="refreshDaySummaryBtn">
             Actualiser CA et stock
           </button>
@@ -258,7 +260,7 @@
       <section class="saleDetailsDialog">
         <header class="saleDetailsHeader">
           <div>
-            <p class="sectionKicker">CA jour partagé</p>
+            <p class="sectionKicker" id="dayDetailsKicker">CA jour partagé</p>
             <h2 id="dayDetailsTitle">Ventes de la journée</h2>
           </div>
           <button class="saleDetailsClose" id="closeDayDetailsBtn" type="button">Fermer</button>
