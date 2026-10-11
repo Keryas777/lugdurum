@@ -897,7 +897,7 @@
     let detailedTickets = 0;
     let bottleCount = 0;
 
-    const ticketsHtml = transactions.map((tx, index) => {
+    const ticketRows = transactions.map((tx, index) => {
       const seller = getSellerLabel(tx);
       const sellerKey = String(tx.user_id || "").trim() || "inconnu";
       const prior = sellers.get(sellerKey) || { label: seller, count: 0, amount: 0 };
@@ -936,7 +936,8 @@
           ? '<ul class="saleDetailsTicketProducts">' + lines + '</ul>'
           : '<p class="saleDetailsProductHint">Détail des produits indisponible pour ce ticket.</p>') +
         '</li>';
-    }).join("");
+    });
+    const ticketsHtml = ticketRows.join("");
 
     const paymentsHtml = [...payments.values()].map((p) =>
       '<div class="saleDetailsPaymentStat"><small>' + escapeHtml(p.label) +
@@ -981,6 +982,28 @@
         '<ul class="saleDetailsList saleDetailsProductList">' + rows + '</ul></div>';
     }).join("");
 
+    // Tickets de l'événement regroupés par J1/J2/J3, avec sous-total par jour.
+    const eventDaysHtml = isEvent ? getEventDays().map((day) => {
+      const id = String(day.journee_id || "").trim();
+      const rows = [];
+      let revenue = 0;
+      transactions.forEach((tx, index) => {
+        if (String(tx?.journee_id || "").trim() !== id) return;
+        rows.push(ticketRows[index]);
+        revenue += getTransactionAmount(tx);
+      });
+      const date = day.date ? formatDisplayDateLong(day.date) : "";
+      return '<div class="saleDetailsDayGroup">' +
+        '<div class="saleDetailsDayHeader"><div><h4>' +
+        escapeHtml(day.jour_label || "Journée") + '</h4>' +
+        (date ? '<small>' + escapeHtml(date) + '</small>' : '') + '</div>' +
+        '<div><strong>' + formatCurrency(revenue) + '</strong><small>' +
+        rows.length + ' ticket' + (rows.length > 1 ? 's' : '') + '</small></div></div>' +
+        (rows.length ? '<ol class="saleDetailsTickets">' + rows.join("") + '</ol>' :
+          '<p class="saleDetailsProductHint">Aucune vente validée sur cette journée.</p>') +
+        '</div>';
+    }).join("") : "";
+
     const status = state.daySummary;
     // Le message technique n'est utile que pendant une lecture ou en cas d'erreur.
     const notice = status.isLoading
@@ -1017,7 +1040,8 @@
           '<section class="saleDetailsSection"><h3>Par moyen de paiement</h3>' +
           '<div class="saleDetailsPaymentGrid">' + paymentsHtml + '</div></section>' +
           (noTickets
-            ? '<p class="saleDetailsNotice">Aucune vente validée pour cette journée.</p>'
+            ? '<p class="saleDetailsNotice">Aucune vente validée pour ' +
+              (isEvent ? 'cet événement' : 'cette journée') + '.</p>'
             : '<section class="saleDetailsSection"><h3>Par vendeur</h3><ul class="saleDetailsList">' +
               sellersHtml + '</ul></section>' +
               '<section class="saleDetailsSection"><h3>Produits vendus</h3>' +
@@ -1030,7 +1054,10 @@
                   ' : les quantités de produits peuvent être incomplètes.</p>'
                 : '') + '</section>' +
               '<section class="saleDetailsSection"><h3>Tickets (' + transactions.length +
-              ')</h3><ol class="saleDetailsTickets">' + ticketsHtml + '</ol></section>')
+              ')</h3>' + (isEvent
+                ? '<div class="saleDetailsDayGroups">' + eventDaysHtml + '</div>'
+                : '<ol class="saleDetailsTickets">' + ticketsHtml + '</ol>') +
+              '</section>')
         : '') + '</div>';
     content.scrollTop = previousScroll;
   };
