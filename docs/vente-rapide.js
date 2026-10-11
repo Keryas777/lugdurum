@@ -71,6 +71,11 @@
       kind: "bottle",
       format_cl: 50
     },
+    BOTTLE_20: {
+      label: "20 cL",
+      kind: "bottle",
+      format_cl: 20
+    },
     BOX_3_20: {
       label: "Coffret 3×20 cL",
       kind: "box",
@@ -516,6 +521,10 @@
   const getTicketTotal = () =>
     state.ticketItems.reduce((sum, item) => sum + getItemTotal(item), 0);
 
+  const hasUnpricedBottle = () => state.ticketItems.some((item) =>
+    item.type === "bottle" && !Number.isFinite(item.prix_unitaire_ttc)
+  );
+
   const getTransactionId = (transaction) =>
     String(transaction?.transaction_id || transaction?.id || "").trim();
 
@@ -956,6 +965,7 @@
       .filter((product) => product.format_cl === mode.format_cl)
       .filter((product) => {
         if (isBoxMode()) return product.composable_coffret;
+        if (mode.format_cl === 20) return product.vendable_seul || product.composable_coffret;
         return product.vendable_seul;
       })
       .sort((a, b) => {
@@ -1250,12 +1260,12 @@
           : getTicketBottleQty(product.sku_id);
 
         const offer = isBoxMode() ? null : findBottleOfferForProduct(product);
-        const missingPrice = !isBoxMode() && !offer;
+        const missingPrice = !isBoxMode() && !offer && product.format_cl !== 20;
 
         const meta = isBoxMode()
           ? `${product.format_cl} cL · dans le coffret`
-          : missingPrice
-            ? `${product.format_cl} cL · prix à définir`
+          : !offer
+            ? `${product.format_cl} cL · prix à saisir au ticket`
             : `${product.format_cl} cL · ${formatCurrency(offer.prix_ttc)}`;
 
         const buttonClasses = [
@@ -1434,13 +1444,27 @@
           `;
         }
 
-        const lineTotal = item.quantite * item.prix_unitaire_ttc;
+
+        const missingUnitPrice = !Number.isFinite(item.prix_unitaire_ttc);
+        const lineTotal = missingUnitPrice ? 0 : item.quantite * item.prix_unitaire_ttc;
+        const priceControls = item.format_cl !== 20 ? "" : item.offert
+          ? '<div class="bottlePriceRow"><span class="bottleGiftMark">Cadeau · 0 €</span></div>'
+          : '<div class="bottlePriceRow">' +
+            '<label class="bottlePriceEditor">Prix unitaire (€)' +
+            '<input type="number" inputmode="decimal" min="0" step="0.01" ' +
+            'aria-label="Prix unitaire 20 cL ' + escapeAttr(item.parfum_code) +
+            '" data-item-price="' + escapeAttr(item.item_id) +
+            '" value="' + (missingUnitPrice ? "" : formatAmountInput(item.prix_unitaire_ttc)) +
+            '" placeholder="À définir" /></label>' +
+            '<button class="giftBottleBtn" type="button" data-gift-item="' +
+            escapeAttr(item.item_id) + '">Offrir 1</button></div>';
 
         return `
           <article class="ticketLine">
             <div>
               <strong>${escapeHtml(item.parfum_code)} ${escapeHtml(item.format_cl)} cL</strong>
-              <span>${escapeHtml(item.parfum_nom)} · ${formatCurrency(item.prix_unitaire_ttc)}</span>
+              <span>${escapeHtml(item.parfum_nom)} · ${item.offert ? "Offert" : missingUnitPrice ? "Prix à renseigner" : formatCurrency(item.prix_unitaire_ttc)}</span>
+              ${priceControls}
             </div>
 
             <div class="qtyControls" aria-label="Quantité ${escapeAttr(item.parfum_code)}">
@@ -1473,11 +1497,13 @@
     // Un ancien contexte local ne suffit pas pour encaisser pendant
     // la vérification en cours (notamment au passage J1 → J2).
     els.saveTicketBtn.disabled =
-      !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+      !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() ||
+      hasUnpricedBottle() || state.saveInProgress;
     if (els.externalCbBtn) {
       els.externalCbBtn.hidden = !isCb;
       els.externalCbBtn.disabled =
-        !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+        !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() ||
+        hasUnpricedBottle() || state.saveInProgress;
     }
     if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
     if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
@@ -1525,7 +1551,7 @@
   const addBottle = (product) => {
     const offer = findBottleOfferForProduct(product);
 
-    if (!offer) {
+    if (!offer && product.format_cl !== 20) {
       setStatus(
         `Aucune offre de vente trouvée pour ${product.parfum_code} ${product.format_cl} cL / gamme ${product.gamme_tarif || "non renseignée"}.`,
         "isError"
@@ -1534,7 +1560,7 @@
     }
 
     const existing = state.ticketItems.find(
-      (item) => item.type === "bottle" && item.sku_id === product.sku_id
+      (item) => item.type === "bottle" && item.sku_id === product.sku_id && !item.offert
     );
 
     if (existing) {
@@ -1543,18 +1569,19 @@
       state.ticketItems.push({
         item_id: `ITEM_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "bottle",
-        offre_id: offer.offre_id,
-        offre_libelle: offer.libelle,
+        offre_id: offer?.offre_id || "",
+        offre_libelle: offer?.libelle || "20 cL à l’unité",
         sku_id: product.sku_id,
         parfum_code: product.parfum_code,
         parfum_nom: product.parfum_nom,
         format_cl: product.format_cl,
         gamme_tarif: product.gamme_tarif,
         quantite: 1,
-        prix_unitaire_ttc: offer.prix_ttc,
-        prix_unitaire_ht: offer.prix_ht,
-        taux_tva: offer.taux_tva,
-        regime_tva: offer.regime_tva
+        offert: false,
+        prix_unitaire_ttc: offer ? offer.prix_ttc : null,
+        prix_unitaire_ht: offer ? offer.prix_ht : null,
+        taux_tva: offer?.taux_tva || 0,
+        regime_tva: offer?.regime_tva || "franchise_base"
       });
     }
   };
@@ -1605,6 +1632,57 @@
 
     state.draftPack = [];
     setStatus(`${pricing.offer.libelle || mode.label} ajouté au ticket.`, "isSuccess");
+    renderAll();
+  };
+
+
+  const setBottleUnitPrice = (itemId, inputValue) => {
+    const item = state.ticketItems.find((line) => line.item_id === itemId);
+    if (!item || item.type !== "bottle" || item.format_cl !== 20 || item.offert) return;
+
+    const rawPrice = String(inputValue ?? "").trim().replace(",", ".");
+    const price = rawPrice ? Number(rawPrice) : null;
+    if (price !== null && (!Number.isFinite(price) || price < 0)) {
+      setStatus("Saisis un prix unitaire valide (0 € ou plus).", "isError");
+      return;
+    }
+
+    item.prix_unitaire_ttc = price === null ? null : formatAmount(price);
+    item.prix_unitaire_ht = item.prix_unitaire_ttc;
+    item.offre_id = "";
+    item.offre_libelle = "20 cL à l’unité · prix saisi";
+    item.offert = item.prix_unitaire_ttc === 0;
+    setStatus(item.offert ? "Bouteille 20 cL à 0 € : cadeau enregistré." : "");
+    renderAll();
+  };
+
+  const offerOneBottle = (itemId) => {
+    const item = state.ticketItems.find((line) => line.item_id === itemId);
+    if (!item || item.type !== "bottle" || item.format_cl !== 20 || item.offert) return;
+
+    const gift = state.ticketItems.find((line) =>
+      line.type === "bottle" && line.sku_id === item.sku_id && line.offert
+    );
+    if (gift) {
+      gift.quantite += 1;
+    } else {
+      state.ticketItems.push({
+        ...item,
+        item_id: "GIFT_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+        quantite: 1,
+        offert: true,
+        offre_id: "",
+        offre_libelle: "Bouteille 20 cL offerte",
+        prix_unitaire_ttc: 0,
+        prix_unitaire_ht: 0
+      });
+    }
+
+    item.quantite -= 1;
+    if (item.quantite <= 0) {
+      state.ticketItems = state.ticketItems.filter((line) => line.item_id !== itemId);
+    }
+    setStatus("Une bouteille de 20 cL offerte : stock décompté, montant 0 €.", "isSuccess");
     renderAll();
   };
 
@@ -1705,7 +1783,9 @@
           cout_unitaire: 0,
           marge_brute_ligne: 0,
           source: getSourceForPayment({ provider }),
-          note: item.offre_id ? `Offre : ${item.offre_id}` : "",
+          note: item.offert
+            ? "Cadeau · bouteille 20 cL offerte (0 €)"
+            : item.offre_id ? `Offre : ${item.offre_id}` : "Bouteille à l’unité · prix saisi",
           created_at: createdAt,
           updated_at: createdAt
         });
@@ -1874,9 +1954,10 @@
   } = {}) => {
     const transactionId = foreignTxId || createLocalTransactionId();
     const totalCatalogue = getTicketTotal();
-    const amountInput = Number(String(els.amountPaidInput.value).replace(",", "."));
+    const amountText = String(els.amountPaidInput.value).trim().replace(",", ".");
+    const amountInput = amountText === "" ? NaN : Number(amountText);
     const totalEncaisse =
-      Number.isFinite(amountInput) && amountInput > 0 ? amountInput : totalCatalogue;
+      Number.isFinite(amountInput) && amountInput >= 0 ? amountInput : totalCatalogue;
 
     const createdAt = new Date().toISOString();
 
@@ -2333,9 +2414,17 @@
       setStatus("Ajoute au moins un produit avant d’encaisser.", "isError");
       return;
     }
+    if (hasUnpricedBottle()) {
+      setStatus("Renseigne le prix de chaque 20 cL ou utilise « Offrir 1 ».", "isError");
+      return;
+    }
 
     if (state.draftPack.length > 0) {
       setStatus("Tu as un coffret en cours non ajouté au ticket.", "isError");
+      return;
+    }
+    if (getTicketTotal() <= 0) {
+      setStatus("Ticket à 0 € : pas de paiement SumUp à lancer. Sélectionne Espèces pour enregistrer le cadeau.", "isError");
       return;
     }
 
@@ -2538,6 +2627,10 @@
       setStatus("Ajoute au moins un produit avant d'enregistrer cette CB.", "isError");
       return;
     }
+    if (hasUnpricedBottle()) {
+      setStatus("Renseigne le prix de chaque 20 cL ou offre la bouteille avant de continuer.", "isError");
+      return;
+    }
     if (state.draftPack.length) {
       setStatus("Termine ou vide le coffret en cours avant d'enregistrer cette CB.", "isError");
       return;
@@ -2551,8 +2644,9 @@
     }
     if (!els.externalCbOverlay) return;
 
-    const inputAmount = Number(String(els.amountPaidInput.value).replace(",", "."));
-    const total = Number.isFinite(inputAmount) && inputAmount > 0
+    const amountText = String(els.amountPaidInput.value).trim().replace(",", ".");
+    const inputAmount = amountText === "" ? NaN : Number(amountText);
+    const total = Number.isFinite(inputAmount) && inputAmount >= 0
       ? inputAmount : getTicketTotal();
     els.externalCbAmount.textContent = formatCurrency(total);
     els.externalCbStatus.textContent = "";
@@ -2596,6 +2690,11 @@
     }
     if (!hasSelectedSeller()) {
       showMissingSellerStatus();
+      return false;
+    }
+
+    if (hasUnpricedBottle()) {
+      setStatus("Renseigne le prix de chaque 20 cL ou utilise « Offrir 1 ».", "isError");
       return false;
     }
 
@@ -3199,6 +3298,12 @@
       return;
     }
 
+    const giftButton = event.target.closest("[data-gift-item]");
+    if (giftButton) {
+      offerOneBottle(giftButton.dataset.giftItem);
+      return;
+    }
+
     const qtyButton = event.target.closest("[data-action][data-item]");
     if (qtyButton) {
       const delta = qtyButton.dataset.action === "increment" ? 1 : -1;
@@ -3214,6 +3319,12 @@
       setStatus("");
       renderAll();
     }
+  });
+
+  document.addEventListener("change", (event) => {
+    const priceInput = event.target.closest("[data-item-price]");
+    if (!priceInput || state.saveInProgress) return;
+    setBottleUnitPrice(priceInput.dataset.itemPrice, priceInput.value);
   });
 
   els.amountPaidInput.addEventListener("input", () => {
