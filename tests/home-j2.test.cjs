@@ -99,3 +99,36 @@ test("accueil : même sélection J2 que le serveur et sans CA J1 réutilisé", (
   assert.equal(choose(stockMission, [day1, day2]).journee_id, day2.journee_id);
   assert.match(frontend, /const summaryReliable = runtimeDayMatches \|\| state\.apiMode !== "getHomeData";/);
 });
+
+test("accueil : CA événement J1 + J2, sans mélanger une autre foire sur le même stock", () => {
+  const server = read("apps-script/04_home_data.js");
+  const buildResume = new Function(server + "\nreturn buildResumeHomeData_;")();
+  const other = {
+    journee_id: "J_AUTRE_J1", mission_id: "EVT_AUTRE",
+    stock_mission_id: "MST_GERZAT", statut: "en_cours"
+  };
+  const tx = (id, day, amount, statut = "validee") => ({
+    transaction_id: id, journee_id: day,
+    total_encaisse_ttc: amount, statut
+  });
+  const j2 = tx("TX2", day2.journee_id, 29.99);
+  const data = {
+    journees: [day1, day2, other],
+    transactions: [
+      tx("TX1", day1.journee_id, 75.01),
+      j2,
+      tx("TX3", other.journee_id, 100),
+      tx("TX4", day2.journee_id, 50, "annule")
+    ]
+  };
+  const totals = buildResume({ event, journee: day2, transactions: [j2] }, data);
+  assert.equal(totals.ca_jour_ttc, 29.99);
+  assert.equal(totals.ca_evenement_ttc, 105);
+  assert.equal(totals.nb_transactions_evenement, 2);
+});
+
+test("accueil : le cumul est affiché séparément du CA du jour", () => {
+  const html = read("docs/index.html");
+  assert.match(html, /id="homeEventRevenueTotal"/);
+  assert.match(frontend, /ca_evenement_ttc: eventRevenue/);
+});
