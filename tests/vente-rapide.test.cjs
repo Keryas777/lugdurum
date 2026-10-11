@@ -21,7 +21,7 @@ const code = source.replace(
     "confirmSumupFailure, reopenSumup, buildTransaction, " +
     "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale, " +
     "selectSharedSalesContext, loadContext, computeEventSummaryFromTransactions, " +
-    "addBottle, offerOneBottle, renderProducts };\n})();""
+    "addBottle, offerOneBottle, renderProducts };\n})();"
 );
 
 function element() {
