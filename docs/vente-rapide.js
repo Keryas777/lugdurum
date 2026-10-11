@@ -2423,6 +2423,10 @@
       setStatus("Tu as un coffret en cours non ajouté au ticket.", "isError");
       return;
     }
+    if (getTicketTotal() <= 0) {
+      setStatus("Ticket à 0 € : pas de paiement SumUp à lancer. Sélectionne Espèces pour enregistrer le cadeau.", "isError");
+      return;
+    }
 
     const affiliateKey = getSumupAffiliateKey();
 
