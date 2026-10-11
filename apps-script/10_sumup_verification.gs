@@ -121,3 +121,91 @@ function lugdurumGetSumupPaymentStatus(params) {
   return respond_({ verified: false, status: paymentStatus || simpleStatus || "PENDING",
     retryable: paymentStatus === "PENDING" || simpleStatus === "PENDING" });
 }
+
+
+/**
+ * Diagnostic privé, exécutable UNIQUEMENT depuis l'éditeur Apps Script.
+ * Aucun routeur HTTP n'appelle cette fonction.
+ *
+ * Propriétés temporaires à renseigner dans le projet Apps Script :
+ * - SUMUP_DIAG_TRANSACTION_CODE : code natif de la transaction SumUp
+ * - SUMUP_DIAG_FOREIGN_ID : référence externe Lugdurum attendue
+ * - SUMUP_DIAG_EXPECTED_AMOUNT : montant attendu en EUR (ex. 33.99)
+ *
+ * Cette fonction ne crée, ne modifie et ne rembourse aucune transaction.
+ * Son journal contient uniquement des statuts/booleens : ni clé, ni
+ * référence réelle, ni coordonnées bancaires, ni réponse brute SumUp.
+ */
+function lugdurumDiagnoseSumupCorrelation() {
+  const props = PropertiesService.getScriptProperties();
+  const transactionCode = String(props.getProperty("SUMUP_DIAG_TRANSACTION_CODE") || "").trim().toUpperCase();
+  const foreignId = String(props.getProperty("SUMUP_DIAG_FOREIGN_ID") || "").trim();
+  const expectedAmount = Number(String(props.getProperty("SUMUP_DIAG_EXPECTED_AMOUNT") || "").replace(",", "."));
+  const apiKey = props.getProperty("SUMUP_API_KEY");
+  const merchant = String(props.getProperty("SUMUP_MERCHANT_CODE") || "").trim();
+
+  // Empêche d'interroger un compte ou une référence non validée par l'opérateur.
+  if (!/^[A-Z0-9]{8,20}$/.test(transactionCode) ||
+      !/^LUG_[0-9]{13}_[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(foreignId) ||
+      !Number.isFinite(expectedAmount) || expectedAmount <= 0 ||
+      Math.abs(expectedAmount * 100 - Math.round(expectedAmount * 100)) > 0.00001 ||
+      !apiKey || !/^[a-zA-Z0-9_-]{4,32}$/.test(merchant)) {
+    throw new Error("Paramètres du diagnostic SumUp manquants ou invalides.");
+  }
+
+  const baseUrl = "https://api.sumup.com/v2.1/merchants/" +
+    encodeURIComponent(merchant) + "/transactions?";
+  const query = (parameter, value) => {
+    let response;
+    try {
+      response = UrlFetchApp.fetch(baseUrl + parameter + "=" + encodeURIComponent(value), {
+        method: "get",
+        timeoutSeconds: 6,
+        followRedirects: false,
+        muteHttpExceptions: true,
+        headers: { Authorization: "Bearer " + apiKey, Accept: "application/json" }
+      });
+    } catch (_error) {
+      return { http_status: 0, found: false, error: "NETWORK_ERROR" };
+    }
+
+    const status = response.getResponseCode();
+    if (status !== 200) {
+      return { http_status: status, found: false };
+    }
+
+    let tx;
+    try {
+      tx = JSON.parse(response.getContentText());
+    } catch (_error) {
+      return { http_status: 200, found: false, error: "INVALID_JSON" };
+    }
+    if (!tx || typeof tx !== "object" || Array.isArray(tx)) {
+      return { http_status: 200, found: false, error: "INVALID_RESPONSE" };
+    }
+
+    return {
+      http_status: 200,
+      found: true,
+      code_matches: String(tx.transaction_code || "").toUpperCase() === transactionCode,
+      foreign_id_present: Boolean(String(tx.foreign_transaction_id || "").trim()),
+      foreign_id_matches: String(tx.foreign_transaction_id || "") === foreignId,
+      merchant_matches: String(tx.merchant_code || "") === merchant,
+      amount_matches: Number.isFinite(Number(tx.amount)) &&
+        Math.round(Number(tx.amount) * 100) === Math.round(expectedAmount * 100),
+      currency_matches: String(tx.currency || "").toUpperCase() === "EUR",
+      status: String(tx.status || "").toUpperCase(),
+      simple_status: String(tx.simple_status || "").toUpperCase()
+    };
+  };
+
+  const byCode = query("transaction_code", transactionCode);
+  const byForeignId = query("foreign_transaction_id", foreignId);
+  const result = {
+    diagnostic: "SUMUP_CORRELATION_READ_ONLY",
+    by_transaction_code: byCode,
+    by_foreign_transaction_id: byForeignId
+  };
+  Logger.log(JSON.stringify(result));
+  return result;
+}
