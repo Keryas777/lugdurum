@@ -107,6 +107,7 @@ test("lecture stock non bloquante et source versionnée pour Safari/PWA", () => 
   const page = fs.readFileSync(path.join(__dirname, "..", "docs", "vente-rapide.html"), "utf8");
   assert.match(page, /id="stockTravelTitle">Stock disponible/);
   assert.match(page, /vente-rapide\.js\?v=\d+/);
+  assert.match(page, /vente-rapide\.css\?v=\d+/);
   assert.match(sale, /void loadStockSummaryFromNetwork\(\);/);
   assert.match(sale, /api\(\)\.getCoreData\(\["mouvementsStock"\]/);
   assert.match(sale, /stock_mission_id: missionId, journee_id: dayId/);

@@ -604,6 +604,59 @@
   font-weight: 950;
 }
 
+.bottlePriceRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.bottlePriceEditor {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.bottlePriceEditor input {
+  width: 112px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fffaf1;
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.giftBottleBtn {
+  touch-action: manipulation;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(63, 111, 79, 0.4);
+  border-radius: 12px;
+  background: rgba(63, 111, 79, 0.09);
+  color: #3f6f4f;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.bottleGiftMark {
+  display: inline-block !important;
+  padding: 6px 10px;
+  border: 1px solid rgba(63, 111, 79, 0.3);
+  border-radius: 999px;
+  background: rgba(63, 111, 79, 0.08);
+  color: #3f6f4f !important;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
 .removeLineBtn {
   min-height: 38px;
   border: 1px solid var(--border);
@@ -902,7 +955,7 @@
 
 @media (min-width: 620px) {
   .saleModeTabs {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .productGrid {
