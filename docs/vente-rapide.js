@@ -880,12 +880,19 @@
     if (!els.dayDetailsContent || els.dayDetailsOverlay?.hidden) return;
     const content = els.dayDetailsContent;
     const previousScroll = content.scrollTop;
+    const isEvent = state.detailsScope === "event";
     const journeeId = String(state.journeeActive?.journee_id || "").trim();
-    const transactions = state.dayTransactions
-      .filter((tx) => String(tx?.journee_id || "").trim() === journeeId)
+    const transactions = (isEvent ? state.eventTransactions : state.dayTransactions)
+      .filter((tx) => isEvent || String(tx?.journee_id || "").trim() === journeeId)
+      .slice()
       .sort((a, b) => String(b.date_heure || b.created_at || "")
         .localeCompare(String(a.date_heure || a.created_at || "")));
     const sellers = new Map();
+    const payments = new Map([
+      ["ESP", { label: "Espèces", count: 0, amount: 0 }],
+      ["CB", { label: "CB", count: 0, amount: 0 }],
+      ["CHQ", { label: "Chèque", count: 0, amount: 0 }]
+    ]);
     const products = new Map();
     let detailedTickets = 0;
     let bottleCount = 0;
@@ -897,6 +904,12 @@
       prior.count += 1;
       prior.amount += getTransactionAmount(tx);
       sellers.set(sellerKey, prior);
+
+      const key = String(tx.mode_paiement || "").trim().toUpperCase() || "NON_RENSEIGNE";
+      const payment = payments.get(key) || { label: getPaymentLabel(tx), count: 0, amount: 0 };
+      payment.count += 1;
+      payment.amount += getTransactionAmount(tx);
+      payments.set(key, payment);
 
       const items = readTicketItems(tx);
       if (items.length) detailedTickets += 1;
@@ -924,6 +937,11 @@
           : '<p class="saleDetailsProductHint">Détail des produits indisponible pour ce ticket.</p>') +
         '</li>';
     }).join("");
+
+    const paymentsHtml = [...payments.values()].map((p) =>
+      '<div class="saleDetailsPaymentStat"><small>' + escapeHtml(p.label) +
+      ' · ' + p.count + ' ticket' + (p.count > 1 ? 's' : '') +
+      '</small><strong>' + formatCurrency(p.amount) + '</strong></div>').join("");
 
     const sellersHtml = [...sellers.values()]
       .sort((a, b) => b.amount - a.amount)
@@ -974,24 +992,30 @@
     const noticeClass = status.lastError ? " isError" : "";
     const loaded = status.isLoaded;
     const noTickets = loaded && transactions.length === 0;
+    const detailRevenue = isEvent ? status.eventRevenue : status.revenue;
+    const eventName = String(state.journeeActive.label || "Événement")
+      .replace(/\s+[—-]\s*J\d+\s*$/i, "");
 
     content.innerHTML =
       '<div class="saleDetailsSections">' +
       '<div class="saleDetailsSubtitle">' +
       '<span class="saleDetailsSubtitleEvent">' +
-      escapeHtml(state.journeeActive.label || "Journée") + '</span>' +
-      (state.journeeActive.date_label
+      escapeHtml(isEvent ? eventName : (state.journeeActive.label || "Journée")) + '</span>' +
+      (!isEvent && state.journeeActive.date_label
         ? '<span class="saleDetailsSubtitleDate">' + escapeHtml(state.journeeActive.date_label) + '</span>'
         : '') + '</div>' +
       (notice ? '<p class="saleDetailsNotice' + noticeClass + '">' + escapeHtml(notice) + '</p>' : '') +
       (loaded
         ? '<div class="saleDetailsStatGrid">' +
-          '<div class="saleDetailsStat"><small>CA partagé</small><strong>' +
-          formatCurrency(status.revenue) + '</strong></div>' +
+          '<div class="saleDetailsStat"><small>' +
+          (isEvent ? 'CA événement' : 'CA partagé') + '</small><strong>' +
+          formatCurrency(detailRevenue) + '</strong></div>' +
           '<div class="saleDetailsStat"><small>Tickets</small><strong>' +
           transactions.length + '</strong></div>' +
           '<div class="saleDetailsStat"><small>Bouteilles détaillées</small><strong>' +
           bottleCount + '</strong></div></div>' +
+          '<section class="saleDetailsSection"><h3>Par moyen de paiement</h3>' +
+          '<div class="saleDetailsPaymentGrid">' + paymentsHtml + '</div></section>' +
           (noTickets
             ? '<p class="saleDetailsNotice">Aucune vente validée pour cette journée.</p>'
             : '<section class="saleDetailsSection"><h3>Par vendeur</h3><ul class="saleDetailsList">' +
