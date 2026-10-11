@@ -339,10 +339,18 @@ const gerzatSharedFixture = () => {
     { transaction_id: "TX_2", journee_id: "J_GERZAT",
       total_encaisse_ttc: 31.99, statut: "validee", paiement_statut: "PAYE" }
   ];
-  return { missionsStock, journees, transactions };
+  const mouvementsStock = [
+    { mouvement_stock_id: "PREP_GERZAT_50", stock_mission_id: "MST_GERZAT",
+      journee_id: "J_GERZAT", type_mouvement: "PREPARATION",
+      sku_id: "VT_50", format_cl: 50, quantite: 92, statut: "valide" },
+    { mouvement_stock_id: "PREP_GERZAT_20", stock_mission_id: "MST_GERZAT",
+      journee_id: "J_GERZAT", type_mouvement: "PREPARATION",
+      sku_id: "VT_20", format_cl: 20, quantite: 60, statut: "valide" }
+  ];
+  return { missionsStock, journees, transactions, mouvementsStock };
 };
 
-test("2 téléphones : sans contexte local, J1 + stock emporté + CA commun retrouvés", async () => {
+test("2 téléphones : J1, stock disponible depuis mouvements et CA commun retrouvés", async () => {
   const fixture = gerzatSharedFixture();
   const phones = [setup(async () => ({ ok: true })), setup(async () => ({ ok: true }))];
 
@@ -369,6 +377,7 @@ test("2 téléphones : sans contexte local, J1 + stock emporté + CA commun retr
     assert.equal(phone.api.state.sharedStock.total_bouteilles_preparees, 152);
     assert.equal(phone.api.els.stockPreparedTotal.textContent, "152");
     assert.equal(phone.api.els.stockPreparedBreakdown.textContent, "92 × 50 cL · 60 × 20 cL");
+    assert.equal(phone.api.state.stockSummary.source, "preparation");
     assert.equal(phone.api.state.daySummary.tickets, 2);
     assert.equal(phone.api.state.daySummary.revenue.toFixed(2), "77.98");
     assert.equal(phone.api.els.dayRevenueTotal.textContent.includes("77"), true);
@@ -397,7 +406,8 @@ test("CA retardé : J2 est utilisable sans attendre les statistiques", async () 
   assert.equal(phone.api.state.daySummary.isLoaded, false);
   assert.deepEqual(tablesRequested, [
     ["missionsStock", "journees"],
-    ["transactions"]
+    ["transactions"],
+    ["mouvementsStock"]
   ]);
 
   // Les tickets partagés arrivent plus tard, sans cacher le bon contexte.
