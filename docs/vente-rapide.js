@@ -1444,13 +1444,27 @@
           `;
         }
 
-        const lineTotal = item.quantite * item.prix_unitaire_ttc;
+
+        const missingUnitPrice = !Number.isFinite(item.prix_unitaire_ttc);
+        const lineTotal = missingUnitPrice ? 0 : item.quantite * item.prix_unitaire_ttc;
+        const priceControls = item.format_cl !== 20 ? "" : item.offert
+          ? '<div class="bottlePriceRow"><span class="bottleGiftMark">Cadeau · 0 €</span></div>'
+          : '<div class="bottlePriceRow">' +
+            '<label class="bottlePriceEditor">Prix unitaire (€)' +
+            '<input type="number" inputmode="decimal" min="0" step="0.01" ' +
+            'aria-label="Prix unitaire 20 cL ' + escapeAttr(item.parfum_code) +
+            '" data-item-price="' + escapeAttr(item.item_id) +
+            '" value="' + (missingUnitPrice ? "" : formatAmountInput(item.prix_unitaire_ttc)) +
+            '" placeholder="À définir" /></label>' +
+            '<button class="giftBottleBtn" type="button" data-gift-item="' +
+            escapeAttr(item.item_id) + '">Offrir 1</button></div>';
 
         return `
           <article class="ticketLine">
             <div>
               <strong>${escapeHtml(item.parfum_code)} ${escapeHtml(item.format_cl)} cL</strong>
-              <span>${escapeHtml(item.parfum_nom)} · ${formatCurrency(item.prix_unitaire_ttc)}</span>
+              <span>${escapeHtml(item.parfum_nom)} · ${item.offert ? "Offert" : missingUnitPrice ? "Prix à renseigner" : formatCurrency(item.prix_unitaire_ttc)}</span>
+              ${priceControls}
             </div>
 
             <div class="qtyControls" aria-label="Quantité ${escapeAttr(item.parfum_code)}">
@@ -1616,6 +1630,57 @@
 
     state.draftPack = [];
     setStatus(`${pricing.offer.libelle || mode.label} ajouté au ticket.`, "isSuccess");
+    renderAll();
+  };
+
+
+  const setBottleUnitPrice = (itemId, inputValue) => {
+    const item = state.ticketItems.find((line) => line.item_id === itemId);
+    if (!item || item.type !== "bottle" || item.format_cl !== 20 || item.offert) return;
+
+    const rawPrice = String(inputValue ?? "").trim().replace(",", ".");
+    const price = rawPrice ? Number(rawPrice) : null;
+    if (price !== null && (!Number.isFinite(price) || price < 0)) {
+      setStatus("Saisis un prix unitaire valide (0 € ou plus).", "isError");
+      return;
+    }
+
+    item.prix_unitaire_ttc = price === null ? null : formatAmount(price);
+    item.prix_unitaire_ht = item.prix_unitaire_ttc;
+    item.offre_id = "";
+    item.offre_libelle = "20 cL à l’unité · prix saisi";
+    item.offert = item.prix_unitaire_ttc === 0;
+    setStatus(item.offert ? "Bouteille 20 cL à 0 € : cadeau enregistré." : "");
+    renderAll();
+  };
+
+  const offerOneBottle = (itemId) => {
+    const item = state.ticketItems.find((line) => line.item_id === itemId);
+    if (!item || item.type !== "bottle" || item.format_cl !== 20 || item.offert) return;
+
+    const gift = state.ticketItems.find((line) =>
+      line.type === "bottle" && line.sku_id === item.sku_id && line.offert
+    );
+    if (gift) {
+      gift.quantite += 1;
+    } else {
+      state.ticketItems.push({
+        ...item,
+        item_id: "GIFT_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+        quantite: 1,
+        offert: true,
+        offre_id: "",
+        offre_libelle: "Bouteille 20 cL offerte",
+        prix_unitaire_ttc: 0,
+        prix_unitaire_ht: 0
+      });
+    }
+
+    item.quantite -= 1;
+    if (item.quantite <= 0) {
+      state.ticketItems = state.ticketItems.filter((line) => line.item_id !== itemId);
+    }
+    setStatus("Une bouteille de 20 cL offerte : stock décompté, montant 0 €.", "isSuccess");
     renderAll();
   };
 
@@ -3214,6 +3279,12 @@
       return;
     }
 
+    const giftButton = event.target.closest("[data-gift-item]");
+    if (giftButton) {
+      offerOneBottle(giftButton.dataset.giftItem);
+      return;
+    }
+
     const qtyButton = event.target.closest("[data-action][data-item]");
     if (qtyButton) {
       const delta = qtyButton.dataset.action === "increment" ? 1 : -1;
@@ -3229,6 +3300,12 @@
       setStatus("");
       renderAll();
     }
+  });
+
+  document.addEventListener("change", (event) => {
+    const priceInput = event.target.closest("[data-item-price]");
+    if (!priceInput || state.saveInProgress) return;
+    setBottleUnitPrice(priceInput.dataset.itemPrice, priceInput.value);
   });
 
   els.amountPaidInput.addEventListener("input", () => {
