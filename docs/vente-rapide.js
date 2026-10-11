@@ -105,6 +105,7 @@
     catalogueCache: "lugdurum_catalogue_cache",
     offresVenteCache: "lugdurum_offres_vente_cache",
     salesContextCache: "lugdurum_sale_context_cache_v1",
+    stockSummaryCache: "lugdurum_sales_stock_snapshot_v1",
     mouvementsStock: "lugdurum_mouvements_stock",
     sumupPending: "lugdurum_pending_sumup_ticket",
     sumupAffiliateKey: "lugdurum_sumup_affiliate_key"
@@ -133,6 +134,10 @@
     sumupManualBlocked: false,
     journeeActive: { ...EMPTY_JOURNEE_ACTIVE },
     sharedStock: null,
+    stockSummary: {
+      isLoading: false, isLoaded: false, total: 0, total50: 0, total20: 0,
+      source: "", fromCache: false, lastLoadedAt: "", lastError: ""
+    },
     dayTransactions: [],
     daySummary: {
       isLoading: false,
@@ -156,6 +161,7 @@
     dayDetailsContent: document.getElementById("dayDetailsContent"),
     closeDayDetailsBtn: document.getElementById("closeDayDetailsBtn"),
     stockPreparedTotal: document.getElementById("stockPreparedTotal"),
+    stockTravelTitle: document.getElementById("stockTravelTitle"),
     stockPreparedBreakdown: document.getElementById("stockPreparedBreakdown"),
     refreshDaySummaryBtn: document.getElementById("refreshDaySummaryBtn"),
     saleSummaryTitle: document.getElementById("saleSummaryTitle"),
@@ -700,6 +706,7 @@
     summaryRefreshTimer = window.setTimeout(() => {
       summaryRefreshTimer = null;
       loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+      loadStockSummaryFromNetwork().catch(console.warn);
     }, 700);
   };
 
@@ -992,26 +999,190 @@
       .reduce((sum, item) => sum + item.quantite, 0);
   };
 
+  // Calcul du stock DISPONIBLE de la journée, à partir des mouvements partagés
+  // Sheets. Un REPORT_CLOTURE est un snapshot d'entrée pour J2 : ne jamais
+  // additionner les PREPARATION de J1 à ce report (double comptabilisation).
+  const calculateAvailableStock = (movements, stockMissionId, journee, linkedDays = []) => {
+    const missionId = String(stockMissionId || "").trim();
+    const journeeId = String(journee?.journee_id || "").trim();
+    if (!missionId || !journeeId) return null;
+
+    const active = new Map();
+    (Array.isArray(movements) ? movements : []).forEach((movement, index) => {
+      if (!movement || typeof movement !== "object") return;
+      const linkedMission = String(
+        movement.stock_mission_id || movement.mission_stock_id || movement.mission_id || ""
+      ).trim();
+      if (linkedMission !== missionId) return;
+      const statut = normalizeKey(movement.statut || "");
+      if (["annule", "annulee", "refuse", "refusee", "brouillon"].includes(statut)) return;
+      const movementId = String(movement.mouvement_stock_id || "").trim() || `INDEX_${index}`;
+      active.set(movementId, movement);
+    });
+
+    const rows = [...active.values()];
+    const kind = (movement) => normalizeKey(movement.type_mouvement || movement.type || "");
+    const movementDay = (movement) => String(
+      movement.to_journee_id || movement.journee_destination_id || movement.journee_id || ""
+    ).trim();
+    const sameDay = (movement) => movementDay(movement) === journeeId;
+    const isReport = (movement) => ["report_cloture", "report", "stock_report"].includes(kind(movement));
+    const reports = rows.filter((movement) => sameDay(movement) && isReport(movement));
+
+    const days = (Array.isArray(linkedDays) ? linkedDays : [])
+      .filter((day) => String(day.stock_mission_id || day.mission_stock_id || "").trim() === missionId)
+      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+    const firstDayId = String(days[0]?.journee_id || "").trim();
+    const firstDay = firstDayId === journeeId;
+    const opening = reports.length > 0
+      ? reports
+      : firstDay
+        ? rows.filter((movement) =>
+            kind(movement) === "preparation" &&
+            (!String(movement.journee_id || "").trim() || sameDay(movement))
+          )
+        : [];
+
+    // Une J2 sans report ne peut pas reprendre automatiquement le stock initial.
+    if (!opening.length) return null;
+
+    const quantities = new Map();
+    const apply = (movement, sign) => {
+      const sku = String(movement.sku_id || "").trim();
+      if (!sku) return;
+      const quantity = toNumber(movement.quantite, 0);
+      const format = toNumber(movement.format_cl, sku.endsWith("_50") ? 50 : sku.endsWith("_20") ? 20 : 0);
+      const current = quantities.get(sku) || { format_cl: format, quantity: 0 };
+      current.quantity += sign * quantity;
+      if (!current.format_cl) current.format_cl = format;
+      quantities.set(sku, current);
+    };
+
+    opening.forEach((movement) => apply(movement, 1));
+
+    rows.filter((movement) => sameDay(movement) && !isReport(movement))
+      .forEach((movement) => {
+        const type = kind(movement);
+        // CLOTURE_COMPTE est un inventaire, jamais un mouvement de +/-.
+        if (type === "preparation" || type === "cloture_compte") return;
+        const sens = normalizeKey(movement.sens || "");
+        if (type === "vente" || sens === "sortie" ||
+            ["perte", "casse", "sortie_stock"].includes(type)) {
+          apply(movement, -1);
+        } else if (sens === "entree" ||
+            ["reappro", "reapprovisionnement", "entree_stock"].includes(type)) {
+          apply(movement, 1);
+        }
+      });
+
+    let total = 0, total50 = 0, total20 = 0;
+    for (const row of quantities.values()) {
+      total += row.quantity;
+      if (row.format_cl === 50) total50 += row.quantity;
+      if (row.format_cl === 20) total20 += row.quantity;
+    }
+    return {
+      total, total50, total20,
+      source: reports.length ? "report_cloture" : "preparation",
+      isLoaded: true
+    };
+  };
+
+  const showStockSummary = () => {
+    const summary = state.stockSummary;
+    if (els.stockTravelTitle) els.stockTravelTitle.textContent = "Stock disponible";
+    if (els.stockPreparedTotal) {
+      els.stockPreparedTotal.textContent = summary.isLoaded
+        ? String(summary.total)
+        : summary.isLoading ? "…" : "—";
+    }
+    if (els.stockPreparedBreakdown) {
+      els.stockPreparedBreakdown.textContent = summary.isLoaded
+        ? `${summary.total50} × 50 cL · ${summary.total20} × 20 cL${summary.fromCache ? " · cache local" : ""}`
+        : summary.isLoading
+          ? "Actualisation du stock commun…"
+          : summary.lastError || "Stock de la journée non confirmé";
+    }
+  };
+
   const renderContext = () => {
     if (els.saleSummaryTitle) {
       els.saleSummaryTitle.textContent = state.journeeActive.label || "Aucune journée active";
     }
-
     if (els.missionMeta) {
       els.missionMeta.textContent = state.journeeActive.date_label || "date non définie";
     }
-
     renderDaySummary();
-    const stock = state.sharedStock;
-    if (els.stockPreparedTotal) {
-      els.stockPreparedTotal.textContent = stock
-        ? String(toNumber(stock.total_bouteilles_preparees, 0))
-        : "—";
-    }
-    if (els.stockPreparedBreakdown) {
-      els.stockPreparedBreakdown.textContent = stock
-        ? `${toNumber(stock.total_50cl_prepare, 0)} × 50 cL · ${toNumber(stock.total_20cl_prepare, 0)} × 20 cL`
-        : "En attente du stock commun";
+    showStockSummary();
+  };
+
+  const restoreStockSummaryCache = () => {
+    const cached = readJson(STORAGE_KEYS.stockSummaryCache, null);
+    if (String(cached?.journee_id || "") !== String(state.journeeActive.journee_id || "") ||
+        String(cached?.stock_mission_id || "") !== String(state.journeeActive.mission_id || "") ||
+        !cached?.isLoaded) return false;
+    state.stockSummary = {
+      isLoading: false, isLoaded: true, total: toNumber(cached.total, 0),
+      total50: toNumber(cached.total50, 0), total20: toNumber(cached.total20, 0),
+      source: cached.source || "", fromCache: true,
+      lastLoadedAt: cached.lastLoadedAt || "", lastError: ""
+    };
+    return true;
+  };
+
+  let currentStockRequest = 0;
+  const loadStockSummaryFromNetwork = async () => {
+    if (!hasActiveSalesContext() || !hasApi()) return null;
+    const requestId = ++currentStockRequest;
+    const missionId = String(state.journeeActive.mission_id || "");
+    const dayId = String(state.journeeActive.journee_id || "");
+    state.stockSummary = { ...state.stockSummary, isLoading: true, lastError: "" };
+    showStockSummary();
+    try {
+      let movements;
+      if (typeof api().getCoreData === "function") {
+        const result = await api().getCoreData(["mouvementsStock"], { flushBeforeRead: false });
+        movements = getCoreArray(result, "mouvementsStock");
+      } else if (typeof api().getMouvementsStock === "function") {
+        movements = await api().getMouvementsStock();
+      } else {
+        throw new Error("Lecture des mouvements de stock indisponible");
+      }
+      if (requestId !== currentStockRequest ||
+          missionId !== state.journeeActive.mission_id ||
+          dayId !== state.journeeActive.journee_id) return null;
+
+      const journee = state.journees.find((day) => String(day.journee_id || "") === dayId);
+      const calculated = calculateAvailableStock(movements, missionId, journee, state.journees);
+      if (!calculated) {
+        state.stockSummary = {
+          ...state.stockSummary, isLoading: false, isLoaded: false,
+          lastError: "Report de stock non retrouvé pour cette journée"
+        };
+      } else {
+        const saved = {
+          ...calculated, lastLoadedAt: new Date().toISOString(),
+          stock_mission_id: missionId, journee_id: dayId
+        };
+        state.stockSummary = {
+          ...calculated, isLoading: false, fromCache: false,
+          lastLoadedAt: saved.lastLoadedAt, lastError: ""
+        };
+        writeJson(STORAGE_KEYS.stockSummaryCache, saved);
+      }
+      showStockSummary();
+      return state.stockSummary;
+    } catch (error) {
+      if (requestId !== currentStockRequest ||
+          missionId !== state.journeeActive.mission_id ||
+          dayId !== state.journeeActive.journee_id) return null;
+      state.stockSummary = {
+        ...state.stockSummary, isLoading: false,
+        fromCache: state.stockSummary.isLoaded,
+        lastError: error.message || "Stock indisponible hors ligne"
+      };
+      showStockSummary();
+      return null;
     }
   };
 
@@ -2653,6 +2824,7 @@
         label: [choice.mission.nom || "Mission", choice.journee.jour_label || ""].filter(Boolean).join(" — "),
         date_label: formatDisplayDateLong(choice.journee.date) + " · hors ligne"
       };
+      restoreStockSummaryCache();
       state.daySummary = {
         ...state.daySummary,
         isLoading: false,
@@ -2718,6 +2890,10 @@
       date_label: stockMissionId && journeeId ? "Contexte local, vérification réseau…" : "Recherche dans Google Sheets…"
     };
     state.daySummary = { ...state.daySummary, isLoading: true, lastError: "" };
+    state.stockSummary = {
+      isLoading: false, isLoaded: false, total: 0, total50: 0, total20: 0,
+      source: "", fromCache: false, lastLoadedAt: "", lastError: ""
+    };
     renderAll();
 
     // Sans réseau, ne pas attendre le timeout JSONP de 15 secondes pour
@@ -2803,9 +2979,10 @@
         updated_at: new Date().toISOString()
       });
 
-      // Le contexte est maintenant identifié ; le CA partagé peut arriver
-      // plus tard sans empêcher la préparation du ticket suivant.
+      // Les deux lectures restent indépendantes et ne bloquent jamais la caisse.
+      restoreStockSummaryCache();
       void loadDaySummaryFromNetwork({ silent: true });
+      void loadStockSummaryFromNetwork();
       setStatus("");
     } catch (error) {
       if (requestVersion !== contextRequestVersion) return;
@@ -3109,6 +3286,7 @@
     resumeSummaryTimer = window.setTimeout(() => {
       resumeSummaryTimer = null;
       loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+      loadStockSummaryFromNetwork().catch(console.warn);
     }, 350);
   };
 
@@ -3156,6 +3334,7 @@
         state.daySummary.isLoading || state.saveInProgress ||
         getPendingSumup() || !hasActiveSalesContext()) return;
     loadDaySummaryFromNetwork({ silent: true }).catch(console.warn);
+    loadStockSummaryFromNetwork().catch(console.warn);
   }, 90000);
 
   window.addEventListener("lugdurum:sync-status", (event) => {
