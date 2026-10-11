@@ -71,6 +71,11 @@
       kind: "bottle",
       format_cl: 50
     },
+    BOTTLE_20: {
+      label: "20 cL",
+      kind: "bottle",
+      format_cl: 20
+    },
     BOX_3_20: {
       label: "Coffret 3×20 cL",
       kind: "box",
@@ -516,6 +521,10 @@
   const getTicketTotal = () =>
     state.ticketItems.reduce((sum, item) => sum + getItemTotal(item), 0);
 
+  const hasUnpricedBottle = () => state.ticketItems.some((item) =>
+    item.type === "bottle" && !Number.isFinite(item.prix_unitaire_ttc)
+  );
+
   const getTransactionId = (transaction) =>
     String(transaction?.transaction_id || transaction?.id || "").trim();
 
@@ -956,6 +965,7 @@
       .filter((product) => product.format_cl === mode.format_cl)
       .filter((product) => {
         if (isBoxMode()) return product.composable_coffret;
+        if (mode.format_cl === 20) return product.vendable_seul || product.composable_coffret;
         return product.vendable_seul;
       })
       .sort((a, b) => {
@@ -1250,12 +1260,12 @@
           : getTicketBottleQty(product.sku_id);
 
         const offer = isBoxMode() ? null : findBottleOfferForProduct(product);
-        const missingPrice = !isBoxMode() && !offer;
+        const missingPrice = !isBoxMode() && !offer && product.format_cl !== 20;
 
         const meta = isBoxMode()
           ? `${product.format_cl} cL · dans le coffret`
-          : missingPrice
-            ? `${product.format_cl} cL · prix à définir`
+          : !offer
+            ? `${product.format_cl} cL · prix à saisir au ticket`
             : `${product.format_cl} cL · ${formatCurrency(offer.prix_ttc)}`;
 
         const buttonClasses = [
@@ -1525,7 +1535,7 @@
   const addBottle = (product) => {
     const offer = findBottleOfferForProduct(product);
 
-    if (!offer) {
+    if (!offer && product.format_cl !== 20) {
       setStatus(
         `Aucune offre de vente trouvée pour ${product.parfum_code} ${product.format_cl} cL / gamme ${product.gamme_tarif || "non renseignée"}.`,
         "isError"
@@ -1534,7 +1544,7 @@
     }
 
     const existing = state.ticketItems.find(
-      (item) => item.type === "bottle" && item.sku_id === product.sku_id
+      (item) => item.type === "bottle" && item.sku_id === product.sku_id && !item.offert
     );
 
     if (existing) {
@@ -1543,18 +1553,19 @@
       state.ticketItems.push({
         item_id: `ITEM_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "bottle",
-        offre_id: offer.offre_id,
-        offre_libelle: offer.libelle,
+        offre_id: offer?.offre_id || "",
+        offre_libelle: offer?.libelle || "20 cL à l’unité",
         sku_id: product.sku_id,
         parfum_code: product.parfum_code,
         parfum_nom: product.parfum_nom,
         format_cl: product.format_cl,
         gamme_tarif: product.gamme_tarif,
         quantite: 1,
-        prix_unitaire_ttc: offer.prix_ttc,
-        prix_unitaire_ht: offer.prix_ht,
-        taux_tva: offer.taux_tva,
-        regime_tva: offer.regime_tva
+        offert: false,
+        prix_unitaire_ttc: offer ? offer.prix_ttc : null,
+        prix_unitaire_ht: offer ? offer.prix_ht : null,
+        taux_tva: offer?.taux_tva || 0,
+        regime_tva: offer?.regime_tva || "franchise_base"
       });
     }
   };
@@ -1705,7 +1716,9 @@
           cout_unitaire: 0,
           marge_brute_ligne: 0,
           source: getSourceForPayment({ provider }),
-          note: item.offre_id ? `Offre : ${item.offre_id}` : "",
+          note: item.offert
+            ? "Cadeau · bouteille 20 cL offerte (0 €)"
+            : item.offre_id ? `Offre : ${item.offre_id}` : "Bouteille à l’unité · prix saisi",
           created_at: createdAt,
           updated_at: createdAt
         });
@@ -1874,9 +1887,10 @@
   } = {}) => {
     const transactionId = foreignTxId || createLocalTransactionId();
     const totalCatalogue = getTicketTotal();
-    const amountInput = Number(String(els.amountPaidInput.value).replace(",", "."));
+    const amountText = String(els.amountPaidInput.value).trim().replace(",", ".");
+    const amountInput = amountText === "" ? NaN : Number(amountText);
     const totalEncaisse =
-      Number.isFinite(amountInput) && amountInput > 0 ? amountInput : totalCatalogue;
+      Number.isFinite(amountInput) && amountInput >= 0 ? amountInput : totalCatalogue;
 
     const createdAt = new Date().toISOString();
 
@@ -2551,8 +2565,9 @@
     }
     if (!els.externalCbOverlay) return;
 
-    const inputAmount = Number(String(els.amountPaidInput.value).replace(",", "."));
-    const total = Number.isFinite(inputAmount) && inputAmount > 0
+    const amountText = String(els.amountPaidInput.value).trim().replace(",", ".");
+    const inputAmount = amountText === "" ? NaN : Number(amountText);
+    const total = Number.isFinite(inputAmount) && inputAmount >= 0
       ? inputAmount : getTicketTotal();
     els.externalCbAmount.textContent = formatCurrency(total);
     els.externalCbStatus.textContent = "";
