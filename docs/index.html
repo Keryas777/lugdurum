@@ -18,11 +18,11 @@
 
     <title>Lugdurum — Accueil</title>
 
-    <link rel="stylesheet" href="./style.css?v=24" />
+    <link rel="stylesheet" href="./style.css?v=25" />
 
     <script src="./lugdurum-api.js?v=20" defer></script>
     <script src="./lugdurum-users.js?v=1" defer></script>
-    <script src="./home.js?v=23" defer></script>
+    <script src="./home.js?v=24" defer></script>
     <script src="./pwa.js?v=15" defer></script>
   </head>
 
@@ -120,6 +120,14 @@
               <span id="statThreeLabel">—</span>
               <strong id="pendingSync">—</strong>
             </article>
+          </div>
+
+          <div class="homeEventRevenue" id="homeEventRevenue" hidden aria-live="polite">
+            <div>
+              <span>CA événement cumulé</span>
+              <small id="homeEventRevenueStatus">Toutes les journées de cet évènement</small>
+            </div>
+            <strong id="homeEventRevenueTotal">—</strong>
           </div>
 
           <div class="heroActions">
