@@ -144,6 +144,8 @@
       isLoaded: false,
       revenue: 0,
       tickets: 0,
+      eventRevenue: null,
+      eventTickets: null,
       lastLoadedAt: "",
       lastError: ""
     }
@@ -156,6 +158,9 @@
     ticketPanelTotal: document.getElementById("ticketPanelTotal"),
     dayRevenueTotal: document.getElementById("dayRevenueTotal"),
     dayTicketCount: document.getElementById("dayTicketCount"),
+    eventRevenueStrip: document.getElementById("eventRevenueStrip"),
+    eventRevenueTotal: document.getElementById("eventRevenueTotal"),
+    eventRevenueStatus: document.getElementById("eventRevenueStatus"),
     openDayDetailsBtn: document.getElementById("openDayDetailsBtn"),
     dayDetailsOverlay: document.getElementById("dayDetailsOverlay"),
     dayDetailsContent: document.getElementById("dayDetailsContent"),
@@ -577,8 +582,41 @@
     };
   };
 
+  // CA de l'évènement : regroupement par journees_vente.mission_id.
+  // transaction.mission_id / journee.stock_mission_id désignent la mission de stock.
+  const computeEventSummaryFromTransactions = (transactions = []) => {
+    const currentDayId = String(state.journeeActive?.journee_id || "").trim();
+    const currentDay = state.journees.find(
+      (day) => String(day.journee_id || "").trim() === currentDayId
+    );
+    const eventId = String(currentDay?.mission_id || "").trim();
+    if (!eventId) return { revenue: null, tickets: null };
+
+    const eventDayIds = new Set(
+      state.journees
+        .filter((day) => String(day.mission_id || "").trim() === eventId &&
+          !normalizeKey(day.statut).includes("annule"))
+        .map((day) => String(day.journee_id || "").trim())
+        .filter(Boolean)
+    );
+    const uniqueTransactions = new Map();
+    transactions
+      .filter((tx) => eventDayIds.has(String(tx?.journee_id || "").trim()))
+      .filter((tx) => !isInvalidTransactionForDaySummary(tx))
+      .forEach((tx, index) => {
+        uniqueTransactions.set(getTransactionId(tx) || `TX_INDEX_${index}`, tx);
+      });
+
+    const valid = [...uniqueTransactions.values()];
+    return {
+      revenue: valid.reduce((sum, tx) => sum + getTransactionAmount(tx), 0),
+      tickets: valid.length
+    };
+  };
+
   const setDaySummaryFromTransactions = (transactions = []) => {
     const summary = computeDaySummaryFromTransactions(transactions);
+    const eventSummary = computeEventSummaryFromTransactions(transactions);
     // Exactement les mêmes tickets que le CA : jamais de cache local ou de doublons.
     state.dayTransactions = summary.transactions;
 
@@ -587,6 +625,8 @@
       isLoaded: true,
       revenue: summary.revenue,
       tickets: summary.tickets,
+      eventRevenue: eventSummary.revenue,
+      eventTickets: eventSummary.tickets,
       lastLoadedAt: new Date().toISOString(),
       lastError: ""
     };
@@ -597,6 +637,28 @@
   };
 
   const renderDaySummary = () => {
+    if (els.eventRevenueStrip) {
+      els.eventRevenueStrip.hidden = !hasActiveSalesContext();
+    }
+    if (els.eventRevenueTotal) {
+      const summary = state.daySummary;
+      els.eventRevenueTotal.textContent = !hasActiveSalesContext()
+        ? "—"
+        : summary.isLoading && !summary.isLoaded
+          ? "…"
+          : summary.isLoaded && summary.eventRevenue != null
+            ? formatCurrency(summary.eventRevenue)
+            : "—";
+      if (els.eventRevenueStatus) {
+        els.eventRevenueStatus.textContent = summary.lastError
+          ? "Réseau indisponible · total non actualisé"
+          : summary.isLoading && !summary.isLoaded
+            ? "Lecture du cumul partagé…"
+            : summary.eventRevenue == null
+              ? "Cumul indisponible sans lien d'évènement"
+              : `${summary.eventTickets} ticket${summary.eventTickets > 1 ? "s" : ""} sur toutes les journées`;
+      }
+    }
     // Rien à calculer ni à dessiner tant que la fenêtre est fermée.
     if (els.dayDetailsOverlay && !els.dayDetailsOverlay.hidden) renderDayDetails();
     if (!els.dayRevenueTotal || !els.dayTicketCount) return;
@@ -2889,7 +2951,10 @@
       label: stockMissionId && journeeId ? "Journée active" : "Recherche de la journée partagée…",
       date_label: stockMissionId && journeeId ? "Contexte local, vérification réseau…" : "Recherche dans Google Sheets…"
     };
-    state.daySummary = { ...state.daySummary, isLoading: true, lastError: "" };
+    state.daySummary = {
+      ...state.daySummary, isLoading: true, isLoaded: false,
+      revenue: 0, tickets: 0, eventRevenue: null, eventTickets: null, lastError: ""
+    };
     state.stockSummary = {
       isLoading: false, isLoaded: false, total: 0, total50: 0, total20: 0,
       source: "", fromCache: false, lastLoadedAt: "", lastError: ""
@@ -2944,7 +3009,8 @@
         state.dayTransactions = [];
         state.daySummary = {
           ...state.daySummary, isLoading: false, isLoaded: false,
-          revenue: 0, tickets: 0, lastError: "Aucune journée partagée unique pour aujourd'hui."
+          revenue: 0, tickets: 0, eventRevenue: null, eventTickets: null,
+          lastError: "Aucune journée partagée unique pour aujourd'hui."
         };
         setStatus(
           "Plusieurs journées possibles ou aucune journée aujourd'hui. Choisis l'événement sur l'accueil.",
