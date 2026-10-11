@@ -161,3 +161,58 @@ est une opération distincte de l'enregistrement initial de la vente dans Lugdur
 
 L'API SumUp est en lecture seule ; cette intégration n'initie jamais de
 remboursement. Les identifiants privés restent dans les propriétés Apps Script.
+
+
+## Diagnostic privé par code de transaction (incident SumUp NOT_FOUND)
+
+Quand une CB apparaît réussie dans SumUp mais que la vérification par
+`foreign_transaction_id` répond `NOT_FOUND`, comparer **deux recherches
+indépendantes** dans l'API SumUp :
+
+1. `GET /v2.1/merchants/{merchant_code}/transactions?transaction_code=...`
+2. `GET /v2.1/merchants/{merchant_code}/transactions?foreign_transaction_id=...`
+
+La fonction `lugdurumDiagnoseSumupCorrelation` dans
+`apps-script/10_sumup_verification.gs` est destinée **uniquement à
+l'exécution manuelle dans l'éditeur Apps Script**. Elle n'est jamais appelée
+par le routeur HTTP et n'écrit ni paiement, ni stock, ni Google Sheets.
+
+Dans les *Propriétés du script* de Google Apps Script, renseigner
+temporairement :
+
+- `SUMUP_DIAG_TRANSACTION_CODE` : code SumUp natif (commence par T)
+- `SUMUP_DIAG_FOREIGN_ID` : référence LUG_ complète du même ticket
+- `SUMUP_DIAG_EXPECTED_AMOUNT` : montant en euros (avec point décimal)
+
+Conserver les propriétés déjà présentes `SUMUP_API_KEY` et
+`SUMUP_MERCHANT_CODE`. Ne pas les copier ailleurs et ne jamais
+les publier. Après le **déploiement manuel explicite du code** via
+le workflow GitHub « Deploiement Apps Script - manuel », sélectionner et
+exécuter `lugdurumDiagnoseSumupCorrelation` dans l'éditeur Apps Script.
+Lire le journal d'exécution.
+
+Interprétation :
+
+- `by_transaction_code.found=true`, `foreign_id_present=false` :
+  la transaction existe, mais SumUp ne retourne aucune référence externe.
+- `by_transaction_code.foreign_id_matches=false` : la référence liée
+  à cette transaction diffère de celle attendue.
+- `by_transaction_code.foreign_id_matches=true` et
+  `by_foreign_transaction_id.http_status=404` : même association,
+  mais la recherche par référence n'aboutit pas ; analyser le délai
+  d'indexation ou signaler l'incohérence à SumUp.
+- Si les deux recherches aboutissent maintenant, le `NOT_FOUND`
+  initial pouvait être transitoire (sans preuve sur sa durée).
+
+Le journal ne contient que des booléens, les codes HTTP, et les
+statuts de paiement. Il ne contient ni la clé, ni le code marchand,
+ni le code de transaction, ni l'identifiant LUG_, ni aucune donnée
+de carte. Supprimer ensuite les trois propriétés temporaires.
+
+**Sécurité :** ne jamais ajouter de route HTTP/JSONP publique pour
+rechercher librement une transaction par son code SumUp ; ce code
+est moins imprévisible que la référence UUID du ticket.
+
+**Aucune validation automatique du ticket n'est autorisée par ce
+diagnostic.** La caisse reste régie par la concordance sécurisée déjà
+implémentée et la confirmation manuelle de secours.
