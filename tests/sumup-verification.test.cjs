@@ -711,3 +711,101 @@ test("iOS: manual SumUp confirmation also survives backup cache failure", async 
   assert.equal(h.app.state.ticketItems.length, 0);
   assert.equal(h.app.state.saveInProgress, false);
 });
+
+
+// Diagnostic privé SumUp : ne jamais le rendre accessible via GET/JSONP.
+function runPrivateSumupDiagnostic({ withoutForeign = false, missingConfig = false, notFoundByForeign = false } = {}) {
+  const requests = [];
+  const logged = [];
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "apps-script", "10_sumup_verification.gs"), "utf8"
+  );
+  const fakeCode = "TABCDE12345";
+  const fakeProps = {
+    SUMUP_DIAG_TRANSACTION_CODE: fakeCode,
+    SUMUP_DIAG_FOREIGN_ID: ID,
+    SUMUP_DIAG_EXPECTED_AMOUNT: "33.99",
+    SUMUP_API_KEY: "FAKE_TEST_KEY",
+    SUMUP_MERCHANT_CODE: "MH000001"
+  };
+  if (missingConfig) delete fakeProps.SUMUP_DIAG_TRANSACTION_CODE;
+  const context = {
+    PropertiesService: {
+      getScriptProperties() {
+        return { getProperty(key) { return fakeProps[key] || ""; } };
+      }
+    },
+    Logger: { log(line) { logged.push(line); } },
+    UrlFetchApp: {
+      fetch(url, options) {
+        requests.push({ url, options });
+        const isForeignLookup = url.includes("foreign_transaction_id=");
+        const statusCode = isForeignLookup && notFoundByForeign ? 404 : 200;
+        return {
+          getResponseCode() { return statusCode; },
+          getContentText() {
+            return JSON.stringify({
+              transaction_code: fakeCode,
+              foreign_transaction_id: withoutForeign ? "" : ID,
+              merchant_code: "MH000001",
+              amount: 33.99,
+              currency: "EUR",
+              status: "SUCCESSFUL",
+              simple_status: "SUCCESSFUL",
+              card: { last_4_digits: "9999" }
+            });
+          }
+        };
+      }
+    }
+  };
+  vm.runInNewContext(source, context, { filename: "10_sumup_verification.gs" });
+  const run = () => context.lugdurumDiagnoseSumupCorrelation();
+  return { run, requests, logged, fakeCode };
+}
+
+test("diagnostic prive SumUp : deux lectures seulement, sans secrets ni carte dans les journaux", () => {
+  const h = runPrivateSumupDiagnostic();
+  const result = h.run();
+  assert.equal(h.requests.length, 2);
+  assert.match(h.requests[0].url, /transaction_code=TABCDE12345/);
+  assert.match(h.requests[1].url, /foreign_transaction_id=LUG_/);
+  assert.equal(result.by_transaction_code.found, true);
+  assert.equal(result.by_transaction_code.foreign_id_matches, true);
+  assert.equal(result.by_foreign_transaction_id.found, true);
+  assert.equal(result.by_foreign_transaction_id.code_matches, true);
+  assert.equal(result.by_transaction_code.amount_matches, true);
+  assert.equal(result.by_transaction_code.merchant_matches, true);
+  assert.equal(result.by_transaction_code.currency_matches, true);
+  assert.equal(result.by_transaction_code.status, "SUCCESSFUL");
+  assert.ok(h.requests.every(r => r.options.method === "get"));
+  assert.ok(h.requests.every(r => r.options.timeoutSeconds === 6));
+  const log = JSON.stringify(h.logged);
+  assert.ok(!log.includes("FAKE_TEST_KEY"));
+  assert.ok(!log.includes("MH000001"));
+  assert.ok(!log.includes("9999"));
+  assert.ok(!log.includes(ID));
+  assert.ok(!log.includes(h.fakeCode));
+});
+
+test("diagnostic prive SumUp : distinguer paiement retrouve sans reference externe", () => {
+  const h = runPrivateSumupDiagnostic({ withoutForeign: true, notFoundByForeign: true });
+  const result = h.run();
+  assert.equal(result.by_transaction_code.found, true);
+  assert.equal(result.by_transaction_code.foreign_id_present, false);
+  assert.equal(result.by_transaction_code.foreign_id_matches, false);
+  assert.equal(result.by_foreign_transaction_id.http_status, 404);
+});
+
+test("diagnostic prive SumUp : aucune requete avec configuration absente", () => {
+  const h = runPrivateSumupDiagnostic({ missingConfig: true });
+  assert.throws(() => h.run(), /Paramètres du diagnostic SumUp/);
+  assert.equal(h.requests.length, 0);
+});
+
+test("diagnostic SumUp : aucune route HTTP publique ajoutée pour le code natif", () => {
+  const router = fs.readFileSync(
+    path.join(__dirname, "..", "apps-script", "01_http_router.js"), "utf8"
+  );
+  assert.ok(!router.includes("lugdurumDiagnoseSumupCorrelation"));
+});
