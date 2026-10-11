@@ -1497,11 +1497,13 @@
     // Un ancien contexte local ne suffit pas pour encaisser pendant
     // la vérification en cours (notamment au passage J1 → J2).
     els.saveTicketBtn.disabled =
-      !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+      !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() ||
+      hasUnpricedBottle() || state.saveInProgress;
     if (els.externalCbBtn) {
       els.externalCbBtn.hidden = !isCb;
       els.externalCbBtn.disabled =
-        !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() || state.saveInProgress;
+        !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() ||
+        hasUnpricedBottle() || state.saveInProgress;
     }
     if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
     if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
@@ -2412,6 +2414,10 @@
       setStatus("Ajoute au moins un produit avant d’encaisser.", "isError");
       return;
     }
+    if (hasUnpricedBottle()) {
+      setStatus("Renseigne le prix de chaque 20 cL ou utilise « Offrir 1 ».", "isError");
+      return;
+    }
 
     if (state.draftPack.length > 0) {
       setStatus("Tu as un coffret en cours non ajouté au ticket.", "isError");
@@ -2617,6 +2623,10 @@
       setStatus("Ajoute au moins un produit avant d'enregistrer cette CB.", "isError");
       return;
     }
+    if (hasUnpricedBottle()) {
+      setStatus("Renseigne le prix de chaque 20 cL ou offre la bouteille avant de continuer.", "isError");
+      return;
+    }
     if (state.draftPack.length) {
       setStatus("Termine ou vide le coffret en cours avant d'enregistrer cette CB.", "isError");
       return;
@@ -2676,6 +2686,11 @@
     }
     if (!hasSelectedSeller()) {
       showMissingSellerStatus();
+      return false;
+    }
+
+    if (hasUnpricedBottle()) {
+      setStatus("Renseigne le prix de chaque 20 cL ou utilise « Offrir 1 ».", "isError");
       return false;
     }
 
