@@ -633,17 +633,49 @@
   font-weight: 850;
 }
 
+/* Action réelle, distincte des badges d'information et du prix. */
 .giftBottleBtn {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
   touch-action: manipulation;
-  min-height: 40px;
-  padding: 0 12px;
-  border: 1px solid rgba(63, 111, 79, 0.4);
-  border-radius: 12px;
-  background: rgba(63, 111, 79, 0.09);
-  color: #3f6f4f;
+  cursor: pointer;
+  min-height: 54px;
+  padding: 10px 16px;
+  border: 1px solid #315b3c;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #497b54, #315b3c);
+  color: #fffaf1;
+  box-shadow: 0 8px 16px rgba(63, 111, 79, 0.2);
   font: inherit;
-  font-size: 0.85rem;
-  font-weight: 900;
+  font-size: 0.98rem;
+  font-weight: 950;
+  text-align: center;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.giftBottleBtn span {
+  color: inherit;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.giftBottleBtn .giftBottleIcon {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.giftBottleBtn:active {
+  transform: translateY(1px);
+  box-shadow: 0 3px 8px rgba(63, 111, 79, 0.18);
+}
+
+.giftBottleBtn:focus-visible {
+  outline: 3px solid var(--rum);
+  outline-offset: 3px;
 }
 
 .bottleGiftMark {
