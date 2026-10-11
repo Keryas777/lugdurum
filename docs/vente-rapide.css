@@ -122,6 +122,44 @@
   overflow-wrap: anywhere;
 }
 
+.eventRevenueStrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(138, 90, 43, 0.24);
+  border-radius: var(--radius-md);
+  background: linear-gradient(120deg, rgba(168, 143, 104, 0.19), rgba(255, 250, 241, 0.75));
+}
+
+.eventRevenueStrip[hidden] { display: none; }
+
+.eventRevenueStrip span,
+.eventRevenueStrip small { display: block; }
+
+.eventRevenueStrip span {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.eventRevenueStrip small {
+  margin-top: 3px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.eventRevenueStrip strong {
+  color: var(--rum);
+  font-size: clamp(1.3rem, 5.5vw, 2rem);
+  white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .eventRevenueStrip { flex-wrap: wrap; }
+}
+
 .saleRefreshBtn {
   justify-self: stretch;
   width: 100%;

@@ -2305,6 +2305,28 @@
     const summaryReliable = runtimeDayMatches || state.apiMode !== "getHomeData";
     const dayTransactions = getDayTransactions(journee?.journee_id || "", data.transactions);
     const revenue = getRevenueForTransactions(dayTransactions);
+    // Source de vérité : mission_id de la journée = ID de l'évènement.
+    // Ne pas regrouper par stock_mission_id : un stock peut couvrir plusieurs foires.
+    const eventId = String(journee?.mission_id || (selectedEvent && getEventId(selectedEvent)) || "").trim();
+    const eventDayIds = new Set(
+      data.journees
+        .filter((day) => String(day.mission_id || "").trim() === eventId && !isCancelledStatus(day))
+        .map((day) => getDayId(day))
+        .filter(Boolean)
+    );
+    const eventTransactions = eventId
+      ? data.transactions.filter((tx) =>
+          eventDayIds.has(String(tx.journee_id || "").trim()) && isValidStatus(tx))
+      : [];
+    const serverEventRevenue = state.runtime.resume?.ca_evenement_ttc;
+    const serverEventRevenueAvailable = serverEventRevenue !== null &&
+      serverEventRevenue !== undefined && serverEventRevenue !== "" &&
+      Number.isFinite(Number(serverEventRevenue));
+    // getHomeData ne renvoie volontairement que les tickets du jour :
+    // pour le cumul, seule la nouvelle propriété serveur est complète.
+    const eventRevenue = state.apiMode === "getHomeData"
+      ? (runtimeDayMatches && serverEventRevenueAvailable ? Number(serverEventRevenue) : null)
+      : (eventId ? getRevenueForTransactions(eventTransactions) : null);
     const stockPrepared = isStockPrepared(mission, data.mouvementsStock);
 
     const legacyPendingTransactions = getUnmatchedLegacyPendingTransactions(data.transactions);
@@ -2315,6 +2337,7 @@
       toNumber(state.legacyPendingTransactionsCount, 0);
 
     const resume = {
+      ca_evenement_ttc: eventRevenue,
       ca_jour_ttc: runtimeDayMatches
         ? toNumber(state.runtime.resume?.ca_jour_ttc, revenue) : revenue,
       nb_transactions: runtimeDayMatches
@@ -2511,6 +2534,8 @@
   };
 
   const renderLoading = () => {
+    const eventRevenuePanel = qs("#homeEventRevenue");
+    if (eventRevenuePanel) eventRevenuePanel.hidden = true;
     setText("#currentUserName", CURRENT_USER.nom);
     setText("#activeStatusLabel", "Chargement");
     setText("#missionTitle", "Chargement…");
@@ -2652,6 +2677,21 @@
   };
 
   const renderStats = (homeState, uiState) => {
+    const eventRevenuePanel = qs("#homeEventRevenue");
+    const showEventRevenue = Boolean(homeState.journee && homeState.mission);
+    if (eventRevenuePanel) eventRevenuePanel.hidden = !showEventRevenue;
+    if (showEventRevenue) {
+      const amount = homeState.resume.ca_evenement_ttc;
+      setText("#homeEventRevenueTotal", amount == null
+        ? "—"
+        : new Intl.NumberFormat("fr-FR", {
+            style: "currency", currency: "EUR",
+            minimumFractionDigits: 2, maximumFractionDigits: 2
+          }).format(amount));
+      setText("#homeEventRevenueStatus", amount == null
+        ? "Cumul indisponible · actualisation nécessaire"
+        : "Toutes les journées de cet évènement");
+    }
     const syncCard = qs("#syncStatCard");
     syncCard?.classList.remove("hasWarning");
 
