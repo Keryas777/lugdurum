@@ -1870,8 +1870,13 @@
 
   const saveLocalTransactionBackup = (transaction) => {
     const backup = readCachedArray(STORAGE_KEYS.localTransactionsBackup);
-    backup.push(transaction);
-    writeJson(STORAGE_KEYS.localTransactionsBackup, backup);
+    const id = String(transaction?.transaction_id || "").trim();
+    // Une reprise après retour SumUp ne doit pas empiler des copies du ticket.
+    const next = backup.filter((item) =>
+      String(item?.transaction_id || "").trim() !== id
+    );
+    next.push(transaction);
+    writeJson(STORAGE_KEYS.localTransactionsBackup, next);
     writeJson(STORAGE_KEYS.lastTicket, transaction);
   };
 
@@ -2683,11 +2688,21 @@
       if (!result?.queued) {
         throw new Error("Le ticket n'a pas pu être conservé localement.");
       }
-      upsertLocalMouvementsStock(movements);
-      saveLocalTransactionBackup(transaction);
+      // Le bundle est maintenant sauvegardé durablement dans la file locale.
+      // Libérer le ticket AVANT les caches secondaires (éventuellement saturés).
+      clearPendingSumup();
       state.lastQueuedSumupId = transaction.transaction_id;
 
-      clearPendingSumup();
+      try {
+        upsertLocalMouvementsStock(movements);
+      } catch (cacheError) {
+        console.warn("Cache stock SumUp indisponible ; bundle conservé dans la file.", cacheError);
+      }
+      try {
+        saveLocalTransactionBackup(transaction);
+      } catch (cacheError) {
+        console.warn("Cache transaction SumUp indisponible ; bundle conservé dans la file.", cacheError);
+      }
 
       const pendingCount = hasApi() && typeof api().getPendingWritesCount === "function"
         ? api().getPendingWritesCount()

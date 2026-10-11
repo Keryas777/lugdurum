@@ -326,7 +326,7 @@ function createSumupFrontendHarness(verifiedResult, verificationEnabled = true, 
   };
   const localStorage = {
     getItem(key) { return memory.get(key) || null; },
-    setItem(key, value) { memory.set(key, String(value)); },
+    setItem(key, value) { if (key === options.cacheFailureKey) throw new Error("Cache failure"); memory.set(key, String(value)); },
     removeItem(key) { memory.delete(key); }
   };
   vm.runInNewContext(source, {
@@ -671,4 +671,43 @@ test("LugdurumAPI : localStorage plein ne fait jamais semblant de sauvegarder", 
   h.storage.failing = false;
   assert.equal(h.api.queueSumupSale(h.makeBundle()).queued, true);
   assert.equal(h.api.getPendingWritesCount(), 1);
+});
+
+test("iOS: stock cache failure cannot keep a verified paid ticket open", async () => {
+  const h = createSumupFrontendHarness(
+    { verified: true, status: "SUCCESSFUL", foreign_tx_id: ID },
+    true,
+    { cacheFailureKey: "lugdurum_mouvements_stock" }
+  );
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.app.state.saveInProgress, false);
+});
+
+test("iOS: transaction cache failure cannot keep a verified paid ticket open", async () => {
+  const h = createSumupFrontendHarness(
+    { verified: true, status: "SUCCESSFUL", foreign_tx_id: ID },
+    true,
+    { cacheFailureKey: "lugdurum_transactions_backup" }
+  );
+  await h.app.verifyPendingSumup();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.app.state.saveInProgress, false);
+});
+
+test("iOS: manual SumUp confirmation also survives backup cache failure", async () => {
+  const h = createSumupFrontendHarness(
+    { verified: false, status: "NOT_FOUND" },
+    true,
+    { cacheFailureKey: "lugdurum_transactions_backup" }
+  );
+  await h.app.confirmSumupSuccess();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.memory.has("lugdurum_pending_sumup_ticket"), false);
+  assert.equal(h.app.state.ticketItems.length, 0);
+  assert.equal(h.app.state.saveInProgress, false);
 });
