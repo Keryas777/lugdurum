@@ -677,6 +677,13 @@
   font-weight: 850;
 }
 
+/* Réseau fonctionnel, mais stockage hors-ligne temporairement indisponible. */
+.closedDaysStatus.isWarning,
+.statsStatus.isWarning {
+  color: #b35c3a;
+  font-weight: 750;
+}
+
 /* ==============================
    Responsive
    ============================== */
