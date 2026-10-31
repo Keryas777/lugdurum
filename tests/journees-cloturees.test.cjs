@@ -123,7 +123,11 @@ function startClosedDaysWithStorage({ failCache = "", apiFails = false, identica
       memory.set(key, String(value));
     }
   };
-  const status = { textContent: "", className: "" };
+  const status = {
+    textContent: "",
+    className: "",
+    classList: { add() {}, remove() {} }
+  };
   const document = {
     getElementById(id) { return id === "closedDaysStatus" ? status : null; },
     addEventListener() {},
