@@ -35,6 +35,8 @@
     alreadyRemoteCount: document.getElementById("alreadyRemoteCount"),
     toReviewCount: document.getElementById("toReviewCount"),
     officialQueueCount: document.getElementById("officialQueueCount"),
+    storageSummary: document.getElementById("storageDiagnosticSummary"),
+    storageKeys: document.getElementById("storageDiagnosticKeys"),
     status: document.getElementById("diagnosticStatus"),
     list: document.getElementById("legacyTransactionsList"),
 
@@ -429,9 +431,36 @@
     );
   };
 
+  const renderStorageDiagnostics = () => {
+    if (!els.storageSummary) return;
+    const diagnostic = hasApi() && typeof api().getLocalStorageDiagnostics === "function"
+      ? api().getLocalStorageDiagnostics()
+      : null;
+    if (!diagnostic || !diagnostic.available) {
+      setText(els.storageSummary, "Impossible de mesurer le stockage local sur cet appareil.");
+      if (els.storageKeys) els.storageKeys.innerHTML = "";
+      return;
+    }
+
+    const formatSize = (bytes) => `${(bytes / 1024).toFixed(1).replace(".", ",")} Kio`;
+    setText(
+      els.storageSummary,
+      `Lugdurum : ${formatSize(diagnostic.estimated_lugdurum_bytes)} · ` +
+      `Ensemble des sites de cette origine : ${formatSize(diagnostic.estimated_origin_bytes)}`
+    );
+    if (els.storageKeys) {
+      els.storageKeys.innerHTML = diagnostic.largest_lugdurum_keys
+        .map(({ key, estimated_bytes }) =>
+          `<li><code>${escapeHtml(key)}</code> : ${formatSize(estimated_bytes)}</li>`
+        )
+        .join("");
+    }
+  };
+
   const loadLocal = () => {
     state.legacyTransactions = getLegacyTransactions();
     state.officialQueueCount = getOfficialQueueCount();
+    renderStorageDiagnostics();
   };
 
   const loadRemote = async () => {
