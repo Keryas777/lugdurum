@@ -620,3 +620,22 @@ code {
     justify-content: start;
   }
 }
+
+/* Diagnostic local en lecture seule, sans contrôles de suppression. */
+.storageDiagnosticKeys {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.storageDiagnosticKeys li {
+  padding: 4px 0;
+  font-size: 0.85rem;
+}
+
+.storageDiagnosticHint {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
