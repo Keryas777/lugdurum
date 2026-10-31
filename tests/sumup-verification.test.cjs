@@ -573,18 +573,21 @@ test("Performance SumUp : première lecture NOT_FOUND, seconde SUCCESSFUL = une 
 // Tester le VRAI module LugdurumAPI, pas uniquement son mock frontend.
 // Pas de fetch vers Apps Script : toute la sauvegarde doit être synchrone
 // et immédiatement lisible depuis la file locale.
-function createApiQueueHarness({ storageFails = false } = {}) {
+function createApiQueueHarness({ storageFails = false, silentFailure = false } = {}) {
   const apiSource = fs.readFileSync(
     path.join(__dirname, "..", "docs", "lugdurum-api.js"), "utf8"
   );
   const memory = new Map();
-  const storage = { failing: storageFails };
+  const storage = { failing: storageFails, silentFailure };
   const localStorage = {
+    get length() { return memory.size; },
+    key(index) { return [...memory.keys()][index] ?? null; },
     getItem(key) { return memory.get(key) || null; },
     setItem(key, value) {
-      if (storage.failing && key === "lugdurum_pending_writes") {
+      if (key === "lugdurum_pending_writes" && storage.failing) {
         throw new Error("QuotaExceededError");
       }
+      if (key === "lugdurum_pending_writes" && storage.silentFailure) return;
       memory.set(key, String(value));
     },
     removeItem(key) { memory.delete(key); }
@@ -671,6 +674,34 @@ test("LugdurumAPI : localStorage plein ne fait jamais semblant de sauvegarder", 
   h.storage.failing = false;
   assert.equal(h.api.queueSumupSale(h.makeBundle()).queued, true);
   assert.equal(h.api.getPendingWritesCount(), 1);
+});
+
+test("LugdurumAPI : un stockage silencieusement défaillant ne valide jamais la file", () => {
+  const h = createApiQueueHarness({ silentFailure: true });
+  assert.throws(() => h.api.queueSumupSale(h.makeBundle()), /Sauvegarde locale impossible/);
+  assert.equal(h.api.getPendingWritesCount(), 0);
+  assert.equal(h.networkCalls, 0);
+});
+
+test("LugdurumAPI : une vente ou un frais hors ligne échoue clairement sans stockage", async () => {
+  const h = createApiQueueHarness({ storageFails: true });
+  await assert.rejects(h.api.saveVenteRapideBundle(h.makeBundle()), /Sauvegarde locale impossible/);
+  await assert.rejects(h.api.saveFrais({ frais_id: "FRAIS_TEST", montant_ttc: 12 }), /Sauvegarde locale impossible/);
+  assert.equal(h.api.getPendingWritesCount(), 0);
+  assert.equal(h.networkCalls, 0);
+});
+
+test("Diagnostic : mesure sans lire les données sensibles ni effacer la file", () => {
+  const h = createApiQueueHarness();
+  h.api.queueSumupSale(h.makeBundle());
+  h.memory.set("other_application_cache", "abc".repeat(200));
+  const before = h.memory.get("lugdurum_pending_writes");
+  const info = h.api.getLocalStorageDiagnostics();
+  assert.equal(info.available, true);
+  assert.ok(info.estimated_origin_bytes > info.estimated_lugdurum_bytes);
+  assert.ok(info.largest_lugdurum_keys.some((row) => row.key === "lugdurum_pending_writes"));
+  assert.ok(!JSON.stringify(info).includes(ID), "Un diagnostic ne doit pas révéler les ventes.");
+  assert.equal(h.memory.get("lugdurum_pending_writes"), before);
 });
 
 test("iOS: stock cache failure cannot keep a verified paid ticket open", async () => {
