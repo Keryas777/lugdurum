@@ -85,12 +85,11 @@
   const api = () => window.LugdurumAPI || null;
 
   const readJsonNullable = (key) => {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return null;
-
     try {
-      return JSON.parse(raw);
+      const raw = localStorage.getItem(key);
+      return raw === null ? null : JSON.parse(raw);
     } catch {
+      // Safari peut refuser l'accès au stockage local.
       return null;
     }
   };
@@ -104,8 +103,21 @@
     return [];
   };
 
-  const writeJson = (key, value) => {
-    localStorage.setItem(key, JSON.stringify(value));
+  // Le cache de consultation est facultatif : ne jamais confondre un
+  // QuotaExceededError local avec un échec de lecture Google Sheets.
+  // Ne supprimer aucune clé : la file des ventes peut être sur la même origine.
+  const writeCacheJson = (key, value) => {
+    try {
+      const serialized = JSON.stringify(value);
+      // Évite de réécrire de gros historiques inchangés sur Safari/iOS.
+      if (localStorage.getItem(key) !== serialized) {
+        localStorage.setItem(key, serialized);
+      }
+      return true;
+    } catch (error) {
+      console.warn(`Cache de consultation non enregistré (${key}).`, error);
+      return false;
+    }
   };
 
   const escapeHtml = (value) =>
@@ -981,13 +993,20 @@
     state.catalogue = catalogue;
     state.source = "api";
 
-    writeJson(CACHE_KEYS.transactions, transactions);
-    writeJson(CACHE_KEYS.ventesLignes, lignes);
-    writeJson(CACHE_KEYS.frais, frais);
-    writeJson(CACHE_KEYS.journees, journees);
-    writeJson(CACHE_KEYS.missionsStock, missionsStock);
-    writeJson(CACHE_KEYS.missions, missions);
-    writeJson(CACHE_KEYS.catalogue, catalogue);
+    // Préserver les réponses réseau même lorsque le cache local est plein.
+    const caches = [
+      [CACHE_KEYS.transactions, transactions],
+      [CACHE_KEYS.ventesLignes, lignes],
+      [CACHE_KEYS.frais, frais],
+      [CACHE_KEYS.journees, journees],
+      [CACHE_KEYS.missionsStock, missionsStock],
+      [CACHE_KEYS.missions, missions],
+      [CACHE_KEYS.catalogue, catalogue]
+    ];
+    const cacheFailures = caches
+      .filter(([key, rows]) => !writeCacheJson(key, rows))
+      .map(([key]) => key);
+    return { cacheFailures };
   };
 
   const loadLocalFallback = () => {
@@ -1039,14 +1058,25 @@
 
     setStatus("Chargement…");
 
+    let remote;
     try {
-      await loadRemote();
-      render();
-      setStatus("");
+      remote = await loadRemote();
     } catch (error) {
       loadLocalFallback();
       render();
-      setStatus(`API indisponible. Données locales affichées : ${error.message}`, "isError");
+      setStatus(`Lecture API impossible. Données locales affichées : ${error.message}`, "isError");
+      return;
+    }
+
+    // Les données fraîchement lues restent affichées, même si le cache échoue.
+    render();
+    if (remote.cacheFailures.length > 0) {
+      setStatus(
+        "Données en ligne à jour. Cache local indisponible : consultation hors ligne potentiellement incomplète. Aucune donnée locale effacée.",
+        "isWarning"
+      );
+    } else {
+      setStatus("");
     }
   };
 

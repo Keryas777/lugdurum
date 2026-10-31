@@ -760,10 +760,27 @@
     return next;
   };
 
+  // Une vente mise en file est une donnée métier CRITIQUE, pas un cache.
+  // Ne jamais annoncer une mise en attente si Safari refuse ou ignore l'écriture.
+  const persistPendingWrites = (writes) => {
+    const serialized = JSON.stringify(writes);
+    try {
+      localStorage.setItem(STORAGE_KEYS.pendingWrites, serialized);
+      if (localStorage.getItem(STORAGE_KEYS.pendingWrites) !== serialized) {
+        throw new Error("Relecture de la file incohérente.");
+      }
+    } catch (error) {
+      console.error("Écriture de la file de ventes refusée par le navigateur.", error);
+      throw new Error(
+        "Sauvegarde locale impossible : file de synchronisation non confirmée. Ne pas effacer les données de l'application."
+      );
+    }
+  };
+
   const setPendingWrites = (writes, patch = {}) => {
     const safeWrites = Array.isArray(writes) ? writes : [];
 
-    writeJson(STORAGE_KEYS.pendingWrites, safeWrites);
+    persistPendingWrites(safeWrites);
 
     writeSyncState({
       pending_count: safeWrites.length,
@@ -779,6 +796,47 @@
       is_flushing: isFlushing,
       updated_at: ""
     });
+
+  // Diagnostic non destructif : ne renvoie jamais le contenu des ventes,
+  // les données clients ni les valeurs des autres applications du domaine.
+  // Taille indicative en octets UTF-16 (pas une mesure du quota Safari).
+  const getLocalStorageDiagnostics = () => {
+    try {
+      let originBytes = 0;
+      let lugdurumBytes = 0;
+      const lugdurumKeys = [];
+
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key === null) continue;
+        const value = localStorage.getItem(key) || "";
+        const bytes = (key.length + value.length) * 2;
+        originBytes += bytes;
+
+        if (key.startsWith("lugdurum_")) {
+          lugdurumBytes += bytes;
+          lugdurumKeys.push({ key, estimated_bytes: bytes });
+        }
+      }
+
+      lugdurumKeys.sort((a, b) => b.estimated_bytes - a.estimated_bytes);
+      return {
+        available: true,
+        estimated_origin_bytes: originBytes,
+        estimated_lugdurum_bytes: lugdurumBytes,
+        lugdurum_keys_count: lugdurumKeys.length,
+        largest_lugdurum_keys: lugdurumKeys.slice(0, 8)
+      };
+    } catch {
+      return {
+        available: false,
+        estimated_origin_bytes: null,
+        estimated_lugdurum_bytes: null,
+        lugdurum_keys_count: 0,
+        largest_lugdurum_keys: []
+      };
+    }
+  };
 
   const makeQueueableError = (message) => {
     const error = new Error(message);
@@ -2674,6 +2732,7 @@
     getPendingWrites,
     getPendingWritesCount,
     getSyncState,
+    getLocalStorageDiagnostics,
     flushPendingWrites,
     clearPendingWrites,
 
