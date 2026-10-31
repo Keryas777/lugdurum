@@ -67,8 +67,8 @@ test("Les références sont échappées et les CSS sont reliés à la page", () 
   const css = fs.readFileSync(path.join(docs, "journees-cloturees.css"), "utf8");
   const page = fs.readFileSync(path.join(docs, "journees-cloturees.html"), "utf8");
   assert.match(css, /\.closedSalesTable \.closedSalesRow td/);
-  assert.match(page, /journees-cloturees\.css\?v=3/);
-  assert.match(page, /journees-cloturees\.js\?v=4/);
+  assert.match(page, /journees-cloturees\.css\?v=4/);
+  assert.match(page, /journees-cloturees\.js\?v=5/);
   assert.match(page, /class="detailBlock isSalesTable"/);
 });
 
@@ -91,4 +91,86 @@ test("La carte récapitulative ne montre plus les chips produits", () => {
   assert.match(html, /Net/);
   assert.match(html, /Espèces/);
   assert.match(renderDetailProducts(products), /<th scope="row">VB<\/th>/);
+});
+
+function startClosedDaysWithStorage({ failCache = "", apiFails = false, identical = false } = {}) {
+  const memory = new Map([["lugdurum_pending_writes", '[{"id":"VENTE_A_SYNC"}]']]);
+  const rows = { getTransactions: [{ transaction_id: "TX_ONLINE", total_encaisse_ttc: 25 }] };
+  const cacheMap = {
+    getTransactions: "lugdurum_transactions_cache",
+    getVentesLignes: "lugdurum_ventes_lignes_cache",
+    getFrais: "lugdurum_frais_cache",
+    getJournees: "lugdurum_journees_cache",
+    getMissionsStock: "lugdurum_missions_stock_cache",
+    getMissions: "lugdurum_missions_vente_cache",
+    getCatalogue: "lugdurum_catalogue_cache"
+  };
+  let writes = 0;
+  if (identical) {
+    Object.entries(cacheMap).forEach(([fn, key]) => {
+      memory.set(key, JSON.stringify(rows[fn] || []));
+    });
+  }
+  const localStorage = {
+    getItem(key) { return memory.has(key) ? memory.get(key) : null; },
+    setItem(key, value) {
+      writes++;
+      if (key === failCache) {
+        const error = new Error("The quota has been exceeded.");
+        error.name = "QuotaExceededError";
+        throw error;
+      }
+      memory.set(key, String(value));
+    }
+  };
+  const status = { textContent: "", className: "" };
+  const document = {
+    getElementById(id) { return id === "closedDaysStatus" ? status : null; },
+    addEventListener() {},
+    querySelectorAll() { return []; }
+  };
+  const script = source.replace(
+    bootstrap,
+    "\\n  window.__test = { init, loadRemote, state };\\n})();".replaceAll("\\n", "\n")
+  );
+  const pageWindow = { LugdurumAPI: {} };
+  Object.keys(cacheMap).forEach((fn) => {
+    pageWindow.LugdurumAPI[fn] = async () => {
+      if (apiFails && fn === "getFrais") throw new Error("Google indisponible");
+      return rows[fn] || [];
+    };
+  });
+  vm.runInNewContext(script, { window: pageWindow, document, localStorage, console }, { filename: "journees-cloturees.js" });
+  return {
+    ...pageWindow.__test, status, memory,
+    get writes() { return writes; }
+  };
+}
+
+test("Safari plein : les données API restent affichées et aucune vente en attente n'est effacée", async () => {
+  const h = startClosedDaysWithStorage({ failCache: "lugdurum_transactions_cache" });
+  await h.init();
+  assert.equal(h.state.source, "api");
+  assert.equal(h.state.transactions[0].transaction_id, "TX_ONLINE");
+  assert.match(h.status.textContent, /Données en ligne à jour/);
+  assert.match(h.status.textContent, /Cache local indisponible/);
+  assert.doesNotMatch(h.status.textContent, /API indisponible/);
+  assert.equal(JSON.parse(h.memory.get("lugdurum_pending_writes"))[0].id, "VENTE_A_SYNC");
+  assert.equal(h.memory.get("lugdurum_ventes_lignes_cache"), "[]");
+});
+
+test("Cache inchangé : ne réécrit pas sept historiques sur iOS", async () => {
+  const h = startClosedDaysWithStorage({ identical: true });
+  await h.init();
+  assert.equal(h.state.source, "api");
+  assert.equal(h.writes, 0);
+  assert.equal(h.status.textContent, "");
+});
+
+test("Vraie panne API : le statut distingue le réseau du stockage local", async () => {
+  const h = startClosedDaysWithStorage({ apiFails: true });
+  await h.init();
+  assert.equal(h.state.source, "local");
+  assert.match(h.status.textContent, /Lecture API impossible/);
+  assert.match(h.status.textContent, /Google indisponible/);
 });
