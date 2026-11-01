@@ -394,6 +394,7 @@
   pointer-events: none;
 }
 
+/* Deux tuiles par ligne sans exception selon la largeur ou le navigateur. */
 .productGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -401,6 +402,7 @@
 }
 
 .productBtn {
+  min-width: 0;
   touch-action: manipulation;
   background-color: #ede1ce;
   position: relative;
@@ -999,9 +1001,6 @@
     grid-template-columns: repeat(4, 1fr);
   }
 
-  .productGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 
   .saleActions {
     grid-template-columns: 1fr 1.4fr;
@@ -1025,8 +1024,26 @@
     justify-items: start;
   }
 
-  .productGrid {
-    grid-template-columns: 1fr;
+  /* Préserver la lisibilité de deux tuiles sur les écrans étroits. */
+  .productBtn {
+    padding: 10px;
+  }
+
+  .productCode {
+    font-size: 1.25rem;
+  }
+
+  .productName {
+    font-size: 0.82rem;
+  }
+
+  .productBtn.isLongName .productName {
+    font-size: 0.72rem;
+  }
+
+  .productMeta,
+  .productBtn.isLongName .productMeta {
+    font-size: 0.7rem;
   }
 
   .paymentTabs {

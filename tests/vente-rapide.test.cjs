@@ -597,3 +597,14 @@ test("CA événement : pas de total trompeur sans journée liée à un événeme
   const app = setup(async () => ({ ok: true }));
   assert.equal(app.api.computeEventSummaryFromTransactions([]).revenue, null);
 });
+
+
+test("Catalogue de vente rapide : toujours deux colonnes de parfums", () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "docs", "vente-rapide.css"), "utf8"
+  );
+  const rules = [...css.matchAll(/\.productGrid\s*\{([^}]*)\}/g)];
+  assert.equal(rules.length, 1, "Aucune media query ne doit modifier la grille des parfums");
+  assert.match(rules[0][1], /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.productBtn\s*\{[^}]*min-width:\s*0;/);
+});
