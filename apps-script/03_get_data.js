@@ -2040,7 +2040,8 @@ function getClotureData_(params) {
   });
 
   const clotures = readSheetRows_("clotures").filter(function (closure) {
-    return String(closure.salon_id || closure.journee_id || "").trim() === journeeId;
+    return String(closure.salon_id || "").trim() === journeeId ||
+      String(closure.journee_id || "").trim() === journeeId;
   });
 
   return {
