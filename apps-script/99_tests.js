@@ -951,6 +951,35 @@ function test99_get_cloture_data_() {
     "getClotureData : ventes hors journée."
   );
   lugAssert_(
+    data.journees.every(function (journee) {
+      var stockId = String(
+        journee.stock_mission_id || journee.mission_stock_id || ""
+      ).trim();
+      return stockId
+        ? stockId === missionId
+        : String(journee.mission_id || "").trim() === missionId;
+    }),
+    "getClotureData : journée rattachée à une autre mission de stock."
+  );
+  lugAssert_(
+    data.clotures.every(function (cloture) {
+      return String(cloture.salon_id || "").trim() === dayId ||
+        String(cloture.journee_id || "").trim() === dayId;
+    }),
+    "getClotureData : clôture rattachée à une autre journée."
+  );
+  lugAssert_(
+    data.frais.every(function (frais) {
+      var feeDayId = String(frais.journee_id || "").trim();
+      var feeStockId = String(
+        frais.stock_mission_id || frais.mission_stock_id || ""
+      ).trim();
+      return (!feeDayId || feeDayId === dayId) &&
+        (!feeStockId || feeStockId === missionId);
+    }),
+    "getClotureData : frais d'une autre journée ou mission de stock."
+  );
+  lugAssert_(
     data.mouvementsStock.every(function (movement) {
       return String(
         movement.stock_mission_id || movement.mission_id || ""
