@@ -4,12 +4,11 @@
   /*
     Clôture V11 :
     - Charge lugdurum-api.js avant ce fichier.
-    - Source prioritaire : Google Sheets via getCoreData(), fallback getters séparés.
+    - Source prioritaire : Google Sheets via getClotureData(), fallback getCoreData().
     - Lit missions_stock, missions_vente, journees_vente, transactions,
       ventes_lignes, frais, mouvements_stock et clotures_journees.
-    - L’onglet de clôture Sheets est clotures_journees avec colonnes :
-      salon_id, date_cloture, especes_comptees, cb_sumup, autre_paiement,
-      total_reel, total_tickets_calcule, ecart, note.
+    - Clôture : salon_id reste une clé historique ; les champs V2
+      cloture_id, journee_id, mission_id, stock_mission_id et date sont écrits.
     - Le détail stock compté est écrit dans mouvements_stock via CLOTURE_COMPTE.
     - Les stocks initiaux sont lus dans mouvements_stock :
       PREPARATION / REPORT_CLOTURE / REAPPRO.
@@ -376,18 +375,23 @@
 
   const getActiveIds = () => {
     const context = getObject(STORAGE_KEYS.preparationContext);
-
+    const journeeId = safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
+      context.journee_id || "";
+    const linkedDay = state.journees.find((day) =>
+      String(day.journee_id || "") === String(journeeId));
+    const linkedStockId = String(
+      linkedDay?.stock_mission_id || linkedDay?.mission_stock_id || ""
+    ).trim();
+    // Le vieux champ mission_id peut désigner l'évènement d'origine.
+    const legacyId = String(
+      context.mission_id || safeLocalGet(STORAGE_KEYS.activeMissionId) || ""
+    ).trim();
+    const legacyStockId = state.stockMissions.some((mission) =>
+      String(mission.mission_id || "") === legacyId) ? legacyId : "";
     return {
-      missionId:
-        safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
-        context.stock_mission_id ||
-        context.mission_id ||
-        safeLocalGet(STORAGE_KEYS.activeMissionId) ||
-        "",
-      journeeId:
-        safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
-        context.journee_id ||
-        ""
+      missionId: safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
+        context.stock_mission_id || linkedStockId || legacyStockId,
+      journeeId
     };
   };
 
@@ -423,11 +427,13 @@
   const getMissionJournees = (missionId) =>
     state.journees
       .filter((journee) => {
-        return (
-          String(journee.stock_mission_id || "") === missionId ||
-          String(journee.mission_stock_id || "") === missionId ||
-          String(journee.mission_id || "") === missionId
-        );
+        const explicitStockId = String(
+          journee.stock_mission_id || journee.mission_stock_id || ""
+        ).trim();
+        // mission_id est l'évènement d'origine, pas la mission de stock.
+        return explicitStockId
+          ? explicitStockId === missionId
+          : String(journee.mission_id || "").trim() === missionId;
       })
       .filter((journee) => !isCancelledStatus(journee))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -945,20 +951,20 @@
   };
 
   const getFraisForContext = () => {
-    if (!state.mission) return [];
+    if (!state.mission || !state.journee) return [];
 
+    const stockId = String(state.mission.mission_id || "").trim();
+    const dayId = String(state.journee.journee_id || "").trim();
+    const eventId = getDayEventId(state.journee);
     return state.frais.filter((item) => {
       if (isCancelledStatus(item)) return false;
-
-      const missionMatch =
-        item.mission_id === state.mission.mission_id ||
-        item.stock_mission_id === state.mission.mission_id;
-
-      const dayMatch =
-        !item.journee_id ||
-        item.journee_id === state.journee?.journee_id;
-
-      return missionMatch && dayMatch;
+      const feeDayId = String(item.journee_id || "").trim();
+      const feeStockId = String(item.stock_mission_id || "").trim();
+      const feeEventId = String(item.mission_id || item.evenement_id || "").trim();
+      if (feeDayId && feeDayId !== dayId) return false;
+      if (feeStockId) return feeStockId === stockId;
+      if (feeDayId) return true;
+      return Boolean(feeEventId && feeEventId === eventId);
     });
   };
 
@@ -1218,10 +1224,11 @@
       salon_id: salonId,
       cloture_id: clotureId,
 
-      mission_id: state.mission.mission_id,
+      mission_id: getDayEventId(state.journee),
       stock_mission_id: state.mission.mission_id,
       journee_id: state.journee.journee_id,
       evenement_id: getDayEventId(state.journee),
+      date: String(state.journee.date || "").slice(0, 10),
 
       user_id: CURRENT_USER.user_id,
       user_nom: CURRENT_USER.nom,
@@ -1426,7 +1433,7 @@
       safeLocalRemove(STORAGE_KEYS.activeStockMissionId);
 
       writeJson(STORAGE_KEYS.preparationContext, {
-        mission_id: state.mission.mission_id,
+        mission_id: getDayEventId(state.journee),
         stock_mission_id: state.mission.mission_id,
         journee_id: "",
         step: "mission_cloturee",
@@ -1454,7 +1461,13 @@
   };
 
   const buildClosureSheetRow = (closure) => ({
+    // La clé d'upsert salon_id reste compatible avec l'onglet historique.
     salon_id: closure.salon_id,
+    cloture_id: closure.cloture_id,
+    journee_id: closure.journee_id,
+    mission_id: closure.mission_id,
+    stock_mission_id: closure.stock_mission_id,
+    date: closure.date,
     date_cloture: closure.date_cloture,
     especes_comptees: closure.especes_comptees,
     cb_sumup: closure.cb_sumup,
@@ -1463,8 +1476,6 @@
     total_tickets_calcule: closure.total_tickets_calcule,
     ecart: closure.ecart,
     note: closure.note,
-    // Colonnes réellement présentes dans clotures_journees.
-    stock_mission_id: closure.stock_mission_id,
     ca_total_ttc: closure.ca_total_ttc,
     total_frais_ttc: closure.total_frais_ttc,
     statut: closure.statut,
@@ -1839,7 +1850,7 @@
     const carryover = {
       // Clé déterministe : une répétition côté réseau ne crée pas de doublons.
       carryover_id: "CARRY_" + fromDayId + "_" + nextDayId,
-      mission_id: missionId,
+      mission_id: getDayEventId(state.nextDay),
       stock_mission_id: missionId,
       from_journee_id: fromDayId,
       to_journee_id: nextDayId,
@@ -1883,12 +1894,12 @@
       writeJson(STORAGE_KEYS.stockCarryovers, carryovers);
       upsertMovementsLocal(movements);
 
-      safeLocalSet(STORAGE_KEYS.activeMissionId, missionId);
+      safeLocalSet(STORAGE_KEYS.activeMissionId, getDayEventId(state.nextDay));
       safeLocalSet(STORAGE_KEYS.activeStockMissionId, missionId);
       safeLocalSet(STORAGE_KEYS.activeJourneeId, nextDayId);
 
       writeJson(STORAGE_KEYS.preparationContext, {
-        mission_id: missionId,
+        mission_id: getDayEventId(state.nextDay),
         stock_mission_id: missionId,
         journee_id: nextDayId,
         step: "stock_reporte",
@@ -2029,7 +2040,7 @@
       stock_mission_id: stockMissionId
     }, {
       flushBeforeRead: false,
-      timeoutMs: 15000
+      timeoutMs: 45000
     });
 
     if (!payload || payload.api_mode !== "getClotureData" ||
