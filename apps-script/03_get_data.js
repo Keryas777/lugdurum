@@ -2017,14 +2017,31 @@ function getClotureData_(params) {
     ).trim() === stockMissionId;
   });
 
+  const activeEventIds = new Set([
+    activeJournee.mission_id,
+    activeJournee.evenement_id,
+    activeJournee.mission_vente_id
+  ].map(function (id) { return String(id || "").trim(); }).filter(Boolean));
+
   const frais = readSheetRows_("frais").filter(function (f) {
-    const mission = String(f.stock_mission_id || f.mission_id || "").trim();
-    const journee = String(f.journee_id || "").trim();
-    return mission === stockMissionId && (!journee || journee === journeeId);
+    const feeDayId = String(f.journee_id || "").trim();
+    const feeStockId = String(
+      f.stock_mission_id || f.mission_stock_id || ""
+    ).trim();
+    const feeEventId = String(f.mission_id || f.evenement_id || "").trim();
+
+    if (feeDayId && feeDayId !== journeeId) return false;
+    if (feeStockId && feeStockId !== stockMissionId) return false;
+    if (feeDayId || feeStockId) return true;
+    // Compatibilité : de vieux frais avaient la mission de stock
+    // dans mission_id, alors que la V2 y met l'évènement d'origine.
+    return Boolean(feeEventId &&
+      (activeEventIds.has(feeEventId) || feeEventId === stockMissionId));
   });
 
   const clotures = readSheetRows_("clotures").filter(function (closure) {
-    return String(closure.salon_id || closure.journee_id || "").trim() === journeeId;
+    return String(closure.salon_id || "").trim() === journeeId ||
+      String(closure.journee_id || "").trim() === journeeId;
   });
 
   return {

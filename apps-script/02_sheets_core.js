@@ -387,11 +387,35 @@ function upsertRowInternal_(tableKeyOrSheetName, row, options) {
     throw new Error(`Colonne clé ${keyField} introuvable dans ${config.sheetName}.`);
   }
 
-  const existingRowNumber = findRowNumberByKey_(
+  let existingRowNumber = findRowNumberByKey_(
     sheet,
     keyColumnIndex + 1,
     keyValue
   );
+
+  // Migration non destructive de clotures_journees : une ligne V2 peut
+  // avoir journee_id mais pas encore l'ancienne clé salon_id. La retrouver
+  // avant l'upsert évite d'insérer une deuxième clôture pour cette journée.
+  if (!existingRowNumber &&
+      config.sheetName === "clotures_journees" &&
+      keyField === "salon_id" &&
+      String(row.journee_id || "").trim() === keyValue) {
+    const journeeColumnIndex = headers.indexOf("journee_id");
+    if (journeeColumnIndex >= 0) {
+      const foundByDay = findRowNumberByKey_(
+        sheet, journeeColumnIndex + 1, keyValue
+      );
+      if (foundByDay) {
+        const previousSalonId = String(
+          sheet.getRange(foundByDay, keyColumnIndex + 1).getValue() || ""
+        ).trim();
+        if (previousSalonId && previousSalonId !== keyValue) {
+          throw new Error("Clôture incohérente : salon_id et journee_id ne correspondent pas.");
+        }
+        existingRowNumber = foundByDay;
+      }
+    }
+  }
 
   if (existingRowNumber) {
     const existingValues = sheet
