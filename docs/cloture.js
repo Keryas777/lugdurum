@@ -2006,16 +2006,14 @@
     }
   };
 
-  const normalizeCoreArray = (coreData, key, fallback = []) => {
+  const normalizeCoreArray = (coreData, key) => {
     const value = coreData?.[key];
-
     if (Array.isArray(value)) return value;
-
     if (value && typeof value === "object" && value.ok === false) {
       throw new Error(value.error || `Table coreData invalide : ${key}`);
     }
-
-    return fallback;
+    // Jamais de cache local pour valider une clôture définitive.
+    throw new Error(`Table Google Sheets manquante : ${key}`);
   };
 
   // L'action ciblée est déployée séparément d'une mise à jour GitHub.
@@ -2113,15 +2111,15 @@
     };
   };
 
-  const optionalApiArray = async (fnName, fallback = []) => {
-    if (!hasApi() || typeof api()[fnName] !== "function") return fallback;
-
-    try {
-      const result = await api()[fnName]();
-      return Array.isArray(result) ? result : fallback;
-    } catch {
-      return fallback;
+  const requiredApiArray = async (fnName) => {
+    if (!hasApi() || typeof api()[fnName] !== "function") {
+      throw new Error(`Lecture Google Sheets indisponible : ${fnName}`);
     }
+    const result = await api()[fnName]();
+    if (!Array.isArray(result)) {
+      throw new Error(`Lecture Google Sheets incomplète : ${fnName}`);
+    }
+    return result;
   };
 
   const loadRequiredRemoteTransactions = async () => {
@@ -2146,13 +2144,13 @@
       mouvementsStock,
       clotures
     ] = await Promise.all([
-      optionalApiArray("getMissions", state.events),
-      optionalApiArray("getMissionsStock", state.stockMissions),
-      optionalApiArray("getJournees", state.journees),
+      requiredApiArray("getMissions"),
+      requiredApiArray("getMissionsStock"),
+      requiredApiArray("getJournees"),
       loadRequiredRemoteTransactions(),
-      optionalApiArray("getFrais", state.frais),
-      optionalApiArray("getMouvementsStock", state.mouvementsStock),
-      optionalApiArray("getClotures", state.clotures)
+      requiredApiArray("getFrais"),
+      requiredApiArray("getMouvementsStock"),
+      requiredApiArray("getClotures")
     ]);
 
     return {
@@ -2239,6 +2237,24 @@
       throw new Error("Lignes de stock absentes dans getClotureData.");
     }
 
+    const active = getActiveIds();
+    const stockId = String(active.missionId || "").trim();
+    const dayId = String(active.journeeId || "").trim();
+    if (!stockId || !dayId ||
+        !remote.stockMissions.some((mission) =>
+          String(mission.mission_id || "").trim() === stockId) ||
+        !remote.journees.some((day) => {
+          if (String(day.journee_id || "").trim() !== dayId) return false;
+          const explicitStockId = String(
+            day.stock_mission_id || day.mission_stock_id || ""
+          ).trim();
+          return explicitStockId
+            ? explicitStockId === stockId
+            : String(day.mission_id || "").trim() === stockId;
+        })) {
+      throw new Error("Lecture Google Sheets incohérente : journée ou mission de stock absente.");
+    }
+
     state.events = remote.events;
     state.stockMissions = remote.stockMissions;
     state.journees = remote.journees;
@@ -2253,7 +2269,13 @@
     // Après lecture confirmée, le serveur est autoritaire : ne pas
     // ressusciter un ancien mouvement ou une ancienne clôture locale.
     state.mouvementsStock = mergeById([remote.mouvementsStock], "mouvement_stock_id");
-    state.clotures = mergeById([remote.clotures], "salon_id");
+    state.clotures = mergeById([
+      remote.clotures.map((closure) => ({
+        ...closure,
+        // Les lignes V2 peuvent déjà exister sans l'ancien salon_id.
+        salon_id: closure.salon_id || closure.journee_id || ""
+      }))
+    ], "salon_id");
 
     state.dataLoaded = true;
     if (targeted) {
