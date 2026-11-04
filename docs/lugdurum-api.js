@@ -2568,7 +2568,7 @@
       return requestGet(
         "getClotureData",
         { journee_id, stock_mission_id },
-        { flushBeforeRead: false, timeoutMs: 15000, ...options }
+        { flushBeforeRead: false, timeoutMs: 45000, ...options }
       );
     },
 
