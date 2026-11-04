@@ -964,7 +964,8 @@
       if (feeDayId && feeDayId !== dayId) return false;
       if (feeStockId) return feeStockId === stockId;
       if (feeDayId) return true;
-      return Boolean(feeEventId && feeEventId === eventId);
+      // Compatibilité des frais historiques attachés à la mission de stock.
+      return Boolean(feeEventId && (feeEventId === eventId || feeEventId === stockId));
     });
   };
 
