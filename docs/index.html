@@ -19,11 +19,29 @@
     <title>Lugdurum — Accueil</title>
 
     <link rel="stylesheet" href="./style.css?v=25" />
+    <style>
+/* Accueil vendeur : priorité à la journée affectée, consultation tactile. */
+.page-home .eventSelectorSection.hasSellerSchedule #eventSelectorList,
+.page-home .eventSelectorSection.hasSellerSchedule #eventSelectorHint { display: none; }
+.page-home .sellerOtherMarketLink {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  min-height:64px; margin-top:9px; padding:12px 14px;
+  border:1px solid #d8c9b3; border-radius:14px;
+  background:#f6f1e8; color:#1f1b16; text-decoration:none;
+  box-shadow:0 2px 7px rgba(31,27,22,.05);
+}
+.page-home .sellerOtherMarketLink:focus-visible { outline:3px solid #8a5a2b; outline-offset:2px; }
+.page-home .sellerOtherMarketLink:active { background:#eadfcf; transform:scale(.99); }
+.page-home .sellerOtherMarketContent { display:grid; gap:4px; min-width:0; }
+.page-home .sellerOtherMarketLabel { font-weight:700; line-height:1.3; }
+.page-home .sellerOtherMarketContent small { color:#76634d; font-size:.88rem; }
+.page-home .sellerOtherMarketArrow { flex:0 0 auto; color:#8a5a2b; font-size:1.8rem; font-weight:700; }
+</style>
 
     <script src="./lugdurum-api.js?v=20" defer></script>
     <script src="./lugdurum-users.js?v=1" defer></script>
     <script src="./lugdurum-day-context.js?v=1" defer></script>
-    <script src="./home.js?v=25" defer></script>
+    <script src="./home.js?v=26" defer></script>
     <script src="./pwa.js?v=15" defer></script>
   </head>
 
