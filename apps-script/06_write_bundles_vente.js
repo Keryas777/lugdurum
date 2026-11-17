@@ -44,6 +44,76 @@ var WRITE_VENTE_KEY_FIELDS = {
   missionsStock: "mission_id"
 };
 
+/**
+ * Vérification d'intégrité métier pour une vente rapide.
+ * user_id est une préférence locale du navigateur, pas une identité authentifiée.
+ * Cette règle empêche les erreurs d'association et les affectations non prévues;
+ * elle ne remplace pas une authentification serveur.
+ */
+function writeAssertQuickSaleContext_(transaction, movements) {
+  transaction = transaction || {};
+  var source = String(transaction.source || "").trim();
+  if (!(source.indexOf("WEBAPP_") === 0 || source === "SUMUP")) return;
+
+  var dayId = String(transaction.journee_id || "").trim();
+  var eventId = String(transaction.mission_id || "").trim();
+  var stockId = String(transaction.stock_mission_id || "").trim();
+  var userId = String(transaction.user_id || "").trim();
+  if (!dayId || !eventId || !stockId || !userId) {
+    throw new Error("Vente refusée : journée, évènement, mission de stock et vendeur sont obligatoires.");
+  }
+
+  var days = readSheetRows_("journees") || [];
+  var day = days.find(function (row) {
+    return String(row.journee_id || "").trim() === dayId;
+  });
+  if (!day) throw new Error("Vente refusée : journée introuvable.");
+  if (String(day.mission_id || day.evenement_id || "").trim() !== eventId) {
+    throw new Error("Vente refusée : l’évènement ne correspond pas à la journée.");
+  }
+  if (String(day.stock_mission_id || day.mission_stock_id || "").trim() !== stockId) {
+    throw new Error("Vente refusée : la mission de stock ne correspond pas à la journée.");
+  }
+
+  var status = String(day.statut || "").toLowerCase();
+  if (status.indexOf("clotur") >= 0 || status.indexOf("annul") >= 0) {
+    throw new Error("Vente refusée : la journée est clôturée ou annulée.");
+  }
+
+  var vendors = [];
+  try {
+    var raw = day.vendeurs_autorises;
+    vendors = Array.isArray(raw) ? raw : JSON.parse(String(raw || "[]"));
+  } catch (_error) {
+    vendors = [];
+  }
+  var allowed = Array.isArray(vendors) && vendors.some(function (vendor) {
+    return vendor && String(vendor.user_id || "").trim() === userId;
+  });
+  if (!allowed) throw new Error("Vente refusée : le vendeur n’est pas autorisé sur cette journée.");
+
+  var stocks = readSheetRows_("missionsStock") || [];
+  var stock = stocks.find(function (row) {
+    return String(row.mission_id || "").trim() === stockId;
+  });
+  if (!stock) throw new Error("Vente refusée : mission de stock introuvable.");
+  var stockStatus = String(stock.statut || "").toLowerCase();
+  if (stockStatus.indexOf("clotur") >= 0 || stockStatus.indexOf("annul") >= 0) {
+    throw new Error("Vente refusée : la mission de stock est clôturée ou annulée.");
+  }
+  var prepared = stock.stock_prepare === true ||
+    ["true", "1", "oui"].indexOf(String(stock.stock_prepare || "").trim().toLowerCase()) >= 0 ||
+    stockStatus === "pret" || stockStatus === "en_cours";
+  if (!prepared) throw new Error("Vente refusée : le stock n’est pas encore préparé.");
+
+  (Array.isArray(movements) ? movements : []).forEach(function (movement) {
+    if (String(movement.journee_id || "").trim() !== dayId ||
+        String(movement.stock_mission_id || movement.mission_stock_id || "").trim() !== stockId) {
+      throw new Error("Vente refusée : un mouvement de stock ne reprend pas le contexte du ticket.");
+    }
+  });
+}
+
 /* ==========================================================
    Actions publiques appelées par le routeur POST
    ========================================================== */
@@ -57,6 +127,7 @@ function saveTransaction(payload) {
       payload.row ||
       payload.data ||
       payload;
+    writeAssertQuickSaleContext_(transaction, payload.mouvements_stock || payload.mouvementsStock || []);
 
     return writeVenteSaveTransaction_(transaction, {
       source_action: "saveTransaction"
@@ -150,6 +221,10 @@ function saveVenteRapideBundle(payload) {
       payload.row ||
       payload.data ||
       null;
+    writeAssertQuickSaleContext_(
+      transactionInput,
+      payload.mouvements_stock || payload.mouvementsStock || []
+    );
 
     if (
       transactionInput &&

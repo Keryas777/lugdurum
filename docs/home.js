@@ -3041,6 +3041,101 @@
     renderDiagnosticSyncLink();
   };
 
+  const renderAssignedSellerDay = () => {
+    const section = qs("#eventSelectorList")?.parentElement;
+    if (!section || !window.LugdurumDayContext) return;
+    let panel = qs("#sellerDayPanel");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = "sellerDayPanel";
+      panel.setAttribute("aria-live", "polite");
+      panel.style.cssText = "margin:0 0 16px;padding:14px;border:1px solid #d8c9b3;border-radius:16px;background:#fffaf1;color:#1f1b16";
+      section.insertBefore(panel, qs("#eventSelectorList"));
+    }
+    const userId = CURRENT_USER.user_id;
+    if (!userId) {
+      panel.innerHTML = "<strong>Ta journée de vente</strong><p>Choisis ton profil vendeur pour afficher tes journées affectées.</p>";
+      return;
+    }
+    const schedule = window.LugdurumDayContext.scheduleFor(state.data.journees, userId);
+    const today = window.LugdurumDayContext.parisDateIso();
+    const events = state.data.events || [];
+    const stockMissions = state.data.stockMissions || [];
+    if (schedule.mode === "empty") {
+      panel.innerHTML = "<strong>Ta journée de vente</strong><p>Aucune journée future ne t’est affectée. Tu peux consulter l’historique depuis le Dashboard.</p><a href=\"./dashboard.html\">Consulter le Dashboard</a>";
+      return;
+    }
+    const heading = schedule.mode === "today" ? "Ta journée aujourd’hui" :
+      schedule.mode === "choose_today" ? "Choisis ton marché aujourd’hui" : "Ta prochaine journée";
+    panel.replaceChildren();
+    const title = document.createElement("strong");
+    title.textContent = heading;
+    panel.appendChild(title);
+    schedule.days.forEach((day) => {
+      const event = events.find((item) => String(item.mission_id || item.evenement_id || item.event_id || "") === String(day.mission_id || ""));
+      const eventName = String(event?.nom || event?.name || day.nom || "Marché");
+      const date = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long" })
+        .format(new Date(day.date + "T12:00:00"));
+      const stockId = String(day.stock_mission_id || day.mission_stock_id || "");
+      const stock = stockMissions.find((item) => String(item.mission_id || "") === stockId);
+      const permission = window.LugdurumDayContext.canSell(day, userId, stock);
+      const article = document.createElement("article");
+      article.style.cssText = "margin-top:10px;padding:12px;border-radius:12px;background:#f6f1e8";
+      const name = document.createElement("strong");
+      name.textContent = eventName;
+      const meta = document.createElement("p");
+      meta.style.cssText = "margin:4px 0 10px;color:#625b50";
+      meta.textContent = date + " · " + String(day.jour_label || "");
+      article.append(name, meta);
+      const action = document.createElement("a");
+      action.className = "btn btnPrimary";
+      action.style.cssText = "display:inline-flex;min-height:42px;align-items:center;justify-content:center;padding:0 14px";
+      if (permission.allowed) {
+        const params = new URLSearchParams({ journee_id: day.journee_id, stock_mission_id: stockId, mission_id: day.mission_id || "" });
+        action.href = "./vente-rapide.html?" + params.toString();
+        action.textContent = "Ouvrir Vente rapide";
+      } else {
+        action.href = "./missions.html?mission_id=" + encodeURIComponent(day.mission_id || "");
+        action.textContent = ["stock_missing", "stock_not_prepared"].includes(permission.reason) ? "Préparer la mission de stock" : "Voir la journée";
+      }
+      article.appendChild(action);
+      if (schedule.mode === "choose_today" && day.date === today) {
+        const hint = document.createElement("small");
+        hint.style.cssText = "display:block;margin-top:8px;color:#8a5a2b";
+        hint.textContent = permission.allowed ? "Tu es autorisé à vendre sur cette journée." : "Vente indisponible : autorisation ou mission de stock à vérifier.";
+        article.appendChild(hint);
+      }
+      panel.appendChild(article);
+    });
+
+    const otherDays = (state.data.journees || [])
+      .filter((day) => window.LugdurumDayContext.isOpen(day))
+      .filter((day) => String(day.date || "").slice(0, 10) >= today)
+      .filter((day) => !schedule.days.some((assigned) => assigned.journee_id === day.journee_id))
+      .filter((day) => String(day.stock_mission_id || day.mission_stock_id || "").trim());
+    const browse = document.createElement("details");
+    browse.style.cssText = "margin-top:12px";
+    const browseTitle = document.createElement("summary");
+    browseTitle.textContent = "Consulter les autres marchés";
+    browseTitle.style.cssText = "cursor:pointer;color:#8a5a2b;font-weight:700";
+    browse.appendChild(browseTitle);
+    otherDays.forEach((day) => {
+      const stockId = String(day.stock_mission_id || day.mission_stock_id || "");
+      const event = events.find((item) => String(item.mission_id || item.evenement_id || item.event_id || "") === String(day.mission_id || ""));
+      const link = document.createElement("a");
+      link.style.cssText = "display:block;padding:8px 0;color:#1f1b16";
+      const dateLabel = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short" })
+        .format(new Date(String(day.date || "") + "T12:00:00"));
+      link.textContent = String(event?.nom || event?.name || day.nom || "Marché") + " · " + dateLabel + " · Consultation";
+      link.href = "./vente-rapide.html?" + new URLSearchParams({
+        journee_id: day.journee_id, stock_mission_id: stockId,
+        mission_id: day.mission_id || "", consult: "1"
+      }).toString();
+      browse.appendChild(link);
+    });
+    if (otherDays.length) panel.appendChild(browse);
+  };
+
   const renderHome = () => {
     refreshPendingCounts();
 
@@ -3055,6 +3150,7 @@
     );
 
     renderEventSelector(homeState);
+    renderAssignedSellerDay();
     renderHero(homeState, uiState);
     renderWorkflow(uiState, progress);
     renderWatchList(buildWatchItems(homeState, uiState));
