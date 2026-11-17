@@ -31,7 +31,7 @@ Aucun stock initial ni mission de stock n’est créé par ce changement. En par
 
 - node --check docs/vente-rapide.js
 - node --test tests/vente-rapide.test.cjs — 26 réussis.
-- node --test tests/day-context.test.cjs — 10 réussis.
+- node --test tests/day-context.test.cjs — 12 réussis.
 
 Les tests utilisent des données factices. Aucun ticket n’a été écrit dans le classeur de production.
 
