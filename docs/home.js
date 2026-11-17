@@ -1376,7 +1376,10 @@
       throw new Error("LugdurumAPI.getHomeData() est indisponible.");
     }
 
+    const startedAt = performance.now();
     const payload = await api().getHomeData(buildSelectedParams());
+    const networkElapsedMs = Math.round(performance.now() - startedAt);
+    console.info("[Lugdurum accueil] getHomeData réseau :", networkElapsedMs, "ms");
     const normalized = normalizeHomeDataPayload(payload);
 
     state.remoteTransactionIds =
@@ -2619,6 +2622,12 @@
     );
 
     list.innerHTML = "";
+    // Le panneau vendeur est la navigation principale. Le sélecteur historique
+    // reste accessible via le lien de consultation, sans carte redondante.
+    const hasSellerSchedule = Boolean(window.LugdurumDayContext?.scheduleFor(state.data.journees, CURRENT_USER.user_id).days.length);
+    const selectorSection = list.closest(".eventSelectorSection");
+    if (selectorSection) selectorSection.classList.toggle("hasSellerSchedule", hasSellerSchedule);
+    if (hasSellerSchedule) return;
 
     if (items.length === 0) {
       const empty = document.createElement("article");
@@ -3123,10 +3132,23 @@
       const stockId = String(day.stock_mission_id || day.mission_stock_id || "");
       const event = events.find((item) => String(item.mission_id || item.evenement_id || item.event_id || "") === String(day.mission_id || ""));
       const link = document.createElement("a");
-      link.style.cssText = "display:block;padding:8px 0;color:#1f1b16";
+      link.className = "sellerOtherMarketLink";
+      link.setAttribute("aria-label", "Consulter " + String(event?.nom || event?.name || day.nom || "Marché") + " du " + String(day.date || ""));
       const dateLabel = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short" })
         .format(new Date(String(day.date || "") + "T12:00:00"));
-      link.textContent = String(event?.nom || event?.name || day.nom || "Marché") + " · " + dateLabel + " · Consultation";
+      const label = document.createElement("span");
+      label.className = "sellerOtherMarketLabel";
+      label.textContent = String(event?.nom || event?.name || day.nom || "Marché");
+      const meta = document.createElement("small");
+      meta.textContent = dateLabel + " · Consultation";
+      const arrow = document.createElement("span");
+      arrow.className = "sellerOtherMarketArrow";
+      arrow.textContent = "›";
+      arrow.setAttribute("aria-hidden", "true");
+      const content = document.createElement("span");
+      content.className = "sellerOtherMarketContent";
+      content.append(label, meta);
+      link.append(content, arrow);
       link.href = "./vente-rapide.html?" + new URLSearchParams({
         journee_id: day.journee_id, stock_mission_id: stockId,
         mission_id: day.mission_id || "", consult: "1"
@@ -3202,8 +3224,8 @@
       state.loadError = error.message || "Lecture API impossible.";
       refreshPendingCounts();
 
-      setDataState("local", "Données locales · actualisation impossible");
-      renderHome();
+      setDataState("refreshing", "Connexion impossible · réessayer");
+      setText("#eventSelectorHint", "Impossible de récupérer les données en ligne. Réessaie.");
     }
   };
 
@@ -3220,18 +3242,10 @@
   const initHome = async () => {
     state.selected = readSelectionFromUrl();
 
-    const cacheRendered = renderFromHomeCacheIfAvailable();
-
-    if (!cacheRendered) {
-      renderLoading();
-    }
-
-    setDataState(
-      "refreshing",
-      cacheRendered
-        ? "Actualisation · vérification en ligne"
-        : "Actualisation · lecture en ligne"
-    );
+    // Accueil strictement réseau : ne jamais afficher un contexte vendeur issu
+    // du cache local, y compris pendant le chargement.
+    renderLoading();
+    setDataState("refreshing", "Actualisation · lecture en ligne");
 
     try {
       state.data = await loadRemoteData();
@@ -3247,18 +3261,11 @@
 
       renderHome();
     } catch (error) {
-      if (!cacheRendered) {
-        state.data = loadCacheData();
-      }
-
-      state.dataSource = "cache";
       state.loadError = error.message || "Lecture API impossible.";
-      state.apiMode = state.apiMode || "cache";
-      refreshPendingCounts();
-
-      setDataState("local", "Données locales · actualisation impossible");
-
-      renderHome();
+      setDataState("refreshing", "Connexion impossible · réessayer");
+      setText("#eventSelectorHint", "Les données en ligne sont indisponibles. Recharge la page pour réessayer.");
+      setText("#missionTitle", "Connexion indisponible");
+      setText("#missionMeta", "Aucune donnée locale affichée : l’accueil attend le réseau.");
     }
   };
 
