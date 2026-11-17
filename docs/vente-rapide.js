@@ -36,7 +36,11 @@
     label: "Aucune journée active",
     date_label: "Retourne dans Missions ou Préparation stock pour démarrer une journée.",
     user_id: "",
-    vendeur: ""
+    vendeur: "",
+    event_id: "",
+    stock_mission_id: "",
+    can_sell: false,
+    read_only: false
   };
 
   const SHEETS = {
@@ -415,16 +419,27 @@
     }
   };
 
+  const activeDayIsToday = () => {
+    const day = state.journees.find((item) =>
+      String(item.journee_id || "") === String(state.journeeActive?.journee_id || "")
+    );
+    return Boolean(day && String(day.date || "").slice(0, 10) ===
+      (window.LugdurumDayContext?.parisDateIso() || new Date().toISOString().slice(0, 10)));
+  };
+
   const hasActiveSalesContext = () =>
     Boolean(
       String(state.journeeActive?.mission_id || "").trim() &&
-      String(state.journeeActive?.journee_id || "").trim()
+      String(state.journeeActive?.journee_id || "").trim() &&
+      state.journeeActive?.can_sell === true &&
+      activeDayIsToday()
     );
 
   const transactionHasValidContext = (transaction) =>
     Boolean(
       String(transaction?.mission_id || "").trim() &&
-      String(transaction?.journee_id || "").trim()
+      String(transaction?.journee_id || "").trim() &&
+      String(transaction?.stock_mission_id || "").trim()
     );
 
   const showMissingContextStatus = () => {
@@ -1644,12 +1659,12 @@
     // la vérification en cours (notamment au passage J1 → J2).
     els.saveTicketBtn.disabled =
       !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() ||
-      hasUnpricedBottle() || state.saveInProgress;
+      state.journeeActive?.can_sell !== true || hasUnpricedBottle() || state.saveInProgress;
     if (els.externalCbBtn) {
       els.externalCbBtn.hidden = !isCb;
       els.externalCbBtn.disabled =
         !state.contextLoaded || !hasActiveSalesContext() || !hasSelectedSeller() ||
-        hasUnpricedBottle() || state.saveInProgress;
+        state.journeeActive?.can_sell !== true || hasUnpricedBottle() || state.saveInProgress;
     }
     if (els.externalCbConfirmBtn) els.externalCbConfirmBtn.disabled = state.saveInProgress;
     if (els.externalCbCancelBtn) els.externalCbCancelBtn.disabled = state.saveInProgress;
@@ -1918,7 +1933,7 @@
         lines.push({
           ligne_id: `${transactionId}_L${String(lines.length + 1).padStart(2, "0")}`,
           transaction_id: transactionId,
-          mission_id: state.journeeActive.mission_id,
+          mission_id: state.journeeActive.event_id || "",
           stock_mission_id: state.journeeActive.mission_id,
           journee_id: state.journeeActive.journee_id,
           sku_id: item.sku_id,
@@ -1978,7 +1993,7 @@
           lines.push({
             ligne_id: `${transactionId}_L${String(lines.length + 1).padStart(2, "0")}`,
             transaction_id: transactionId,
-            mission_id: state.journeeActive.mission_id,
+            mission_id: state.journeeActive.event_id || "",
             stock_mission_id: state.journeeActive.mission_id,
             journee_id: state.journeeActive.journee_id,
             sku_id: product.sku_id,
@@ -2116,7 +2131,7 @@
     const transaction = {
       transaction_id: transactionId,
       date_heure: createdAt,
-      mission_id: state.journeeActive.mission_id,
+      mission_id: state.journeeActive.event_id || "",
       stock_mission_id: state.journeeActive.mission_id,
       journee_id: state.journeeActive.journee_id,
       user_id: state.journeeActive.user_id,
@@ -2164,6 +2179,17 @@
   };
 
   const saveTransactionToApi = async (transaction) => {
+    const pendingSumup = getPendingSumup();
+    const confirmingSavedSumup = Boolean(
+      pendingSumup?.transaction?.transaction_id &&
+      String(pendingSumup.transaction.transaction_id) === String(transaction?.transaction_id || "")
+    );
+    if (!confirmingSavedSumup && !activeDayIsToday()) {
+      throw new Error("Vente bloquée : la journée active ne correspond plus à la date française. Le ticket reste conservé.");
+    }
+    if (!confirmingSavedSumup && state.journeeActive?.can_sell !== true) {
+      throw new Error("Vente bloquée : vendeur non autorisé, journée en consultation ou stock non associé.");
+    }
     if (!transactionHasValidContext(transaction)) {
       throw new Error("Transaction bloquée : mission_id ou journee_id manquant.");
     }
@@ -2983,7 +3009,7 @@
   const selectSharedSalesContext = (
     missionsStock,
     journees,
-    { stockMissionId = "", journeeId = "", explicitUrl = false } = {}
+    { stockMissionId = "", journeeId = "", explicitUrl = false, userId = "" } = {}
   ) => {
     const ignore = (item) => {
       const status = normalizeKey(item?.statut || "");
@@ -3004,33 +3030,36 @@
       })
       .filter(Boolean);
 
-    const date = new Date();
-    const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const selectionPool = explicitUrl || !userId || !window.LugdurumDayContext
+      ? choices
+      : choices.filter((choice) => window.LugdurumDayContext.isAuthorized(choice.journee, userId));
+    const today = window.LugdurumDayContext?.parisDateIso() || new Date().toISOString().slice(0, 10);
     const isToday = (choice) => String(choice.journee.date || "").slice(0, 10) === today;
     const requestedDay = String(journeeId || "").trim();
     const requestedStock = String(stockMissionId || "").trim();
 
     // Un lien explicite depuis l'accueil l'emporte sur l'ancien cache.
     if (explicitUrl && requestedDay) {
-      const matched = choices.find((choice) => choice.journee.journee_id === requestedDay);
+      const matched = selectionPool.find((choice) => choice.journee.journee_id === requestedDay);
       if (matched) return matched;
     }
 
     if (requestedStock) {
-      const linked = choices.filter((choice) => choice.mission.mission_id === requestedStock);
+      const linked = selectionPool.filter((choice) => choice.mission.mission_id === requestedStock);
       const todayChoice = linked.find(isToday);
       if (todayChoice) return todayChoice;
-      const requestedChoice = linked.find((choice) => choice.journee.journee_id === requestedDay);
+      const requestedChoice = linked.find((choice) => choice.journee.journee_id === requestedDay && isToday(choice));
       if (requestedChoice) return requestedChoice;
-      if (linked.length === 1) return linked[0];
+      const linkedToday = linked.filter(isToday);
+      if (linkedToday.length === 1) return linkedToday[0];
     }
 
     if (requestedDay) {
-      const matched = choices.find((choice) => choice.journee.journee_id === requestedDay);
+      const matched = selectionPool.find((choice) => choice.journee.journee_id === requestedDay);
       if (matched && isToday(matched)) return matched;
     }
 
-    const todayChoices = choices.filter(isToday);
+    const todayChoices = selectionPool.filter(isToday);
     const inProgress = todayChoices.filter((choice) => normalizeKey(choice.journee.statut) === "en_cours");
     if (inProgress.length === 1) return inProgress[0];
     if (todayChoices.length === 1) return todayChoices[0];
@@ -3041,7 +3070,7 @@
 
   // Un cache ne peut servir au mode hors ligne que si la journée est
   // explicitement datée d'AUJOURD'HUI. Ne jamais réutiliser J1 sur J2.
-  const restoreTodayContextFromCache = ({ stockMissionId = "", journeeId = "", explicitUrl = false } = {}) => {
+  const restoreTodayContextFromCache = ({ stockMissionId = "", journeeId = "", explicitUrl = false, consultationOnly = false } = {}) => {
     const cache = readJson(STORAGE_KEYS.salesContextCache, null);
     const sources = [
       {
@@ -3060,12 +3089,14 @@
     for (const source of sources) {
       if (!Array.isArray(source?.missionsStock) || !Array.isArray(source?.journees)) continue;
       let choice = selectSharedSalesContext(source.missionsStock, source.journees, {
-        stockMissionId, journeeId, explicitUrl
+        stockMissionId, journeeId, explicitUrl,
+        userId: state.journeeActive.user_id
       });
       // Un lien conservé vers J1 ne doit pas imposer J1 le lendemain.
       if (String(choice?.journee?.date || "").slice(0, 10) !== today) {
         choice = selectSharedSalesContext(source.missionsStock, source.journees, {
-          stockMissionId, journeeId: "", explicitUrl: false
+          stockMissionId, journeeId: "", explicitUrl: false,
+          userId: state.journeeActive.user_id
         });
       }
       if (String(choice?.journee?.date || "").slice(0, 10) !== today) continue;
@@ -3078,7 +3109,11 @@
       state.journeeActive = {
         ...state.journeeActive,
         mission_id: resolvedStockId,
+        stock_mission_id: resolvedStockId,
+        event_id: String(choice.journee.mission_id || ""),
         journee_id: resolvedDayId,
+        can_sell: !consultationOnly && window.LugdurumDayContext?.canSell(choice.journee, state.journeeActive.user_id, choice.mission).allowed === true,
+        read_only: consultationOnly || window.LugdurumDayContext?.canSell(choice.journee, state.journeeActive.user_id, choice.mission).allowed !== true,
         label: [choice.mission.nom || "Mission", choice.journee.jour_label || ""].filter(Boolean).join(" — "),
         date_label: formatDisplayDateLong(choice.journee.date) + " · hors ligne"
       };
@@ -3089,17 +3124,19 @@
         isLoaded: false,
         lastError: "CA partagé indisponible hors ligne."
       };
-      localStorage.setItem(STORAGE_KEYS.activeMissionId, resolvedStockId);
-      localStorage.setItem(STORAGE_KEYS.activeStockMissionId, resolvedStockId);
-      localStorage.setItem(STORAGE_KEYS.activeJourneeId, resolvedDayId);
-      writeJson(STORAGE_KEYS.preparationContext, {
-        mission_id: resolvedStockId,
-        stock_mission_id: resolvedStockId,
-        journee_id: resolvedDayId,
-        step: "vente_rapide",
-        source: "cache_hors_ligne",
-        updated_at: new Date().toISOString()
-      });
+      if (!state.journeeActive.read_only) {
+        localStorage.setItem(STORAGE_KEYS.activeMissionId, resolvedStockId);
+        localStorage.setItem(STORAGE_KEYS.activeStockMissionId, resolvedStockId);
+        localStorage.setItem(STORAGE_KEYS.activeJourneeId, resolvedDayId);
+        writeJson(STORAGE_KEYS.preparationContext, {
+          mission_id: resolvedStockId,
+          stock_mission_id: resolvedStockId,
+          journee_id: resolvedDayId,
+          step: "vente_rapide",
+          source: "cache_hors_ligne",
+          updated_at: new Date().toISOString()
+        });
+      }
       setStatus("Mode hors ligne : journée du jour retrouvée localement. Les tickets resteront en attente de synchronisation.", "isError");
       return true;
     }
@@ -3129,6 +3166,7 @@
     const url = new URLSearchParams(window.location.search || "");
     const urlStockId = url.get("stock_mission_id") || "";
     const urlJourneeId = url.get("journee_id") || "";
+    const consultationOnly = url.get("consult") === "1";
     const stockMissionId = urlStockId ||
       context?.stock_mission_id || context?.mission_id ||
       localStorage.getItem(STORAGE_KEYS.activeStockMissionId) ||
@@ -3163,7 +3201,8 @@
       restoreTodayContextFromCache({
         stockMissionId,
         journeeId,
-        explicitUrl: Boolean(urlStockId || urlJourneeId)
+        explicitUrl: Boolean(urlStockId || urlJourneeId),
+        consultationOnly
       });
       state.contextLoaded = true;
       renderAll();
@@ -3191,7 +3230,8 @@
         {
           stockMissionId,
           journeeId,
-          explicitUrl: Boolean(urlStockId || urlJourneeId)
+          explicitUrl: Boolean(urlStockId || urlJourneeId),
+          userId: currentUserId
         }
       );
 
@@ -3224,29 +3264,37 @@
       state.journeeActive = {
         ...state.journeeActive,
         mission_id: resolvedStockId,
+        stock_mission_id: resolvedStockId,
+        event_id: String(journee.mission_id || ""),
         journee_id: resolvedDayId,
+        can_sell: !consultationOnly && window.LugdurumDayContext?.canSell(journee, currentUserId, mission).allowed === true,
+        read_only: consultationOnly || window.LugdurumDayContext?.canSell(journee, currentUserId, mission).allowed !== true,
         label: [mission.nom || "Mission", journee.jour_label || ""].filter(Boolean).join(" — "),
         date_label: journee.date ? formatDisplayDateLong(journee.date) : ""
       };
 
-      // Le prochain lancement de la PWA sur CE téléphone retrouvera le même
-      // stock, sans partager une file offline ni une identité de vendeur.
-      localStorage.setItem(STORAGE_KEYS.activeMissionId, resolvedStockId);
-      localStorage.setItem(STORAGE_KEYS.activeStockMissionId, resolvedStockId);
-      localStorage.setItem(STORAGE_KEYS.activeJourneeId, resolvedDayId);
-      writeJson(STORAGE_KEYS.preparationContext, {
+      // Une consultation via URL ne remplace jamais le contexte local utilisé par les ventes.
+      if (!state.journeeActive.read_only) {
+        localStorage.setItem(STORAGE_KEYS.activeMissionId, resolvedStockId);
+        localStorage.setItem(STORAGE_KEYS.activeStockMissionId, resolvedStockId);
+        localStorage.setItem(STORAGE_KEYS.activeJourneeId, resolvedDayId);
+        writeJson(STORAGE_KEYS.preparationContext, {
         mission_id: resolvedStockId,
         stock_mission_id: resolvedStockId,
         journee_id: resolvedDayId,
         step: "vente_rapide",
-        updated_at: new Date().toISOString()
-      });
+          updated_at: new Date().toISOString()
+        });
+      }
 
       // Les deux lectures restent indépendantes et ne bloquent jamais la caisse.
       restoreStockSummaryCache();
       void loadDaySummaryFromNetwork({ silent: true });
       void loadStockSummaryFromNetwork();
-      setStatus("");
+      setStatus(state.journeeActive.can_sell
+        ? ""
+        : "Consultation ou vente bloquée : vérifie la date, l’affectation et la mission de stock.",
+        state.journeeActive.can_sell ? "" : "isError");
     } catch (error) {
       if (requestVersion !== contextRequestVersion) return;
       console.warn("Contexte partagé non chargé depuis Sheets.", error);
@@ -3555,6 +3603,20 @@
   // de SumUp. Une seule lecture des transactions suffit.
   let resumeSummaryTimer = null;
   const refreshSummaryOnResume = () => {
+    // Une date métier différente invalide le contexte actif, sauf si un ticket
+    // est en cours : le panier reste intact et aucune vente n'est réaffectée.
+    const activeDay = state.journees.find((item) =>
+      String(item.journee_id || "") === String(state.journeeActive?.journee_id || "")
+    );
+    const todayParis = window.LugdurumDayContext?.parisDateIso();
+    if (activeDay && todayParis && String(activeDay.date || "").slice(0, 10) !== todayParis) {
+      if (state.ticketItems.length || state.draftPack.length || state.saveInProgress || getPendingSumup()) {
+        setStatus("La date a changé. Ton ticket est conservé ; termine ou annule-le avant d’ouvrir la journée du jour.", "isError");
+      } else {
+        loadContext().catch(console.warn);
+      }
+      return;
+    }
     // Vérification du paiement prioritaire : ne pas lancer une lecture
     // de toutes les transactions au même moment qu'un retour SumUp.
     if (!hasActiveSalesContext() || getPendingSumup() || state.saveInProgress) return;
@@ -3597,7 +3659,14 @@
     onChange(user) {
       state.journeeActive.user_id = user.user_id;
       state.journeeActive.vendeur = user.nom;
-      setStatus("Vendeur actif sur cet appareil : " + user.nom, "isSuccess");
+      const day = state.journees.find((item) => String(item.journee_id || "") === String(state.journeeActive.journee_id || ""));
+      const stock = state.missionsStock.find((item) => String(item.mission_id || "") === String(state.journeeActive.mission_id || ""));
+      const permission = window.LugdurumDayContext?.canSell(day, user.user_id, stock);
+      state.journeeActive.can_sell = permission?.allowed === true;
+      state.journeeActive.read_only = permission?.allowed !== true;
+      setStatus(permission?.allowed
+        ? "Vendeur actif sur cet appareil : " + user.nom
+        : "Consultation uniquement : " + (permission?.reason === "stock_missing" ? "mission de stock non associée." : "ce vendeur n’est pas autorisé sur cette journée."), permission?.allowed ? "isSuccess" : "isError");
       renderPayment();
     }
   });

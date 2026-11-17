@@ -59,6 +59,11 @@ function setup(saveBundle, pendingCount = () => 0) {
     location: { href: "https://example.test/vente-rapide.html" },
     history: { replaceState() {} },
     crypto: { randomUUID: () => "device-" + id + "-uuid-" + ++seq },
+    LugdurumDayContext: {
+      parisDateIso: () => new Date().toISOString().slice(0, 10),
+      isAuthorized: () => true,
+      canSell: (day, userId, stock) => ({ allowed: Boolean(day && stock), reason: "" })
+    },
     setTimeout(fn) { timers.push(fn); return timers.length; },
     clearTimeout() {},
     addEventListener() {},
@@ -86,10 +91,17 @@ function setup(saveBundle, pendingCount = () => 0) {
   }, { filename: "vente-rapide.js" });
 
   const api = window.__test;
+  const testDate = new Date().toISOString().slice(0, 10);
   api.state.journeeActive = {
-    mission_id: "MS_TEST", journee_id: "JV_TEST",
-    user_id: "U_TEST", label: "Test", date_label: ""
+    mission_id: "MS_TEST", stock_mission_id: "MS_TEST",
+    event_id: "EV_TEST", journee_id: "JV_TEST",
+    user_id: "U_TEST", can_sell: true, label: "Test", date_label: ""
   };
+  api.state.journees = [{
+    journee_id: "JV_TEST", mission_id: "EV_TEST", stock_mission_id: "MS_TEST",
+    date: testDate, statut: "en_cours"
+  }];
+  api.state.missionsStock = [{ mission_id: "MS_TEST", statut: "en_cours" }];
   // Dans ce groupe de tests unitaires, la journée factice MS_TEST/JV_TEST
   // représente un contexte déjà validé. Les tests du chargement réseau
   // couvrent séparément la phase d'identification de la journée.
@@ -595,6 +607,7 @@ test("CA événement : J1 + J2, deux vendeurs, autre foire sur le même stock", 
 
 test("CA événement : pas de total trompeur sans journée liée à un événement", () => {
   const app = setup(async () => ({ ok: true }));
+  app.api.state.journees = [];
   assert.equal(app.api.computeEventSummaryFromTransactions([]).revenue, null);
 });
 

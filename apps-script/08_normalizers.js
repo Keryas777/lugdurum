@@ -253,6 +253,7 @@ function normalizeMissionVenteRow(row, index) {
     type_evenement_label: normalizersString_(row.type_evenement_label),
     duree_type: normalizersString_(row.duree_type),
     statut: normalizersString_(row.statut || "prevu"),
+    vendeurs_autorises: normalizersString_(row.vendeurs_autorises),
 
     vendeurs_prevus: vendeursPrevus,
     vendeurs_prevus_noms: normalizersString_(row.vendeurs_prevus_noms),
