@@ -74,3 +74,8 @@ test("both sellers are assigned to the same shared 5 December day", () => {
   assert.equal(Days.isAuthorized(day, "U_ANTHONY"), true);
   assert.equal(Days.isAuthorized(day, "U_WILL"), true);
 });
+
+test("un stock seulement créé, mais non préparé, ne permet pas l’encaissement", () => {
+  const day = { ...days.find((item) => item.journee_id === "CREMIEU"), stock_mission_id: "MST_ANTHONY" };
+  assert.equal(Days.canSell(day, "U_WILL", { mission_id: "MST_ANTHONY", statut: "stock_a_preparer" }, "2026-12-08").reason, "stock_not_prepared");
+});

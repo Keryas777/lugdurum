@@ -65,9 +65,14 @@
     if (!stockId || !stockMission || String(stockMission.mission_id || "").trim() !== stockId) {
       return { allowed: false, reason: "stock_missing" };
     }
-    if (statusKey(stockMission.statut).includes("clotur") || statusKey(stockMission.statut).includes("annul")) {
+    const stockStatus = statusKey(stockMission.statut);
+    if (stockStatus.includes("clotur") || stockStatus.includes("annul")) {
       return { allowed: false, reason: "stock_closed" };
     }
+    const stockPrepared = stockMission.stock_prepare === true ||
+      ["true", "1", "oui"].includes(String(stockMission.stock_prepare || "").trim().toLowerCase()) ||
+      ["pret", "en_cours"].includes(stockStatus);
+    if (!stockPrepared) return { allowed: false, reason: "stock_not_prepared" };
     return { allowed: true, reason: "" };
   };
 

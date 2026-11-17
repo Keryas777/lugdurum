@@ -3096,7 +3096,7 @@
         action.textContent = "Ouvrir Vente rapide";
       } else {
         action.href = "./missions.html?mission_id=" + encodeURIComponent(day.mission_id || "");
-        action.textContent = permission.reason === "stock_missing" ? "Préparer la mission de stock" : "Voir la journée";
+        action.textContent = ["stock_missing", "stock_not_prepared"].includes(permission.reason) ? "Préparer la mission de stock" : "Voir la journée";
       }
       article.appendChild(action);
       if (schedule.mode === "choose_today" && day.date === today) {

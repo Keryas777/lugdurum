@@ -101,6 +101,10 @@ function writeAssertQuickSaleContext_(transaction, movements) {
   if (stockStatus.indexOf("clotur") >= 0 || stockStatus.indexOf("annul") >= 0) {
     throw new Error("Vente refusée : la mission de stock est clôturée ou annulée.");
   }
+  var prepared = stock.stock_prepare === true ||
+    ["true", "1", "oui"].indexOf(String(stock.stock_prepare || "").trim().toLowerCase()) >= 0 ||
+    stockStatus === "pret" || stockStatus === "en_cours";
+  if (!prepared) throw new Error("Vente refusée : le stock n’est pas encore préparé.");
 
   (Array.isArray(movements) ? movements : []).forEach(function (movement) {
     if (String(movement.journee_id || "").trim() !== dayId ||

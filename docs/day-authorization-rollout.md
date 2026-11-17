@@ -11,7 +11,7 @@
 ## Changements proposés
 
 - La sélection des journées lit uniquement journees_vente.vendeurs_autorises. Le jour français courant est prioritaire, puis vient la date future la plus proche. Plusieurs journées le même jour sont affichées pour choix explicite.
-- La caisse exige un jour ouvert, un vendeur présent dans l’affectation de la journée, une mission de stock réellement associée et la date française courante.
+- La caisse exige un jour ouvert, un vendeur présent dans l’affectation de la journée, une mission de stock réellement associée et préparée, ainsi que la date française courante.
 - Les anciens jours sans vendeurs_autorises restent lisibles. Aucune permission d’écriture ne leur est accordée automatiquement.
 - La transaction et les lignes gardent le vrai identifiant d’événement dans mission_id, le jour dans journee_id, le stock associé dans stock_mission_id et le vendeur de l’appareil dans user_id.
 - La consultation d’un autre marché passe par consult=1, ne remplace pas les clés de contexte actif et bloque les boutons d’encaissement.
@@ -31,7 +31,7 @@ Aucun stock initial ni mission de stock n’est créé par ce changement. En par
 
 - node --check docs/vente-rapide.js
 - node --test tests/vente-rapide.test.cjs — 26 réussis.
-- node --test tests/day-context.test.cjs — 12 réussis.
+- node --test tests/day-context.test.cjs — 13 réussis.
 
 Les tests utilisent des données factices. Aucun ticket n’a été écrit dans le classeur de production.
 
