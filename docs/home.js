@@ -31,7 +31,8 @@
   const CURRENT_USER = {
     user_id: initialUser?.user_id || "",
     nom: initialUser?.nom || "Choisir vendeur",
-    role: initialUser?.role || ""
+    role: initialUser?.role || "",
+    capabilities: Array.isArray(initialUser?.capabilities) ? initialUser.capabilities : []
   };
 
   const STORAGE_KEYS = {
@@ -122,6 +123,8 @@
       type: "",
       id: ""
     },
+    selectedDayId: "",
+    forceSelectedDay: false,
 
     apiMode: "",
     apiFetchedAt: "",
@@ -503,6 +506,38 @@
   const getDayStockMissionId = (journee) =>
     String(journee?.stock_mission_id || journee?.mission_stock_id || "").trim();
 
+  const daySelectionKey = (userId = CURRENT_USER.user_id) =>
+    `lugdurum_home_selected_journee:${String(userId || "").trim()}`;
+  const daySelectionExplicitKey = (userId = CURRENT_USER.user_id) => `${daySelectionKey(userId)}:explicit`;
+
+  const readSelectedDayId = (userId = CURRENT_USER.user_id) => {
+    try { return String(localStorage.getItem(daySelectionKey(userId)) || "").trim(); }
+    catch { return ""; }
+  };
+
+  const saveSelectedDayId = (dayId, userId = CURRENT_USER.user_id) => {
+    state.selectedDayId = String(dayId || "").trim();
+    try {
+      if (state.selectedDayId) localStorage.setItem(daySelectionKey(userId), state.selectedDayId);
+      else localStorage.removeItem(daySelectionKey(userId));
+    } catch { /* préférence locale non critique */ }
+  };
+
+  const readExplicitDaySelection = (userId = CURRENT_USER.user_id) => {
+    try { return localStorage.getItem(daySelectionExplicitKey(userId)) === "true"; }
+    catch { return false; }
+  };
+
+  const saveExplicitDaySelection = (explicit, userId = CURRENT_USER.user_id) => {
+    state.forceSelectedDay = Boolean(explicit);
+    try {
+      if (state.forceSelectedDay) localStorage.setItem(daySelectionExplicitKey(userId), "true");
+      else localStorage.removeItem(daySelectionExplicitKey(userId));
+    } catch { /* préférence locale non critique */ }
+  };
+
+  const hasCapability = (name) => CURRENT_USER.capabilities.includes(name);
+
   const getMovementMissionId = (mouvement) =>
     String(
       mouvement?.stock_mission_id ||
@@ -853,13 +888,18 @@
       url.searchParams.set("selected_id", selected.id);
     }
 
-    if (homeState?.mission) {
+    if (homeState?.journee) {
+      url.searchParams.set("journee_id", getDayId(homeState.journee));
+      const stockId = getDayStockMissionId(homeState.journee) ||
+        (homeState.mission ? getStockMissionId(homeState.mission) : "");
+      if (stockId) url.searchParams.set("stock_mission_id", stockId);
+      const eventId = getDayEventId(homeState.journee);
+      if (eventId) url.searchParams.set("mission_id", eventId);
+    } else if (homeState?.mission) {
       url.searchParams.set("stock_mission_id", getStockMissionId(homeState.mission));
     }
 
-    if (homeState?.journee) {
-      url.searchParams.set("journee_id", getDayId(homeState.journee));
-    }
+    if (CURRENT_USER.user_id) url.searchParams.set("user_id", CURRENT_USER.user_id);
 
     return `${url.pathname.split("/").pop()}${url.search}${url.hash}`;
   };
@@ -2099,6 +2139,19 @@
   const buildSelectedSummaryFallback = (homeState) => {
     const { selectedItem, mission, journee, linkedDays, stockPrepared, dayTransactions } = homeState;
 
+    if (homeState.assignedDay && !hasCapability("manage_inscriptions") &&
+        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
+      return {
+        statOneLabel: "CA jour",
+        statOneValue: homeState.summaryReliable
+          ? formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0)) : "—",
+        statTwoLabel: "Tickets",
+        statTwoValue: homeState.summaryReliable ? String(dayTransactions.length) : "—",
+        statThreeLabel: "À synchro",
+        statThreeValue: String(homeState.pending.total || 0)
+      };
+    }
+
     if (!selectedItem) {
       return null;
     }
@@ -2158,6 +2211,7 @@
     // Le résumé renvoyé par Apps Script peut encore concerner J1 alors
     // que les lignes Sheets indiquent J1 clôturée et J2 active.
     if (!homeState.runtimeDayMatches) return fallback;
+    if (!homeState.summaryReliable) return fallback;
     // Ne pas afficher "Stock à faire" sur une mission validée lorsque
     // l'API Apps Script n'a pas encore reçu son correctif.
     if (homeState.mission && homeState.journee && homeState.stockPrepared &&
@@ -2231,13 +2285,13 @@
       selectedItem = upcomingItems[0];
     }
 
-    const selected = getSelectedContextFromItem(selectedItem);
+    let selected = getSelectedContextFromItem(selectedItem);
 
     if (selected.id && (!state.selected.id || state.selected.id !== selected.id)) {
       state.selected = selected;
     }
 
-    const selectedEvent = selectedItem
+    let selectedEvent = selectedItem
       ? findEventForSelectedItem(selectedItem, data.events)
       : null;
 
@@ -2293,8 +2347,45 @@
     // L'API peut conserver J1 dans active.journee malgré sa clôture.
     // Ne JAMAIS réutiliser directement cette copie pour l'action de vente.
     // Les lignes journees_vente lues dans le même appel sont prioritaires.
-    const linkedDays = mission ? getMissionJournees(mission, data.journees) : [];
-    const journee = mission ? getFirstOpenDay(mission, data.journees) : null;
+    let linkedDays = mission ? getMissionJournees(mission, data.journees) : [];
+    let journee = mission ? getFirstOpenDay(mission, data.journees) : null;
+    const rememberedDayIsAccessible = window.LugdurumDayContext?.authorizedDaysFor(
+      data.journees, CURRENT_USER.user_id
+    ).some((day) => getDayId(day) === String(state.selectedDayId || ""));
+    if (state.selectedDayId && !rememberedDayIsAccessible) saveExplicitDaySelection(false);
+    const assignedDay = window.LugdurumDayContext?.preferredDay(
+      data.journees, CURRENT_USER.user_id, state.selectedDayId, undefined, state.forceSelectedDay
+    ) || null;
+    if (assignedDay) {
+      journee = assignedDay;
+      const stockMissionId = getDayStockMissionId(assignedDay);
+      mission = data.stockMissions.find((item) => getStockMissionId(item) === stockMissionId) || null;
+      linkedDays = mission ? getMissionJournees(mission, data.journees) : [];
+      const dayEventId = getDayEventId(assignedDay);
+      selectedEvent = data.events.find((item) => getEventId(item) === dayEventId) || null;
+      if (selectedEvent) {
+        selectedItem = { ...selectedEvent, selected_type: "mission", selected_id: dayEventId };
+        selected = { type: "mission", id: dayEventId };
+        state.selected = selected;
+      }
+      if (String(state.selectedDayId || "") !== getDayId(assignedDay)) {
+        saveSelectedDayId(getDayId(assignedDay));
+      }
+    } else if (state.selectedDayId) {
+      // L’affectation a été retirée ou le vendeur a changé : invalider l’ancien contexte.
+      saveSelectedDayId("");
+      saveExplicitDaySelection(false);
+    }
+    if (!assignedDay && !hasCapability("manage_inscriptions") &&
+        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
+      mission = null;
+      journee = null;
+      linkedDays = [];
+      selectedItem = null;
+      selectedEvent = null;
+      selected = { type: "", id: "" };
+      state.selected = selected;
+    }
     const serverJournee =
       state.runtime.active?.journee ||
       state.runtime.active?.activeJournee ||
@@ -2305,7 +2396,11 @@
       Boolean(journee && getDayId(journee) === serverJourneeId);
     // En cas de désaccord, getHomeData ne fournit que les transactions J1.
     // Ne pas présenter un faux CA J2 à zéro avant déploiement Apps Script.
-    const summaryReliable = runtimeDayMatches || state.apiMode !== "getHomeData";
+    const selectedDayMatchesServer = assignedDay
+      ? state.apiMode !== "getHomeData" && Boolean(journee) || serverJourneeId === getDayId(journee)
+      : !serverJourneeId || serverJourneeId === getDayId(journee);
+    const summaryReliable = selectedDayMatchesServer &&
+      (runtimeDayMatches || state.apiMode !== "getHomeData");
     const dayTransactions = getDayTransactions(journee?.journee_id || "", data.transactions);
     const revenue = getRevenueForTransactions(dayTransactions);
     // Source de vérité : mission_id de la journée = ID de l'évènement.
@@ -2328,7 +2423,7 @@
     // getHomeData ne renvoie volontairement que les tickets du jour :
     // pour le cumul, seule la nouvelle propriété serveur est complète.
     const eventRevenue = state.apiMode === "getHomeData"
-      ? (runtimeDayMatches && serverEventRevenueAvailable ? Number(serverEventRevenue) : null)
+      ? (selectedDayMatchesServer && serverEventRevenueAvailable ? Number(serverEventRevenue) : null)
       : (eventId ? getRevenueForTransactions(eventTransactions) : null);
     const stockPrepared = isStockPrepared(mission, data.mouvementsStock);
 
@@ -2341,9 +2436,9 @@
 
     const resume = {
       ca_evenement_ttc: eventRevenue,
-      ca_jour_ttc: runtimeDayMatches
+      ca_jour_ttc: selectedDayMatchesServer && runtimeDayMatches
         ? toNumber(state.runtime.resume?.ca_jour_ttc, revenue) : revenue,
-      nb_transactions: runtimeDayMatches
+      nb_transactions: selectedDayMatchesServer && runtimeDayMatches
         ? toNumber(state.runtime.resume?.nb_transactions, dayTransactions.length)
         : dayTransactions.length,
       ventes_en_attente_sync: legacyPendingTransactions.length,
@@ -2379,6 +2474,7 @@
       linkedDays,
       mission,
       journee,
+      assignedDay,
       runtimeDayMatches,
       summaryReliable,
       stockPrepared,
@@ -2403,6 +2499,59 @@
 
   const getUiState = (homeState) => {
     const serverUi = state.runtime.ui;
+
+    if (!homeState.assignedDay && !hasCapability("manage_inscriptions") &&
+        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
+      return {
+        code: "no_mission", step: "vente", label: "Aucune journée affectée",
+        title: "Pas de marché à afficher",
+        meta: "Une journée devra être affectée à ton profil pour ouvrir les ventes.",
+        primaryText: "Ventes indisponibles", primaryHref: "./vente-rapide.html",
+        secondaryText: "Consulter le bilan", secondaryHref: "./dashboard.html"
+      };
+    }
+
+    if (homeState.assignedDay && !hasCapability("manage_inscriptions") &&
+        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
+      const day = homeState.assignedDay;
+      const permission = window.LugdurumDayContext?.canSell(
+        day, CURRENT_USER.user_id, homeState.mission
+      ) || { allowed: false, reason: "unauthorized" };
+      const closed = isClosedStatus(day);
+      const eventName = getDayReadableTitle(day, homeState.events);
+      const event = homeState.events.find((item) => getEventId(item) === getDayEventId(day));
+      const location = String(event?.lieu || event?.ville || "").trim();
+      const hours = String(event?.horaires || "").trim();
+      const meta = [formatDisplayDate(day.date), hours, location, CURRENT_USER.nom].filter(Boolean).join(" · ");
+      if (closed) return {
+        code: "closed", step: "cloture", label: "Journée clôturée", title: eventName,
+        meta,
+        primaryText: "Voir la clôture", primaryHref: "./cloture.html",
+        secondaryText: "Voir le bilan", secondaryHref: "./dashboard.html"
+      };
+      if (!permission.allowed) {
+        const blockedLabels = {
+          unauthorized: "Vendeur non autorisé",
+          not_today: "Journée pas encore ouverte",
+          stock_missing: "Mission de stock non rattachée",
+          stock_not_prepared: "Stock non préparé",
+          stock_closed: "Mission de stock clôturée"
+        };
+        return {
+          code: "stock_to_prepare", step: "vente", label: "Vente indisponible",
+          title: blockedLabels[permission.reason] || "Vente indisponible",
+          meta,
+          primaryText: "Voir la journée", primaryHref: "./vente-rapide.html",
+          secondaryText: "Ajouter des frais", secondaryHref: "./frais.html"
+        };
+      }
+      return {
+        code: "selling", step: "vente", label: "Journée de vente",
+        title: eventName, meta,
+        primaryText: "Ouvrir les ventes", primaryHref: "./vente-rapide.html",
+        secondaryText: "Clôturer la journée", secondaryHref: "./cloture.html"
+      };
+    }
 
     if (
       serverUi &&
@@ -2557,7 +2706,7 @@
     setLink("#secondaryAction", "Préparation mission", "./missions.html");
 
     renderEventSelectorLoading();
-    renderWorkflow({ step: "inscriptions" }, []);
+    renderWorkflow(null, { step: "inscriptions" }, []);
     renderWatchList(["Chargement des données…"]);
   };
 
@@ -2724,6 +2873,17 @@
       return;
     }
 
+    if (!homeState.assignedDay && !hasCapability("manage_inscriptions") &&
+        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
+      setText("#statOneLabel", "Journée");
+      setText("#todayRevenue", "Aucune affectée");
+      setText("#statTwoLabel", "Ventes");
+      setText("#todayTickets", "—");
+      setText("#statThreeLabel", "À synchro");
+      setText("#pendingSync", String(homeState.pending.total || 0));
+      return;
+    }
+
     if (uiState.code === "no_mission") {
       setText("#statOneLabel", "Inscriptions");
       setText("#todayRevenue", String(homeState.activeInscriptions.length));
@@ -2780,6 +2940,11 @@
     liveDot?.classList.add(stateClass);
 
     setText("#currentUserName", homeState.user.nom || "Utilisateur");
+    document.body.classList.toggle(
+      "isSimplifiedSeller",
+      !hasCapability("manage_inscriptions") &&
+      !hasCapability("manage_missions") && !hasCapability("prepare_stock")
+    );
     setText("#activeStatusLabel", uiState.label);
     setText("#missionTitle", uiState.title);
     setText("#missionMeta", uiState.meta);
@@ -2790,25 +2955,45 @@
     setLink("#secondaryAction", uiState.secondaryText, uiState.secondaryHref, homeState);
   };
 
-  const renderWorkflow = (uiState, progress = []) => {
+  const renderWorkflow = (homeState, uiState, progress = []) => {
+    const grid = qs(".workflowGrid");
+    if (!grid) return;
+    const simplified = !hasCapability("manage_inscriptions") &&
+      !hasCapability("manage_missions") && !hasCapability("prepare_stock");
     const normalizedProgress = normalizeProgress(progress, uiState);
-    const statusByStep = new Map(
-      normalizedProgress.map((item) => [normalizeStep(item.step), item.status])
-    );
-
-    document.querySelectorAll("[data-step]").forEach((card) => {
-      const step = normalizeStep(card.dataset.step);
-      const status = statusByStep.get(step) || "upcoming";
-
-      card.classList.remove("isDone", "isActive", "isUpcoming");
-
-      if (status === "done") {
-        card.classList.add("isDone");
-      } else if (status === "active") {
-        card.classList.add("isActive");
-      } else {
-        card.classList.add("isUpcoming");
-      }
+    const statusByStep = new Map(normalizedProgress.map((item) => [normalizeStep(item.step), item.status]));
+    const rows = simplified
+      ? [
+          { step: "vente", title: "Ventes", text: "Vente rapide, encaissements, suivi des ventes et frais.", href: "./vente-rapide.html", status: isClosedStatus(homeState?.journee) ? "done" : uiState.step === "vente" ? "active" : "upcoming" },
+          { step: "cloture", title: "Clôture", text: "Vérifier les ventes, les encaissements, les frais et le bilan.", href: "./cloture.html", status: isClosedStatus(homeState?.journee) ? "active" : "upcoming" }
+        ]
+      : [
+          { step: "inscriptions", title: "Inscriptions", text: "Dossiers, réponses, contacts et matériel.", href: "./inscriptions-evenements.html" },
+          { step: "missions", title: "Préparation mission", text: "Regrouper les journées couvertes par un même stock.", href: "./missions.html" },
+          { step: "stock", title: "Préparation stock", text: "Saisir le stock emporté avant l’évènement.", href: "./preparation-stock.html" },
+          { step: "vente", title: "Journée de vente", text: "Enregistrer les ventes pendant la journée.", href: "./vente-rapide.html" },
+          { step: "cloture", title: "Clôture", text: "Contrôler la caisse, les frais et le bilan.", href: "./cloture.html" }
+        ];
+    grid.replaceChildren();
+    rows.forEach((row, index) => {
+      const card = document.createElement("a");
+      card.className = "workflowCard";
+      card.dataset.step = row.step;
+      card.href = appendContextToHref(row.href, homeState);
+      const status = row.status || statusByStep.get(row.step) || "upcoming";
+      card.classList.add(status === "done" ? "isDone" : status === "active" ? "isActive" : "isUpcoming");
+      const number = document.createElement("span");
+      number.className = "workflowNumber";
+      number.textContent = String(index + 1);
+      const content = document.createElement("span");
+      content.className = "workflowContent";
+      const title = document.createElement("strong");
+      title.textContent = row.title;
+      const detail = document.createElement("small");
+      detail.textContent = row.text;
+      content.append(title, detail);
+      card.append(number, content);
+      grid.appendChild(card);
     });
   };
 
@@ -3050,112 +3235,77 @@
     renderDiagnosticSyncLink();
   };
 
-  const renderAssignedSellerDay = () => {
-    const section = qs("#eventSelectorList")?.parentElement;
-    if (!section || !window.LugdurumDayContext) return;
-    let panel = qs("#sellerDayPanel");
-    if (!panel) {
-      panel = document.createElement("div");
-      panel.id = "sellerDayPanel";
-      panel.setAttribute("aria-live", "polite");
-      panel.style.cssText = "margin:0 0 16px;padding:14px;border:1px solid #d8c9b3;border-radius:16px;background:#fffaf1;color:#1f1b16";
-      section.insertBefore(panel, qs("#eventSelectorList"));
-    }
-    const userId = CURRENT_USER.user_id;
-    if (!userId) {
-      panel.innerHTML = "<strong>Ta journée de vente</strong><p>Choisis ton profil vendeur pour afficher tes journées affectées.</p>";
-      return;
-    }
-    const schedule = window.LugdurumDayContext.scheduleFor(state.data.journees, userId);
-    const today = window.LugdurumDayContext.parisDateIso();
-    const events = state.data.events || [];
-    const stockMissions = state.data.stockMissions || [];
-    if (schedule.mode === "empty") {
-      panel.innerHTML = "<strong>Ta journée de vente</strong><p>Aucune journée future ne t’est affectée. Tu peux consulter l’historique depuis le Dashboard.</p><a href=\"./dashboard.html\">Consulter le Dashboard</a>";
-      return;
-    }
-    const heading = schedule.mode === "today" ? "Ta journée aujourd’hui" :
-      schedule.mode === "choose_today" ? "Choisis ton marché aujourd’hui" : "Ta prochaine journée";
-    panel.replaceChildren();
-    const title = document.createElement("strong");
-    title.textContent = heading;
-    panel.appendChild(title);
-    schedule.days.forEach((day) => {
-      const event = events.find((item) => String(item.mission_id || item.evenement_id || item.event_id || "") === String(day.mission_id || ""));
-      const eventName = String(event?.nom || event?.name || day.nom || "Marché");
-      const date = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long" })
-        .format(new Date(day.date + "T12:00:00"));
-      const stockId = String(day.stock_mission_id || day.mission_stock_id || "");
-      const stock = stockMissions.find((item) => String(item.mission_id || "") === stockId);
-      const permission = window.LugdurumDayContext.canSell(day, userId, stock);
-      const article = document.createElement("article");
-      article.style.cssText = "margin-top:10px;padding:12px;border-radius:12px;background:#f6f1e8";
-      const name = document.createElement("strong");
-      name.textContent = eventName;
-      const meta = document.createElement("p");
-      meta.style.cssText = "margin:4px 0 10px;color:#625b50";
-      meta.textContent = date + " · " + String(day.jour_label || "");
-      article.append(name, meta);
-      const action = document.createElement("a");
-      action.className = "btn btnPrimary";
-      action.style.cssText = "display:inline-flex;min-height:42px;align-items:center;justify-content:center;padding:0 14px";
-      if (permission.allowed) {
-        const params = new URLSearchParams({ journee_id: day.journee_id, stock_mission_id: stockId, mission_id: day.mission_id || "" });
-        action.href = "./vente-rapide.html?" + params.toString();
-        action.textContent = "Ouvrir Vente rapide";
-      } else {
-        action.href = "./missions.html?mission_id=" + encodeURIComponent(day.mission_id || "");
-        action.textContent = ["stock_missing", "stock_not_prepared"].includes(permission.reason) ? "Préparer la mission de stock" : "Voir la journée";
-      }
-      article.appendChild(action);
-      if (schedule.mode === "choose_today" && day.date === today) {
-        const hint = document.createElement("small");
-        hint.style.cssText = "display:block;margin-top:8px;color:#8a5a2b";
-        hint.textContent = permission.allowed ? "Tu es autorisé à vendre sur cette journée." : "Vente indisponible : autorisation ou mission de stock à vérifier.";
-        article.appendChild(hint);
-      }
-      panel.appendChild(article);
+  const getAuthorizedHomeDays = () => window.LugdurumDayContext?.authorizedDaysFor(
+    state.data.journees, CURRENT_USER.user_id
+  ) || [];
+
+  const renderDaySelector = (homeState) => {
+    const select = qs("#homeDaySelect");
+    const button = qs("#selectHomeDay");
+    const hint = qs("#eventSelectorHint");
+    if (!select || !button) return;
+
+    const days = getAuthorizedHomeDays();
+    const currentId = getDayId(homeState.assignedDay);
+    select.replaceChildren();
+    days.forEach((day) => {
+      const event = homeState.events.find((item) => getEventId(item) === getDayEventId(day));
+      const dateLabel = new Intl.DateTimeFormat("fr-FR", {
+        timeZone: "Europe/Paris", weekday: "short", day: "numeric", month: "short"
+      }).format(new Date(`${day.date}T12:00:00`));
+      const eventName = event?.nom || event?.name || day.nom || "Marché";
+      const option = document.createElement("option");
+      option.value = getDayId(day);
+      option.textContent = `${dateLabel} · ${eventName}${day.jour_label ? ` · ${day.jour_label}` : ""}`;
+      select.appendChild(option);
     });
 
-    const otherDays = (state.data.journees || [])
-      .filter((day) => window.LugdurumDayContext.isOpen(day))
-      .filter((day) => String(day.date || "").slice(0, 10) >= today)
-      .filter((day) => !schedule.days.some((assigned) => assigned.journee_id === day.journee_id))
-      .filter((day) => String(day.stock_mission_id || day.mission_stock_id || "").trim());
-    const browse = document.createElement("details");
-    browse.style.cssText = "margin-top:12px";
-    const browseTitle = document.createElement("summary");
-    browseTitle.textContent = "Consulter les autres marchés";
-    browseTitle.style.cssText = "cursor:pointer;color:#8a5a2b;font-weight:700";
-    browse.appendChild(browseTitle);
-    otherDays.forEach((day) => {
-      const stockId = String(day.stock_mission_id || day.mission_stock_id || "");
-      const event = events.find((item) => String(item.mission_id || item.evenement_id || item.event_id || "") === String(day.mission_id || ""));
-      const link = document.createElement("a");
-      link.className = "sellerOtherMarketLink";
-      link.setAttribute("aria-label", "Consulter " + String(event?.nom || event?.name || day.nom || "Marché") + " du " + String(day.date || ""));
-      const dateLabel = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short" })
-        .format(new Date(String(day.date || "") + "T12:00:00"));
-      const label = document.createElement("span");
-      label.className = "sellerOtherMarketLabel";
-      label.textContent = String(event?.nom || event?.name || day.nom || "Marché");
-      const meta = document.createElement("small");
-      meta.textContent = dateLabel + " · Consultation";
-      const arrow = document.createElement("span");
-      arrow.className = "sellerOtherMarketArrow";
-      arrow.textContent = "›";
-      arrow.setAttribute("aria-hidden", "true");
-      const content = document.createElement("span");
-      content.className = "sellerOtherMarketContent";
-      content.append(label, meta);
-      link.append(content, arrow);
-      link.href = "./vente-rapide.html?" + new URLSearchParams({
-        journee_id: day.journee_id, stock_mission_id: stockId,
-        mission_id: day.mission_id || "", consult: "1"
-      }).toString();
-      browse.appendChild(link);
-    });
-    if (otherDays.length) panel.appendChild(browse);
+    if (!days.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = CURRENT_USER.user_id ? "Aucune journée affectée" : "Choisis ton profil vendeur";
+      select.appendChild(option);
+      select.disabled = true;
+      button.disabled = true;
+      if (hint) hint.textContent = CURRENT_USER.user_id
+        ? "Aucune journée ne t’est actuellement affectée."
+        : "Choisis ton profil vendeur pour afficher tes journées affectées.";
+      return;
+    }
+
+    select.disabled = false;
+    select.value = currentId || getDayId(days[0]);
+    if (!days.some((day) => getDayId(day) === select.value)) select.value = getDayId(days[0]);
+    button.disabled = select.value === currentId;
+    const currentDay = days.find((day) => getDayId(day) === currentId);
+    const event = currentDay && homeState.events.find((item) => getEventId(item) === getDayEventId(currentDay));
+    const status = currentDay ? getReadableStatusLabel(currentDay.statut, currentDay) : "";
+    const location = String(event?.lieu || event?.ville || "").trim();
+    const hours = String(event?.horaires || "").trim();
+    if (hint) hint.textContent = currentDay
+      ? [status, location, hours].filter(Boolean).join(" · ")
+      : "Choisis une journée puis valide pour actualiser l’accueil.";
+  };
+
+  const applySelectedHomeDay = () => {
+    const select = qs("#homeDaySelect");
+    const selectedId = String(select?.value || "").trim();
+    const day = getAuthorizedHomeDays().find((item) => getDayId(item) === selectedId);
+    if (!day || !window.LugdurumDayContext?.isAuthorized(day, CURRENT_USER.user_id)) {
+      const hint = qs("#eventSelectorHint");
+      if (hint) hint.textContent = "Cette journée ne fait plus partie de tes affectations.";
+      return;
+    }
+
+    saveSelectedDayId(selectedId);
+    saveExplicitDaySelection(true);
+    const eventId = getDayEventId(day);
+    if (eventId) {
+      state.selected = { type: "mission", id: eventId };
+      setSelectionInUrl("mission", eventId);
+    }
+    // Le changement de journée ne navigue pas et ne déclenche aucune écriture métier.
+    renderHome();
   };
 
   const renderHome = () => {
@@ -3171,10 +3321,11 @@
       uiState
     );
 
-    renderEventSelector(homeState);
-    renderAssignedSellerDay();
+    renderDaySelector(homeState);
     renderHero(homeState, uiState);
-    renderWorkflow(uiState, progress);
+    renderWorkflow(homeState, uiState, progress);
+    const feesLink = qs("#feesToolLink");
+    if (feesLink) feesLink.href = appendContextToHref("./frais.html", homeState);
     renderWatchList(buildWatchItems(homeState, uiState));
   };
 
@@ -3241,6 +3392,9 @@
 
   const initHome = async () => {
     state.selected = readSelectionFromUrl();
+    const requestedDayId = String(getUrlParams().get("journee_id") || "").trim();
+    state.selectedDayId = requestedDayId || readSelectedDayId();
+    state.forceSelectedDay = !requestedDayId && readExplicitDaySelection();
 
     // Accueil strictement réseau : ne jamais afficher un contexte vendeur issu
     // du cache local, y compris pendant le chargement.
@@ -3295,6 +3449,30 @@
     }
   });
 
+  window.addEventListener("offline", () => {
+    // La réponse réseau déjà chargée reste utilisable en mémoire, avec son état hors ligne explicite.
+    if (state.dataSource !== "remote") return;
+    state.dataSource = "local";
+    state.loadError = "Connexion perdue · données de la dernière lecture réseau";
+    const label = state.apiFetchedAt
+      ? `Dernières données en ligne · ${formatShortDateTime(state.apiFetchedAt)} · hors ligne`
+      : "Données de la dernière lecture réseau · hors ligne";
+    setDataState("local", label);
+    renderHome();
+  });
+
+  window.addEventListener("online", () => {
+    if (state.dataSource === "local") refreshHomeFromRemote();
+  });
+
+  document.getElementById("homeDaySelect")?.addEventListener("change", () => {
+    const select = qs("#homeDaySelect");
+    const activeDayId = getDayId(buildHomeState().assignedDay);
+    const button = qs("#selectHomeDay");
+    if (button) button.disabled = !select?.value || select.value === activeDayId;
+  });
+  document.getElementById("selectHomeDay")?.addEventListener("click", applySelectedHomeDay);
+
   window.LugdurumUsers?.mount({
     button: document.querySelector(".userPill"),
     nameElement: document.getElementById("currentUserName"),
@@ -3302,6 +3480,11 @@
       CURRENT_USER.user_id = user.user_id;
       CURRENT_USER.nom = user.nom;
       CURRENT_USER.role = user.role;
+      CURRENT_USER.capabilities = Array.isArray(user.capabilities) ? user.capabilities : [];
+      state.selectedDayId = readSelectedDayId(user.user_id);
+      state.forceSelectedDay = readExplicitDaySelection(user.user_id);
+      state.selected = { type: "", id: "" };
+      setSelectionInUrl("", "");
       if (state.dataSource === "loading") {
         setText("#currentUserName", user.nom);
       } else {
