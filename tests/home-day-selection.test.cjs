@@ -65,6 +65,27 @@ test("une journée clôturée reste consultable mais la vente y est bloquée", (
   assert.equal(Days.canSell(closed, "U_WILL", { mission_id: "MST_SHARED", statut: "en_cours" }, "2026-11-17").reason, "closed");
 });
 
+test("une sélection devenue clôturée laisse la journée ouverte suivante reprendre la priorité", () => {
+  const days = [
+    day("YESTERDAY", "2026-11-18", ["U_WILL"], "cloture"),
+    day("TODAY", "2026-11-19", ["U_WILL"], "prevu")
+  ];
+  assert.equal(Days.preferredDay(days, "U_WILL", "YESTERDAY", "2026-11-19").journee_id, "TODAY");
+});
+
+test("la sélection active reste stable parmi plusieurs marchés le même jour", () => {
+  const days = [
+    day("MARKET_A", "2026-11-19", ["U_WILL"], "en_cours"),
+    day("MARKET_B", "2026-11-19", ["U_WILL"], "en_cours")
+  ];
+  assert.equal(Days.preferredDay(days, "U_WILL", "MARKET_B", "2026-11-19").journee_id, "MARKET_B");
+});
+
+test("un retrait d’affectation invalide la journée même si elle est mémorisée", () => {
+  const days = [day("REMOVED", "2026-11-19", ["U_ANTHONY"], "en_cours")];
+  assert.equal(Days.preferredDay(days, "U_WILL", "REMOVED", "2026-11-19"), null);
+});
+
 test("l’accueil sélectionne par capacité métier, transmet le contexte et ne navigue pas au clic", () => {
   const home = read("docs/home.js");
   const users = read("docs/lugdurum-users.js");

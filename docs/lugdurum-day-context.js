@@ -51,15 +51,17 @@
     const persisted = String(selectedId || "").trim();
     if (persisted) {
       const selected = allowed.find((day) => String(day.journee_id || "").trim() === persisted);
-      if (selected && (forceSelection || !inProgress)) return selected;
+      if (selected && (forceSelection || (isOpen(selected) &&
+          (!inProgress || statusKey(selected.statut) === "en_cours")))) return selected;
     }
     if (inProgress) return inProgress;
+    const nextOpenDay = open.find((day) => day.date === today) || open.find((day) => day.date > today);
+    if (nextOpenDay) return nextOpenDay;
     if (persisted) {
       const selected = allowed.find((day) => String(day.journee_id || "").trim() === persisted);
       if (selected) return selected;
     }
-    return open.find((day) => day.date === today) || open.find((day) => day.date > today) ||
-      null;
+    return null;
   };
 
   const isOpen = (day) => {

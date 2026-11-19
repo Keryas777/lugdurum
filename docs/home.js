@@ -3245,7 +3245,8 @@
     const hint = qs("#eventSelectorHint");
     if (!select || !button) return;
 
-    const days = getAuthorizedHomeDays();
+    const assignedDays = getAuthorizedHomeDays();
+    const days = assignedDays.filter((day) => window.LugdurumDayContext?.isOpen(day));
     const currentId = getDayId(homeState.assignedDay);
     select.replaceChildren();
     days.forEach((day) => {
@@ -3263,12 +3264,16 @@
     if (!days.length) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = CURRENT_USER.user_id ? "Aucune journée affectée" : "Choisis ton profil vendeur";
+      option.textContent = CURRENT_USER.user_id
+        ? assignedDays.length ? "Aucune journée active ou à venir" : "Aucune journée affectée"
+        : "Choisis ton profil vendeur";
       select.appendChild(option);
       select.disabled = true;
       button.disabled = true;
       if (hint) hint.textContent = CURRENT_USER.user_id
-        ? "Aucune journée ne t’est actuellement affectée."
+        ? assignedDays.length
+          ? "Aucune journée active ou à venir. Les journées terminées restent consultables dans l’historique."
+          : "Aucune journée ne t’est actuellement affectée."
         : "Choisis ton profil vendeur pour afficher tes journées affectées.";
       return;
     }
