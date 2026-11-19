@@ -74,7 +74,7 @@ const frontend = read("docs/home.js");
 
 test("accueil : la vraie ligne Sheets prime sur active.journee périmée", () => {
   assert.match(frontend, /journees: uniqueBy\(\[\.\.\.extraJournees, \.\.\.journees\], getDayId\)/);
-  assert.match(frontend, /const journee = mission \? getFirstOpenDay\(mission, data\.journees\) : null;/);
+  assert.match(frontend, /let journee = mission \? getFirstOpenDay\(mission, data\.journees\) : null;/);
   assert.match(frontend, /homeState\.runtimeDayMatches/);
   assert.match(frontend, /if \(!homeState\.runtimeDayMatches\) return fallback;/);
   assert.match(frontend, /const serverWatch = \(homeState\.runtimeDayMatches \?/);
@@ -97,7 +97,7 @@ test("accueil : même sélection J2 que le serveur et sans CA J1 réutilisé", (
     () => "2026-10-11"
   );
   assert.equal(choose(stockMission, [day1, day2]).journee_id, day2.journee_id);
-  assert.match(frontend, /const summaryReliable = runtimeDayMatches \|\| state\.apiMode !== "getHomeData";/);
+  assert.match(frontend, /const summaryReliable = selectedDayMatchesServer &&/);
 });
 
 test("accueil : CA événement J1 + J2, sans mélanger une autre foire sur le même stock", () => {

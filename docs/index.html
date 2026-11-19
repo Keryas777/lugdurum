@@ -19,11 +19,21 @@
     <title>Lugdurum — Accueil</title>
 
     <link rel="stylesheet" href="./style.css?v=25" />
+    <style>
+.page-home .eventSelectorSection { padding: 12px 14px; }
+.page-home .daySelectorLabel { display:block; margin:0 0 7px; color:#625b50; font-size:.8rem; font-weight:800; }
+.page-home .daySelectorControls { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:stretch; gap:8px; }
+.page-home #homeDaySelect { min-width:0; min-height:46px; padding:0 12px; border:1px solid #c7b79e; border-radius:12px; background:#fffaf1; color:#1f1b16; font:inherit; }
+.page-home #selectHomeDay { min-height:46px; padding:0 14px; white-space:nowrap; }
+.page-home .eventSelectorHint { margin:7px 0 0; font-size:.76rem; }
+.page-home.isSimplifiedSeller .heroActions { display:none; }
+@media(max-width:390px){.page-home .daySelectorControls{grid-template-columns:1fr}.page-home #selectHomeDay{width:100%}}
+</style>
 
     <script src="./lugdurum-api.js?v=20" defer></script>
     <script src="./lugdurum-users.js?v=1" defer></script>
     <script src="./lugdurum-day-context.js?v=1" defer></script>
-    <script src="./home.js?v=25" defer></script>
+    <script src="./home.js?v=27" defer></script>
     <script src="./pwa.js?v=15" defer></script>
   </head>
 
@@ -64,37 +74,15 @@
       </header>
 
       <main class="mainContent homeLayout">
-        <section
-          class="sectionBlock eventSelectorSection"
-          aria-labelledby="eventSelectorTitle"
-        >
-          <div class="sectionHeader eventSelectorHeader">
-            <div>
-              <p class="sectionKicker">Évènements à venir</p>
-              <h2 id="eventSelectorTitle">Sur quoi on travaille ?</h2>
-            </div>
-
-            <span class="eventSelectorCount" id="eventSelectorCount">—</span>
+        <section class="sectionBlock eventSelectorSection" aria-labelledby="eventSelectorTitle">
+          <label class="daySelectorLabel" for="homeDaySelect" id="eventSelectorTitle">Journée de vente</label>
+          <div class="daySelectorControls">
+            <select id="homeDaySelect" aria-label="Choisir une journée de vente" disabled>
+              <option value="">Chargement des journées…</option>
+            </select>
+            <button class="btn btnPrimary" type="button" id="selectHomeDay" disabled>Sélectionner la journée</button>
           </div>
-
-          <div
-            class="eventSelectorList"
-            id="eventSelectorList"
-            role="list"
-            aria-label="Sélection d’évènement"
-          >
-            <article class="eventOption isSkeleton" aria-hidden="true">
-              <span class="eventOptionDate">—</span>
-              <span class="eventOptionMain">
-                <strong>Chargement…</strong>
-                <small>Lecture des évènements.</small>
-              </span>
-            </article>
-          </div>
-
-          <p class="eventSelectorHint" id="eventSelectorHint">
-            L’accueil se cale par défaut sur le prochain évènement lié à l’utilisateur connecté.
-          </p>
+          <p class="eventSelectorHint" id="eventSelectorHint" aria-live="polite">Chargement des journées affectées.</p>
         </section>
 
         <section class="statusHero" id="statusHero" aria-labelledby="missionTitle">
@@ -202,7 +190,7 @@
           </div>
 
           <div class="tileGrid compactTiles">
-            <a class="tile" href="./frais.html">
+            <a class="tile" href="./frais.html" id="feesToolLink">
               <span class="tileIcon" aria-hidden="true">⛽</span>
               <span class="tileTitle">Frais</span>
               <span class="tileText">Emplacement, essence, repas, péage.</span>

@@ -16,10 +16,17 @@
     - Corrige l’identifiant des mouvements : mouvement_stock_id.
   */
 
-  const CURRENT_USER = {
+  const LEGACY_CURRENT_USER = {
     user_id: "U_JEROME",
-    nom: "Jérôme"
+    nom: "Jérôme",
+    capabilities: ["physical_stock_count"]
   };
+
+  const getCurrentUser = () => window.LugdurumUsers
+    ? window.LugdurumUsers.getCurrent?.() || null
+    : LEGACY_CURRENT_USER;
+  const canCountPhysicalStock = () =>
+    getCurrentUser()?.capabilities?.includes("physical_stock_count") === true;
 
   const STORAGE_KEYS = {
     events: "lugdurum_evenements",
@@ -983,7 +990,7 @@
 
     setPanelHidden(els.noContextPanel, hasContext);
     setPanelHidden(els.salesPanel, !hasContext);
-    setPanelHidden(els.stockPanel, !hasContext);
+    setPanelHidden(els.stockPanel, !hasContext || !canCountPhysicalStock());
     setPanelHidden(els.feesPanel, !hasContext);
     setPanelHidden(els.finalPanel, !hasContext);
 
@@ -1231,8 +1238,8 @@
       evenement_id: getDayEventId(state.journee),
       date: String(state.journee.date || "").slice(0, 10),
 
-      user_id: CURRENT_USER.user_id,
-      user_nom: CURRENT_USER.nom,
+      user_id: getCurrentUser()?.user_id || "",
+      user_nom: getCurrentUser()?.nom || "",
       statut: status,
 
       date_cloture: now,
@@ -1251,10 +1258,10 @@
       stock_initial_total: totals.initial,
       stock_vendu_total: totals.sold,
       stock_theorique_total: totals.theory,
-      stock_compte_total: totals.hasCounted > 0 ? totals.counted : "",
-      stock_ecart_total: totals.hasCounted > 0 ? totals.gap : "",
+      stock_compte_total: canCountPhysicalStock() && totals.hasCounted > 0 ? totals.counted : "",
+      stock_ecart_total: canCountPhysicalStock() && totals.hasCounted > 0 ? totals.gap : "",
 
-      stock_lignes: state.stockRows.map((row) => {
+      stock_lignes: canCountPhysicalStock() ? state.stockRows.map((row) => {
         const counted = getCountedValue(row.sku_id);
         const hasCount = counted !== "";
         const stockCompte = hasCount ? Number(counted) : "";
@@ -1271,7 +1278,7 @@
           stock_compte: stockCompte,
           ecart: hasCount ? stockCompte - row.stock_theorique : ""
         };
-      }),
+      }) : [],
 
       note: els.closeNoteInput.value.trim(),
       created_at: state.existingClosure?.created_at || now,
@@ -1280,6 +1287,7 @@
   };
 
   const buildClosureMovements = (closure) => {
+    if (!canCountPhysicalStock()) return [];
     if (!closure || !Array.isArray(closure.stock_lignes)) return [];
 
     return closure.stock_lignes
@@ -1301,7 +1309,7 @@
         ecart: line.ecart,
         statut: "valide",
         note: closure.note,
-        user_id: CURRENT_USER.user_id,
+        user_id: getCurrentUser()?.user_id || "",
         created_at: closure.created_at,
         updated_at: closure.updated_at
       }));
@@ -1338,6 +1346,7 @@
   };
 
   const validateCountsBeforeClose = () => {
+    if (!canCountPhysicalStock()) return true;
     if (state.stockRows.length === 0) return true;
 
     const missing = state.stockRows.filter((row) => !state.counts.has(row.sku_id));
@@ -1369,7 +1378,7 @@
     });
 
     const allClosed =
-      linkedAfterClose.length > 0 &&
+      canCountPhysicalStock() && linkedAfterClose.length > 0 &&
       linkedAfterClose.every((journee) => {
         return normalizeStatus(journee.statut) === "cloture" || isCancelledStatus(journee);
       });
@@ -1384,7 +1393,9 @@
 
     const updatedMission = {
       ...state.mission,
-      statut: allClosed ? "cloture" : "en_cours",
+      statut: canCountPhysicalStock()
+        ? allClosed ? "cloture" : "en_cours"
+        : state.mission.statut,
       ca_total_ttc:
         toNumber(state.mission.ca_total_ttc, 0) -
         previousRevenue +
@@ -1393,11 +1404,13 @@
         toNumber(state.mission.total_frais_ttc, 0) -
         previousFrais +
         toNumber(closure.total_frais_ttc, 0),
-      stock_initial_total: closure.stock_initial_total,
-      stock_vendu_total: closure.stock_vendu_total,
-      stock_theorique_total: closure.stock_theorique_total,
-      stock_compte_total: closure.stock_compte_total,
-      stock_ecart_total: closure.stock_ecart_total,
+      ...(canCountPhysicalStock() ? {
+        stock_initial_total: closure.stock_initial_total,
+        stock_vendu_total: closure.stock_vendu_total,
+        stock_theorique_total: closure.stock_theorique_total,
+        stock_compte_total: closure.stock_compte_total,
+        stock_ecart_total: closure.stock_ecart_total
+      } : {}),
       updated_at: now,
       closed_at: allClosed ? now : state.mission.closed_at || ""
     };
@@ -1627,6 +1640,10 @@
 
   const saveClosure = async (status) => {
     if (!state.mission || !state.journee || state.isSaving) return null;
+    if (window.LugdurumUsers && !getCurrentUser()) {
+      setStatus("Clôture bloquée : sélectionne un vendeur actif pour cette journée.", "isError");
+      return null;
+    }
 
     if (status === "cloturee") {
       hideLegacyRecovery();
@@ -1746,7 +1763,7 @@
       quantite: line.stock_initial,
       statut: "valide",
       note: "Report de stock depuis clôture",
-      user_id: CURRENT_USER.user_id,
+      user_id: getCurrentUser()?.user_id || "",
       created_at: carryover.created_at,
       updated_at: carryover.updated_at
     }));

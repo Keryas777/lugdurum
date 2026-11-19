@@ -37,6 +37,33 @@
       .some((vendor) => String(vendor.user_id || "").trim() === id);
   };
 
+  const authorizedDaysFor = (days, userId) => (Array.isArray(days) ? days : [])
+    .filter((day) => isAuthorized(day, userId))
+    .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(String(day.date || "").slice(0, 10)))
+    .map((day) => ({ ...day, date: String(day.date).slice(0, 10) }))
+    .sort((a, b) => a.date.localeCompare(b.date) ||
+      String(a.journee_id || "").localeCompare(String(b.journee_id || "")));
+
+  const preferredDay = (days, userId, selectedId = "", today = parisDateIso(), forceSelection = false) => {
+    const allowed = authorizedDaysFor(days, userId);
+    const open = allowed.filter(isOpen);
+    const inProgress = open.find((day) => statusKey(day.statut) === "en_cours");
+    const persisted = String(selectedId || "").trim();
+    if (persisted) {
+      const selected = allowed.find((day) => String(day.journee_id || "").trim() === persisted);
+      if (selected && (forceSelection || (isOpen(selected) &&
+          (!inProgress || statusKey(selected.statut) === "en_cours")))) return selected;
+    }
+    if (inProgress) return inProgress;
+    const nextOpenDay = open.find((day) => day.date === today) || open.find((day) => day.date > today);
+    if (nextOpenDay) return nextOpenDay;
+    if (persisted) {
+      const selected = allowed.find((day) => String(day.journee_id || "").trim() === persisted);
+      if (selected) return selected;
+    }
+    return null;
+  };
+
   const isOpen = (day) => {
     const status = statusKey(day?.statut);
     return Boolean(day && !CLOSED.has(status) && !status.includes("annul") && !status.includes("clotur"));
@@ -76,5 +103,5 @@
     return { allowed: true, reason: "" };
   };
 
-  return { FRANCE_TIME_ZONE, parisDateIso, parseAuthorizations, isAuthorized, isOpen, scheduleFor, canSell };
+  return { FRANCE_TIME_ZONE, parisDateIso, parseAuthorizations, isAuthorized, isOpen, authorizedDaysFor, preferredDay, scheduleFor, canSell };
 });
