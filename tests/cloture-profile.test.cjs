@@ -52,7 +52,10 @@ function sellerClosures(capabilities) {
   `;
   const messages = [];
   const code = `${identity}\n${deps}\n${validation}\n${movement}\n${patch}\nreturn { validateCountsBeforeClose, buildClosureMovements, buildDayAndMissionPatchAfterClose };`;
-  return new Function("window", "__state", "__messages", code)(window, state, messages);
+  return {
+    ...new Function("window", "__state", "__messages", code)(window, state, messages),
+    state
+  };
 }
 
 test("vendeur sans capacité inventaire clôture sans compter ni produire de mouvement stock", () => {
@@ -76,6 +79,18 @@ test("clôture simplifiée garde la mission partagée ouverte et conserve ses to
   assert.equal(patch.updatedMission.stock_theorique_total, 66);
   assert.equal(patch.updatedMission.stock_compte_total, 72);
   assert.equal(patch.updatedMission.stock_ecart_total, 6);
+});
+
+test("la dernière journée clôturée ne clôture pas la mission de stock globale", () => {
+  const h = sellerClosures(["sell", "manage_expenses", "close_day"]);
+  h.state.linkedDays[1].statut = "cloture";
+  const patch = h.buildDayAndMissionPatchAfterClose({
+    cloture_id: "CLOSE-A", journee_id: "DAY-A", ca_total_ttc: 100, total_frais_ttc: 4
+  });
+  assert.equal(patch.linkedAfterClose.every((day) => day.statut === "cloture"), true);
+  assert.equal(patch.allClosed, false);
+  assert.equal(patch.updatedMission.statut, "en_cours");
+  assert.equal(patch.updatedMission.closed_at, "");
 });
 
 test("profil avec inventaire garde l’obligation de comptage et le mouvement de clôture", () => {
