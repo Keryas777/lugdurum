@@ -538,7 +538,9 @@ function buildVenteRapideResumeGetData_(transactions) {
    Accueil : getHomeData
    ============================== */
 
-function getHomeData_(params) {
+// Legacy dashboard implementation retained for reference only.
+// 01_http_router.gs now resolves getHomeData_ exclusively to 04_home_data.gs.
+function getHomeDataLegacy_(params) {
   const startedAt = Date.now();
   const today = String(params.today || getTodayIsoGetData_()).slice(0, 10);
 

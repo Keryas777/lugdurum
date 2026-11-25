@@ -27,6 +27,16 @@
     : LEGACY_CURRENT_USER;
   const canCountPhysicalStock = () =>
     getCurrentUser()?.capabilities?.includes("physical_stock_count") === true;
+  const routeParams = new URLSearchParams(window.location?.search || "");
+  const routeUserId = String(routeParams.get("user_id") || "").trim();
+  const ROUTE_CONTEXT_MISMATCH = Boolean(routeUserId && routeUserId !== String(getCurrentUser()?.user_id || "").trim());
+  const ROUTE_CONTEXT = !ROUTE_CONTEXT_MISMATCH && routeParams.get("journee_id")
+    ? {
+        journee_id: String(routeParams.get("journee_id") || "").trim(),
+        mission_id: String(routeParams.get("mission_id") || routeParams.get("event_id") || "").trim(),
+        stock_mission_id: String(routeParams.get("stock_mission_id") || "").trim()
+      }
+    : null;
 
   const STORAGE_KEYS = {
     events: "lugdurum_evenements",
@@ -381,8 +391,9 @@
   };
 
   const getActiveIds = () => {
+    if (ROUTE_CONTEXT_MISMATCH) return { missionId: "", journeeId: "" };
     const context = getObject(STORAGE_KEYS.preparationContext);
-    const journeeId = safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
+    const journeeId = ROUTE_CONTEXT?.journee_id || safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
       context.journee_id || "";
     const linkedDay = state.journees.find((day) =>
       String(day.journee_id || "") === String(journeeId));
@@ -396,8 +407,9 @@
     const legacyStockId = state.stockMissions.some((mission) =>
       String(mission.mission_id || "") === legacyId) ? legacyId : "";
     return {
-      missionId: safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
-        context.stock_mission_id || linkedStockId || legacyStockId,
+      missionId: ROUTE_CONTEXT
+        ? String(ROUTE_CONTEXT.stock_mission_id || linkedStockId || "").trim()
+        : safeLocalGet(STORAGE_KEYS.activeStockMissionId) || context.stock_mission_id || linkedStockId || legacyStockId,
       journeeId
     };
   };
@@ -407,9 +419,9 @@
 
   const getDayEventId = (journee) =>
     String(
+      journee?.mission_id ||
       journee?.evenement_id ||
       journee?.mission_vente_id ||
-      journee?.mission_id ||
       ""
     ).trim();
 
@@ -437,10 +449,7 @@
         const explicitStockId = String(
           journee.stock_mission_id || journee.mission_stock_id || ""
         ).trim();
-        // mission_id est l'évènement d'origine, pas la mission de stock.
-        return explicitStockId
-          ? explicitStockId === missionId
-          : String(journee.mission_id || "").trim() === missionId;
+        return explicitStockId === missionId;
       })
       .filter((journee) => !isCancelledStatus(journee))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -2076,7 +2085,7 @@
       String(mission.mission_id || "") === stockMissionId) ||
         !payload.journees.some((day) =>
           String(day.journee_id || "") === journeeId &&
-          String(day.stock_mission_id || day.mission_stock_id || day.mission_id || "") === stockMissionId)) {
+          String(day.stock_mission_id || day.mission_stock_id || "") === stockMissionId)) {
       throw new Error("Réponse getClotureData incohérente : mission ou journée absente.");
     }
     if (payload.transactions.some((tx) =>
@@ -2266,9 +2275,7 @@
           const explicitStockId = String(
             day.stock_mission_id || day.mission_stock_id || ""
           ).trim();
-          return explicitStockId
-            ? explicitStockId === stockId
-            : String(day.mission_id || "").trim() === stockId;
+          return explicitStockId === stockId;
         })) {
       throw new Error("Lecture Google Sheets incohérente : journée ou mission de stock absente.");
     }
@@ -2315,6 +2322,14 @@
     state.journee =
       state.journees.find((journee) => String(journee.journee_id || "") === journeeId) ||
       null;
+
+    if (ROUTE_CONTEXT && state.journee && (
+      (ROUTE_CONTEXT.mission_id && ROUTE_CONTEXT.mission_id !== getDayEventId(state.journee)) ||
+      (ROUTE_CONTEXT.stock_mission_id && ROUTE_CONTEXT.stock_mission_id !== String(state.journee.stock_mission_id || state.journee.mission_stock_id || "").trim())
+    )) {
+      state.mission = null;
+      state.journee = null;
+    }
 
     if (!state.mission || !state.journee) {
       state.mission = null;

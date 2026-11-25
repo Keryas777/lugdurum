@@ -40,9 +40,17 @@ test("une journée commencée reste prioritaire sur une sélection mémorisée",
 
 test("une sélection explicitement validée peut changer le contexte pendant la session", () => {
   assert.equal(
-    Days.preferredDay(assigned, "U_WILL", "LYON_J2", "2026-11-18", true).journee_id,
+    Days.preferredDay(assigned, "U_WILL", "LYON_J2", "2026-11-18", true, true).journee_id,
     "LYON_J2"
   );
+});
+
+test("une nouvelle journée aujourd’hui remplace une préférence future mémorisée", () => {
+  const days = [
+    day("TODAY", "2026-11-19", ["U_WILL"]),
+    day("FUTURE", "2026-11-22", ["U_WILL"])
+  ];
+  assert.equal(Days.preferredDay(days, "U_WILL", "FUTURE", "2026-11-19", true)?.journee_id, "TODAY");
 });
 
 test("la sélection mémorisée est conservée si elle reste affectée et ouverte", () => {
@@ -59,9 +67,9 @@ test("une ancienne sélection non affectée est invalidée et ne révèle pas la
   assert.equal(Days.isAuthorized(assigned.find((item) => item.journee_id === "OTHER_VENDOR"), "U_WILL"), false);
 });
 
-test("une journée clôturée reste consultable mais la vente y est bloquée", () => {
+test("une journée clôturée est exclue du parcours actif", () => {
   const closed = assigned.find((item) => item.journee_id === "CLOSED");
-  assert.equal(Days.preferredDay([closed], "U_WILL", "CLOSED", "2026-11-18").journee_id, "CLOSED");
+  assert.equal(Days.preferredDay([closed], "U_WILL", "CLOSED", "2026-11-18"), null);
   assert.equal(Days.canSell(closed, "U_WILL", { mission_id: "MST_SHARED", statut: "en_cours" }, "2026-11-17").reason, "closed");
 });
 
@@ -73,12 +81,13 @@ test("une sélection devenue clôturée laisse la journée ouverte suivante repr
   assert.equal(Days.preferredDay(days, "U_WILL", "YESTERDAY", "2026-11-19").journee_id, "TODAY");
 });
 
-test("la sélection active reste stable parmi plusieurs marchés le même jour", () => {
+test("plusieurs marchés le même jour exigent un choix mémorisé explicitement", () => {
   const days = [
     day("MARKET_A", "2026-11-19", ["U_WILL"], "en_cours"),
     day("MARKET_B", "2026-11-19", ["U_WILL"], "en_cours")
   ];
-  assert.equal(Days.preferredDay(days, "U_WILL", "MARKET_B", "2026-11-19").journee_id, "MARKET_B");
+  assert.equal(Days.preferredDay(days, "U_WILL", "MARKET_B", "2026-11-19"), null);
+  assert.equal(Days.preferredDay(days, "U_WILL", "MARKET_B", "2026-11-19", true)?.journee_id, "MARKET_B");
 });
 
 test("un retrait d’affectation invalide la journée même si elle est mémorisée", () => {
@@ -86,32 +95,38 @@ test("un retrait d’affectation invalide la journée même si elle est mémoris
   assert.equal(Days.preferredDay(days, "U_WILL", "REMOVED", "2026-11-19"), null);
 });
 
-test("l’accueil sélectionne par capacité métier, transmet le contexte et ne navigue pas au clic", () => {
+test("l’accueil dérive tous ses blocs du contexte journée et transmet les quatre identifiants", () => {
   const home = read("docs/home.js");
   const users = read("docs/lugdurum-users.js");
   assert.match(home, /hasCapability\("manage_inscriptions"\)/);
   assert.match(home, /hasCapability\("prepare_stock"\)/);
   assert.doesNotMatch(home, /U_WILL|William/);
   assert.match(users, /capabilities: \["sell", "manage_expenses", "close_day"\]/);
-  assert.match(home, /url\.searchParams\.set\("journee_id", getDayId\(homeState\.journee\)\)/);
-  assert.match(home, /url\.searchParams\.set\("mission_id", eventId\)/);
-  assert.match(home, /url\.searchParams\.set\("stock_mission_id", stockId\)/);
-  assert.match(home, /const applySelectedHomeDay = \(\) =>[\s\S]*?renderHome\(\);/);
-  assert.match(home, /const rows = simplified[\s\S]*?\{ step: "vente"[\s\S]*?\{ step: "cloture"/);
-  assert.match(home, /hasCapability\("manage_inscriptions"\)[\s\S]*?const rows = simplified/);
+  assert.match(home, /const context = homeState\?\.workContext/);
+  assert.match(home, /url\.searchParams\.set\("journee_id", context\.journee_id\)/);
+  assert.match(home, /url\.searchParams\.set\("mission_id", context\.mission_id\)/);
+  assert.match(home, /url\.searchParams\.set\("stock_mission_id", context\.stock_mission_id\)/);
+  assert.match(home, /url\.searchParams\.set\("user_id", context\.user_id\)/);
+  assert.match(home, /resolveWorkContext\(/);
+  assert.match(home, /renderDaySelector\(homeState\)[\s\S]*?renderHero\(homeState, uiState\)[\s\S]*?renderWorkflow\(homeState, uiState\)/);
+  assert.match(home, /rows = \[\s*\{ step: "vente", title: "Ventes"[\s\S]*?\{ step: "cloture", title: "Clôture"/);
+  assert.doesNotMatch(home, /renderEventSelector|renderAssignedSellerDay|Le choix est temporaire|eventSelectorCount/);
   assert.match(home, /text: "Vente rapide, encaissements, suivi des ventes et frais\./);
   const applyStart = home.indexOf("  const applySelectedHomeDay =");
   const apply = home.slice(applyStart, home.indexOf("  const renderHome =", applyStart));
   assert.doesNotMatch(apply, /location\.(?:href|assign|replace)|window\.open/);
 });
 
-test("le chargement initial réseau strict n’affiche pas l’ancien cache accueil", () => {
+test("l’accueil essaie le réseau avant d’utiliser le cache hors ligne", () => {
   const home = read("docs/home.js");
   const init = home.slice(home.indexOf("  const initHome ="), home.indexOf("  window.addEventListener(\"lugdurum:sync-status\""));
   assert.match(init, /renderLoading\(\);/);
-  assert.doesNotMatch(init, /renderFromHomeCacheIfAvailable|loadCacheData/);
+  const networkRead = init.indexOf("state.data = await loadRemoteData()");
+  const cacheFallback = init.indexOf("if (renderFromHomeCacheIfAvailable()) return;");
+  assert.ok(networkRead >= 0 && cacheFallback > networkRead);
+  assert.match(home, /state\.dataSource = "local";[\s\S]*?Hors ligne · dernière réponse/);
   assert.match(read("docs/index.html"), /homeDaySelect/);
-  assert.match(read("docs/index.html"), /selectHomeDay/);
-  assert.match(home, /window\.addEventListener\("offline"[\s\S]*?Dernières données en ligne/);
-  assert.match(home, /window\.addEventListener\("online"[\s\S]*?refreshHomeFromRemote\(\)/);
+  assert.doesNotMatch(read("docs/index.html"), /selectHomeDay/);
+  assert.match(home, /window\.addEventListener\("offline"[\s\S]*?données de la dernière lecture réseau/);
+  assert.match(home, /window\.addEventListener\("online"[\s\S]*?state\.dataSource === "local" \|\| state\.dataSource === "cache"[\s\S]*?refreshHomeFromRemote\(\)/);
 });

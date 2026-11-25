@@ -4,8 +4,7 @@
   Données optimisées pour l’accueil Lugdurum.
 
   Responsabilités :
-  - construire le sélecteur d’évènements à venir ;
-  - choisir l’évènement affiché par défaut ;
+  - construire le contexte vendeur à partir d’une journée affectée ;
   - calculer le résumé accueil ;
   - calculer la progression métier :
     inscription → mission → stock → vente → clôture ;
@@ -55,23 +54,31 @@ function getHomeData_(params) {
 
   const tables = loadHomeTablesHomeData_();
 
-  const upcomingItems = buildUpcomingItemsHomeData_(tables, {
-    today,
-    userId
-  });
-
-  const selectedItem = resolveSelectedItemHomeData_(upcomingItems, {
-    selectedType,
-    selectedId,
-    userId
-  });
-
-  const selectedContext = getSelectedContextHomeData_(selectedItem);
-  const active = buildActiveContextHomeData_(tables, selectedItem, today);
+  const personalWorkContext = isTrueHomeData_(safeParams.work_context) ||
+    isTrueHomeData_(safeParams.ignore_legacy_context);
+  const requestedDayId = String(
+    safeParams.selected_day_id || safeParams.activeJourneeId || safeParams.journee_id || ""
+  ).trim();
+  const manualDaySelection = isTrueHomeData_(safeParams.manual_day_selection);
+  const preferredDaySelection = isTrueHomeData_(safeParams.preferred_day_selection);
+  const upcomingItems = personalWorkContext ? [] : buildUpcomingItemsHomeData_(tables, { today, userId });
+  const selectedItem = personalWorkContext
+    ? null
+    : resolveSelectedItemHomeData_(upcomingItems, { selectedType, selectedId, userId });
+  const personal = personalWorkContext
+    ? buildPersonalWorkContextHomeData_(tables, { today, userId, requestedDayId, manualDaySelection, preferredDaySelection })
+    : null;
+  const active = personalWorkContext
+    ? personal.active
+    : buildActiveContextHomeData_(tables, selectedItem, today);
+  const effectiveSelectedItem = personalWorkContext ? personal.event : selectedItem;
+  const selectedContext = personalWorkContext
+    ? (personal.event ? { type: "mission", id: personal.context.mission_id } : { type: "", id: "" })
+    : getSelectedContextHomeData_(selectedItem);
   const resume = buildResumeHomeData_(active, tables);
-  const progress = buildProgressHomeData_(selectedItem, active);
-  const selectedSummary = buildSelectedSummaryHomeData_(selectedItem, active, resume);
-  const ui = buildUiStateHomeData_(selectedItem, active);
+  const progress = buildProgressHomeData_(effectiveSelectedItem, active);
+  const selectedSummary = buildSelectedSummaryHomeData_(effectiveSelectedItem, active, resume);
+  const ui = buildUiStateHomeData_(effectiveSelectedItem, active);
   const nextAction = buildNextActionHomeData_(ui);
 
   const transactionIds = tables.transactions
@@ -87,6 +94,7 @@ function getHomeData_(params) {
 
     selected_type: selectedContext.type,
     selected_id: selectedContext.id,
+    work_context: personalWorkContext ? personal.context : null,
 
     rawCounts: {
       inscriptions: tables.inscriptions.length,
@@ -126,8 +134,121 @@ function getHomeData_(params) {
     transaction_ids_complete: true,
     remote_transaction_index_complete: true,
 
-    watchItems: buildHomeWatchItemsHomeData_(tables, selectedItem, active, resume)
+    watchItems: buildHomeWatchItemsHomeData_(tables, effectiveSelectedItem, active, resume)
   };
+}
+
+function isTrueHomeData_(value) {
+  return value === true || ["true", "1", "oui"].includes(String(value || "").trim().toLowerCase());
+}
+
+function isDayAuthorizedHomeData_(day, userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!day || !safeUserId) return false;
+  let vendors = day.vendeurs_autorises;
+  if (typeof vendors === "string") {
+    try { vendors = JSON.parse(vendors || "[]"); } catch (_error) { vendors = []; }
+  }
+  return Array.isArray(vendors) && vendors.some(function (vendor) {
+    return vendor && String(vendor.user_id || "").trim() === safeUserId;
+  });
+}
+
+function isOpenDayHomeData_(day) {
+  return Boolean(day && !String(day.closed_at || "").trim() &&
+    !isClosedStatusHomeData_(day) && !isCancelledStatusHomeData_(day));
+}
+
+function buildPersonalWorkContextHomeData_(tables, options) {
+  const today = String(options.today || getTodayIsoHomeData_()).slice(0, 10);
+  const userId = String(options.userId || "").trim();
+  const requestedDayId = String(options.requestedDayId || "").trim();
+  const manualSelection = isTrueHomeData_(options.manualDaySelection);
+  const preferredSelection = isTrueHomeData_(options.preferredDaySelection);
+  const authorizedDays = (tables.journees || []).filter(function (day) {
+    return isDayAuthorizedHomeData_(day, userId) && isOpenDayHomeData_(day) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(day.date || "").slice(0, 10));
+  }).slice().sort(function (a, b) {
+    return String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)) ||
+      String(a.journee_id || "").localeCompare(String(b.journee_id || ""));
+  });
+  const requested = authorizedDays.find(function (day) {
+    return String(day.journee_id || "").trim() === requestedDayId;
+  }) || null;
+  const todayDays = authorizedDays.filter(function (day) {
+    return String(day.date || "").slice(0, 10) === today;
+  });
+  let day = null;
+  if (manualSelection && requested) {
+    day = requested;
+  } else if (todayDays.length === 1) {
+    day = todayDays[0];
+  } else if (todayDays.length > 1) {
+    day = preferredSelection ? todayDays.find(function (item) {
+      return String(item.journee_id || "").trim() === requestedDayId;
+    }) || null : null;
+  } else if (preferredSelection && requested) {
+    day = requested;
+  } else {
+    const futureDays = authorizedDays.filter(function (item) {
+      return String(item.date || "").slice(0, 10) > today;
+    });
+    if (futureDays.length) {
+      const firstDate = String(futureDays[0].date || "").slice(0, 10);
+      const sameDate = futureDays.filter(function (item) {
+        return String(item.date || "").slice(0, 10) === firstDate;
+      });
+      day = sameDate.length === 1 ? sameDate[0] : null;
+    }
+  }
+
+  const eventId = String(day && (day.mission_id || day.evenement_id || day.mission_vente_id) || "").trim();
+  const stockMissionId = String(day && (day.stock_mission_id || day.mission_stock_id) || "").trim();
+  const event = eventId ? (tables.events || []).find(function (item) {
+    return getEventIdHomeData_(item) === eventId;
+  }) || null : null;
+  const stockMission = stockMissionId ? (tables.stockMissions || []).find(function (item) {
+    return getStockMissionIdHomeData_(item) === stockMissionId;
+  }) || null : null;
+  const linkedDays = stockMissionId ? (tables.journees || []).filter(function (item) {
+    return String(item.stock_mission_id || item.mission_stock_id || "").trim() === stockMissionId &&
+      isOpenDayHomeData_(item);
+  }) : [];
+  const dayId = String(day && day.journee_id || "").trim();
+  const transactions = dayId ? (tables.transactions || []).filter(function (item) {
+    return String(item.journee_id || "").trim() === dayId && !isCancelledStatusHomeData_(item);
+  }) : [];
+  const mouvementsStock = stockMissionId ? (tables.mouvementsStock || []).filter(function (item) {
+    return getMovementMissionIdHomeData_(item) === stockMissionId;
+  }) : [];
+  const context = {
+    user_id: userId,
+    journee_id: dayId,
+    mission_id: eventId,
+    stock_mission_id: stockMissionId
+  };
+  const active = {
+    event: event,
+    eventItem: event,
+    missionVente: event,
+    mission_vente: event,
+    mission: stockMission,
+    stockMission: stockMission,
+    stock_mission: stockMission,
+    journee: day,
+    activeJournee: day,
+    active_journee: day,
+    linkedDays: linkedDays,
+    linked_days: linkedDays,
+    transactions: transactions,
+    currentTransactions: transactions,
+    dayTransactions: transactions,
+    transactions_jour: transactions,
+    mouvementsStock: mouvementsStock,
+    mouvements_stock: mouvementsStock,
+    work_context: context
+  };
+  return { context: context, day: day, event: event, stockMission: stockMission, linkedDays: linkedDays, active: active };
 }
 
 /* ==============================

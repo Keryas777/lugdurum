@@ -13,10 +13,26 @@
     - Ajoute la catégorie COMPENSATION_PERTE_SALAIRE.
   */
 
+  const activeUser = window.LugdurumUsers?.getCurrent() || null;
   const CURRENT_USER = {
-    user_id: "U_JEROME",
-    nom: "Jérôme"
+    user_id: String(activeUser?.user_id || "").trim(),
+    nom: String(activeUser?.nom || "Utilisateur").trim()
   };
+  const routeParams = new URLSearchParams(window.location.search);
+  const routeUserId = String(routeParams.get("user_id") || "").trim();
+  const ROUTE_CONTEXT_MISMATCH = Boolean(routeUserId && routeUserId !== CURRENT_USER.user_id);
+  const ROUTE_CONTEXT_REQUESTED = routeParams.has("journee_id") || routeParams.has("stock_mission_id");
+  const ROUTE_CONTEXT_MISSING_STOCK = ROUTE_CONTEXT_REQUESTED &&
+    !String(routeParams.get("stock_mission_id") || "").trim();
+  const ROUTE_CONTEXT_INVALID = ROUTE_CONTEXT_MISMATCH || ROUTE_CONTEXT_MISSING_STOCK;
+  const ROUTE_CONTEXT = !ROUTE_CONTEXT_INVALID && routeParams.get("stock_mission_id")
+    ? {
+        mission_id: String(routeParams.get("mission_id") || routeParams.get("event_id") || "").trim(),
+        stock_mission_id: String(routeParams.get("stock_mission_id") || "").trim(),
+        journee_id: String(routeParams.get("journee_id") || "").trim(),
+        user_id: CURRENT_USER.user_id
+      }
+    : null;
 
   const OPERATORS = {
     U_JEROME: "Jérôme",
@@ -259,6 +275,7 @@
   };
 
   const getContextMissionId = () =>
+    ROUTE_CONTEXT_INVALID ? "" :
     String(
       state.context?.stock_mission_id ||
       state.context?.mission_id ||
@@ -289,10 +306,8 @@
 
     state.missionJournees = state.journees
       .filter((journee) => {
-        const stockMissionId = String(journee.stock_mission_id || "").trim();
-        const missionIdValue = String(journee.mission_id || "").trim();
-
-        return stockMissionId === missionId || missionIdValue === missionId;
+        const stockMissionId = String(journee.stock_mission_id || journee.mission_stock_id || "").trim();
+        return stockMissionId === missionId;
       })
       .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -304,7 +319,16 @@
     const fraisContext = readJson(STORAGE_KEYS.fraisContext, null);
     const preparationContext = readJson(STORAGE_KEYS.preparationContext, null);
 
-    state.context = fraisContext || preparationContext || null;
+    state.context = ROUTE_CONTEXT || fraisContext || preparationContext || null;
+
+    if (ROUTE_CONTEXT_INVALID) {
+      state.stockMission = null;
+      state.missionJournees = [];
+      setStatus(ROUTE_CONTEXT_MISMATCH
+        ? "Le profil vendeur a changé. Reviens à l’accueil pour ouvrir ses frais."
+        : "Aucune mission de stock n’est associée à cette journée. Associe-en une avant d’ajouter des frais.", "isError");
+      return false;
+    }
 
     const hasContext = Boolean(
       state.context?.stock_mission_id ||
@@ -351,6 +375,9 @@
 
   const getJourneeById = (journeeId) =>
     state.journees.find((journee) => journee.journee_id === journeeId);
+
+  const getJourneeEventId = (journee) =>
+    String(journee?.mission_id || journee?.evenement_id || journee?.mission_vente_id || "").trim();
 
   const upsertLocalFrais = (frais) => {
     const index = state.frais.findIndex((item) => item.frais_id === frais.frais_id);
@@ -424,7 +451,7 @@
       frais_id: fraisId,
       date,
       date_heure: existing?.date_heure || now,
-      mission_id: missionId,
+      mission_id: getJourneeEventId(journee) || ROUTE_CONTEXT?.mission_id || existing?.mission_id || "",
       stock_mission_id: missionId,
       journee_id: journeeId,
       jour_label: journee?.jour_label || "",

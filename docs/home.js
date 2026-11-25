@@ -1,29 +1,7 @@
 (() => {
   "use strict";
 
-  /*
-    Accueil V21 — sélecteur d’évènements + parcours par évènement
-
-    - Affiche un sélecteur d’évènements à venir entre le header et la tuile récap.
-    - Le défaut est calculé côté Apps Script :
-      1) prochain évènement lié à l’utilisateur connecté ;
-      2) sinon prochain évènement global.
-    - Le dernier évènement sélectionné n’est pas utilisé comme défaut durable.
-    - La sélection est temporaire : URL + état mémoire de la page.
-    - getHomeData reçoit user_id, selected_type et selected_id.
-    - Compatible avec le nouveau getHomeData :
-      upcomingItems, selectedItem, selectedSummary, progress, nextAction.
-    - Compatible avec l’ancien getHomeData :
-      active/ui/resume/data.
-    - Fallback conservé :
-      getCoreData(), getters séparés, cache accueil, anciens caches locaux.
-    - File d’attente officielle : lugdurum_pending_writes.
-    - Legacy transactions : lugdurum_pending_transactions.
-    - Corrige l’affichage des statuts bruts :
-      DOSSIER_A_ENVOYER -> Dossier à envoyer, etc.
-    - Corrige les tuiles récap :
-      labels toujours affichés, valeurs fallback si getHomeData renvoie "-", "—" ou rien.
-  */
+  /* Accueil vendeur : une seule source de contexte, la journée ouverte affectée. */
 
   // La sélection du vendeur est locale à chaque appareil.
   // Aucun utilisateur n'est attribué automatiquement lors d'un premier accès.
@@ -58,7 +36,6 @@
     "mouvementsStock"
   ];
 
-  const STEP_ORDER = ["inscriptions", "missions", "stock", "vente", "cloture"];
   const HISTORICAL_SOURCE = "SAISIE_HISTORIQUE";
 
   const INITIAL_STOCK_MOVEMENT_TYPES = [
@@ -74,24 +51,6 @@
     local: "Données locales",
     refreshing: "Actualisation",
     online: "Données en ligne"
-  };
-
-  const INSCRIPTION_STATUS_LABELS = {
-    A_CONTACTER: "À contacter",
-    DOSSIER_A_ENVOYER: "Dossier à envoyer",
-    EN_ATTENTE_REPONSE: "En attente",
-    A_RELANCER: "À relancer",
-    LISTE_ATTENTE: "Liste d’attente",
-    ACCEPTE: "Accepté",
-    ACCEPTEE: "Acceptée",
-    REFUSE: "Refusé",
-    ANNULE: "Annulé"
-  };
-
-  const PAYMENT_STATUS_LABELS = {
-    A_ENVOYER: "À envoyer",
-    ENVOYE: "Envoyé",
-    ENCAISSE: "Encaissé"
   };
 
   const formatEuro = new Intl.NumberFormat("fr-FR", {
@@ -119,12 +78,9 @@
     pendingWritesCount: 0,
     legacyPendingTransactionsCount: 0,
 
-    selected: {
-      type: "",
-      id: ""
-    },
     selectedDayId: "",
     forceSelectedDay: false,
+    manualSelectionThisSession: false,
 
     apiMode: "",
     apiFetchedAt: "",
@@ -138,15 +94,9 @@
     remoteTransactionIndexComplete: false,
 
     runtime: {
-      upcomingItems: [],
-      selectedItem: null,
-      selectedSummary: null,
-      progress: [],
-      nextAction: null,
-      ui: null,
-      watchItems: [],
       active: null,
-      resume: null
+      resume: null,
+      workContext: null
     },
 
     rawCounts: {
@@ -262,17 +212,6 @@
       .replace(/[-\s]+/g, "_")
       .replace(/[^a-z0-9_]/g, "");
 
-  const normalizeCode = (value) =>
-    String(value ?? "")
-      .trim()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-
-  const normalizeStatus = (value) => normalizeText(value);
-
   const escapeHtml = (value) =>
     String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -299,101 +238,6 @@
     }
 
     return undefined;
-  };
-
-  const getInscriptionStatusLabel = (itemOrValue) => {
-    const rawValue =
-      typeof itemOrValue === "object"
-        ? String(itemOrValue?.statut || "").trim()
-        : String(itemOrValue || "").trim();
-
-    const key = normalizeCode(rawValue);
-
-    if (INSCRIPTION_STATUS_LABELS[key]) {
-      return INSCRIPTION_STATUS_LABELS[key];
-    }
-
-    if (typeof itemOrValue === "object") {
-      const explicit =
-        itemOrValue?.status_label ||
-        itemOrValue?.statut_label ||
-        itemOrValue?.acceptation_label ||
-        itemOrValue?.label_statut ||
-        "";
-
-      if (!isPlaceholderValue(explicit)) {
-        return String(explicit).trim();
-      }
-    }
-
-    return rawValue || "Dossier";
-  };
-
-  const getPaymentStatusValue = (item) => {
-    const key = normalizeCode(item?.paiement_statut || "");
-
-    if (PAYMENT_STATUS_LABELS[key]) {
-      return key;
-    }
-
-    return "A_ENVOYER";
-  };
-
-  const getPaymentStatusLabel = (itemOrValue) => {
-    const rawValue =
-      typeof itemOrValue === "object"
-        ? String(itemOrValue?.paiement_statut || "").trim()
-        : String(itemOrValue || "").trim();
-
-    const key = normalizeCode(rawValue);
-
-    if (PAYMENT_STATUS_LABELS[key]) {
-      return PAYMENT_STATUS_LABELS[key];
-    }
-
-    if (typeof itemOrValue === "object") {
-      const explicit = String(itemOrValue?.paiement_statut_label || "").trim();
-
-      if (!isPlaceholderValue(explicit)) {
-        return explicit;
-      }
-    }
-
-    return PAYMENT_STATUS_LABELS.A_ENVOYER;
-  };
-
-  const getReadableStatusLabel = (value, item = null) => {
-    const type = item ? getSelectedItemType(item) || getUpcomingItemType(item) : "";
-    const key = normalizeCode(value);
-
-    if (type === "inscription" && INSCRIPTION_STATUS_LABELS[key]) {
-      return INSCRIPTION_STATUS_LABELS[key];
-    }
-
-    if (INSCRIPTION_STATUS_LABELS[key]) {
-      return INSCRIPTION_STATUS_LABELS[key];
-    }
-
-    if (PAYMENT_STATUS_LABELS[key]) {
-      return PAYMENT_STATUS_LABELS[key];
-    }
-
-    if (key === "STOCK_A_PREPARER") return "Stock à préparer";
-    if (key === "PRET") return "Stock prêt";
-    if (key === "EN_COURS") return "En cours";
-    if (key === "PREVU") return "Prévu";
-    if (key === "CLOTURE" || key === "CLOTUREE") return "Clôturé";
-    if (key === "MISSION_A_PREPARER") return "Mission à préparer";
-
-    if (!isPlaceholderValue(value)) {
-      return String(value).trim();
-    }
-
-    if (item) {
-      return getUpcomingItemStatusLabel(item);
-    }
-
-    return "À suivre";
   };
 
   const parseDate = (isoDate) => {
@@ -488,20 +332,14 @@
   const getEventId = (eventItem) =>
     String(eventItem?.mission_id || eventItem?.evenement_id || "").trim();
 
-  const getInscriptionId = (inscription) =>
-    String(inscription?.inscription_id || "").trim();
-
   const getStockMissionId = (mission) =>
     String(mission?.mission_id || "").trim();
-
-  const getStockMissionEventId = (mission) =>
-    String(mission?.evenement_id || mission?.event_id || "").trim();
 
   const getDayId = (journee) =>
     String(journee?.journee_id || "").trim();
 
   const getDayEventId = (journee) =>
-    String(journee?.evenement_id || journee?.mission_id || "").trim();
+    String(journee?.mission_id || journee?.evenement_id || journee?.mission_vente_id || "").trim();
 
   const getDayStockMissionId = (journee) =>
     String(journee?.stock_mission_id || journee?.mission_stock_id || "").trim();
@@ -606,20 +444,6 @@
     if (!end) return true;
 
     return end >= todayIso();
-  };
-
-  const isAcceptedInscription = (item) => {
-    if (isCancelledStatus(item)) return false;
-
-    const statut = normalizeStatus(item?.statut);
-
-    return (
-      statut === "accepte" ||
-      statut === "acceptee" ||
-      statut === "accepté" ||
-      statut === "acceptée" ||
-      toBoolean(item?.acceptation, false)
-    );
   };
 
   const isStockMissionUsefulForHome = (mission) => {
@@ -765,114 +589,22 @@
     }
   };
 
-  const inferSelectedTypeFromId = (id) => {
-    const value = String(id || "").trim().toUpperCase();
-
-    if (value.startsWith("INS_")) return "inscription";
-    if (value.startsWith("EVT_")) return "mission";
-    if (value.startsWith("MIS_")) return "mission";
-    if (value.startsWith("MST_")) return "stock";
-
-    return "";
-  };
-
-  const readSelectionFromUrl = () => {
-    const params = getUrlParams();
-
-    const selectedId =
-      params.get("selected_id") ||
-      params.get("selectedId") ||
-      params.get("item_id") ||
-      params.get("itemId") ||
-      params.get("event_id") ||
-      params.get("evenement_id") ||
-      params.get("mission_vente_id") ||
-      params.get("inscription_id") ||
-      "";
-
-    const selectedType =
-      params.get("selected_type") ||
-      params.get("selectedType") ||
-      params.get("item_type") ||
-      params.get("itemType") ||
-      (params.get("inscription_id") ? "inscription" : "") ||
-      inferSelectedTypeFromId(selectedId) ||
-      "";
-
-    return {
-      type: String(selectedType || "").trim(),
-      id: String(selectedId || "").trim()
-    };
-  };
-
-  const setSelectionInUrl = (type, id) => {
-    const safeType = String(type || "").trim();
-    const safeId = String(id || "").trim();
-
-    const url = new URL(window.location.href);
-
-    [
-      "selected_type",
-      "selected_id",
-      "selectedType",
-      "selectedId",
-      "item_type",
-      "item_id",
-      "event_id",
-      "evenement_id",
-      "mission_vente_id",
-      "inscription_id",
-      "stock_mission_id",
-      "journee_id"
-    ].forEach((key) => url.searchParams.delete(key));
-
-    if (safeType && safeId) {
-      url.searchParams.set("selected_type", safeType);
-      url.searchParams.set("selected_id", safeId);
-    }
-
-    window.history.replaceState({}, "", url.toString());
-  };
-
-  const getCurrentSelection = () => {
-    const urlSelection = readSelectionFromUrl();
-
-    if (urlSelection.id) {
-      state.selected = urlSelection;
-      return urlSelection;
-    }
-
-    return state.selected;
-  };
-
-  const setCurrentSelection = (type, id) => {
-    state.selected = {
-      type: String(type || "").trim(),
-      id: String(id || "").trim()
-    };
-
-    setSelectionInUrl(state.selected.type, state.selected.id);
-
-    return state.selected;
-  };
-
   const buildSelectedParams = () => {
-    const selected = getCurrentSelection();
-
+    const dayContext = window.LugdurumDayContext;
     return {
-      today: todayIso(),
+      today: dayContext?.parisDateIso() || todayIso(),
       user_id: CURRENT_USER.user_id,
       current_user_id: CURRENT_USER.user_id,
-      selected_type: selected.type,
-      selected_id: selected.id
+      selected_day_id: state.selectedDayId,
+      journee_id: state.selectedDayId,
+      manual_day_selection: state.manualSelectionThisSession,
+      preferred_day_selection: state.forceSelectedDay,
+      work_context: true,
+      ignore_legacy_context: true
     };
   };
 
   const appendContextToHref = (href, homeState = null) => {
-    const selected =
-      homeState?.selected ||
-      getCurrentSelection();
-
     const safeHref = String(href || "./index.html");
 
     let url;
@@ -883,23 +615,19 @@
       return safeHref;
     }
 
-    if (selected?.type && selected?.id) {
-      url.searchParams.set("selected_type", selected.type);
-      url.searchParams.set("selected_id", selected.id);
+    ["selected_type", "selected_id", "item_id", "evenement_id", "mission_vente_id", "inscription_id"].forEach((key) =>
+      url.searchParams.delete(key));
+    const context = homeState?.workContext;
+    if (context?.journee_id) url.searchParams.set("journee_id", context.journee_id);
+    if (context?.mission_id) {
+      url.searchParams.set("mission_id", context.mission_id);
+      url.searchParams.set("event_id", context.mission_id);
     }
-
-    if (homeState?.journee) {
-      url.searchParams.set("journee_id", getDayId(homeState.journee));
-      const stockId = getDayStockMissionId(homeState.journee) ||
-        (homeState.mission ? getStockMissionId(homeState.mission) : "");
-      if (stockId) url.searchParams.set("stock_mission_id", stockId);
-      const eventId = getDayEventId(homeState.journee);
-      if (eventId) url.searchParams.set("mission_id", eventId);
-    } else if (homeState?.mission) {
-      url.searchParams.set("stock_mission_id", getStockMissionId(homeState.mission));
+    if (context?.stock_mission_id) url.searchParams.set("stock_mission_id", context.stock_mission_id);
+    if (context?.user_id) url.searchParams.set("user_id", context.user_id);
+    if (context?.journee_id && !context.stock_mission_id && url.pathname.endsWith("/missions.html")) {
+      url.searchParams.set("auto_select", "1");
     }
-
-    if (CURRENT_USER.user_id) url.searchParams.set("user_id", CURRENT_USER.user_id);
 
     return `${url.pathname.split("/").pop()}${url.search}${url.hash}`;
   };
@@ -1144,15 +872,9 @@
   });
 
   const normalizeRuntime = (runtime = {}) => ({
-    upcomingItems: toArray(runtime.upcomingItems),
-    selectedItem: toObject(runtime.selectedItem),
-    selectedSummary: toObject(runtime.selectedSummary),
-    progress: toArray(runtime.progress),
-    nextAction: toObject(runtime.nextAction),
-    ui: toObject(runtime.ui),
-    watchItems: toArray(runtime.watchItems),
     active: toObject(runtime.active),
-    resume: toObject(runtime.resume)
+    resume: toObject(runtime.resume),
+    workContext: toObject(runtime.workContext || runtime.work_context)
   });
 
   const getCountFrom = (counts, keys, fallback) => {
@@ -1336,34 +1058,10 @@
       {};
 
     const runtime = normalizeRuntime({
-      upcomingItems: [
-        ...pickArray(envelope, ["upcomingItems", "upcoming_items", "items", "eventItems", "event_items"]),
-        ...pickArray(active, ["upcomingItems", "upcoming_items", "items"])
-      ],
-      selectedItem:
-        pickObject(envelope, ["selectedItem", "selected_item", "currentItem", "current_item"]) ||
-        pickObject(active, ["selectedItem", "selected_item", "currentItem", "current_item"]),
-      selectedSummary:
-        pickObject(envelope, ["selectedSummary", "selected_summary", "summary"]) ||
-        pickObject(active, ["selectedSummary", "selected_summary", "summary"]),
-      progress: [
-        ...pickArray(envelope, ["progress", "steps", "workflow"]),
-        ...pickArray(active, ["progress", "steps", "workflow"])
-      ],
-      nextAction:
-        pickObject(envelope, ["nextAction", "next_action"]) ||
-        pickObject(active, ["nextAction", "next_action"]),
-      ui:
-        pickObject(envelope, ["ui", "uiState", "ui_state"]) ||
-        pickObject(active, ["ui", "uiState", "ui_state"]),
-      watchItems: [
-        ...pickArray(envelope, ["watchItems", "watch_items"]),
-        ...pickArray(active, ["watchItems", "watch_items"])
-      ],
       active,
-      resume:
-        pickObject(envelope, ["resume"]) ||
-        pickObject(active, ["resume"])
+      resume: pickObject(envelope, ["resume"]) || pickObject(active, ["resume"]),
+      workContext: pickObject(envelope, ["work_context", "workContext"]) ||
+        pickObject(active, ["work_context", "workContext"])
     });
 
     const indexComplete =
@@ -1376,26 +1074,7 @@
       active.transaction_ids_complete === true ||
       active.remote_transaction_index_complete === true;
 
-    const selectedFromPayload =
-      runtime.selectedItem
-        ? {
-            type:
-              runtime.selectedItem.selected_type ||
-              runtime.selectedItem.type ||
-              runtime.selectedItem.item_type ||
-              "",
-            id:
-              runtime.selectedItem.selected_id ||
-              runtime.selectedItem.id ||
-              runtime.selectedItem.item_id ||
-              runtime.selectedItem.mission_id ||
-              runtime.selectedItem.inscription_id ||
-              ""
-          }
-        : {
-            type: envelope.selected_type || envelope.selectedType || "",
-            id: envelope.selected_id || envelope.selectedId || ""
-          };
+
 
     return {
       data,
@@ -1403,7 +1082,6 @@
       transactionIds,
       transactionIndexComplete: indexComplete,
       runtime,
-      selectedFromPayload,
       generatedAt: envelope.generated_at || envelope.generatedAt || "",
       durationMs: toNumber(envelope.duration_ms ?? envelope.durationMs, null),
       apiMode: envelope.api_mode || envelope.apiMode || "getHomeData",
@@ -1430,17 +1108,6 @@
     state.remoteTransactionIndexComplete = normalized.transactionIndexComplete;
     state.lastHomePayload = normalized.homePayload;
     state.runtime = normalized.runtime;
-
-    if (normalized.selectedFromPayload?.id) {
-      state.selected = {
-        type:
-          normalized.selectedFromPayload.type ||
-          inferSelectedTypeFromId(normalized.selectedFromPayload.id),
-        id: normalized.selectedFromPayload.id
-      };
-
-      setSelectionInUrl(state.selected.type, state.selected.id);
-    }
 
     state.apiMode = normalized.apiMode || "getHomeData";
     state.apiFetchedAt = new Date().toISOString();
@@ -1531,6 +1198,34 @@
 
     try {
       data = await loadRemoteDataWithHomeData();
+      const contextApi = window.LugdurumDayContext;
+      const expected = contextApi?.resolveWorkContext({
+        days: data.journees,
+        events: data.events,
+        stockMissions: data.stockMissions,
+        userId: CURRENT_USER.user_id,
+        selectedDayId: state.selectedDayId,
+        today: contextApi.parisDateIso(),
+        forceSelection: state.forceSelectedDay,
+        manualOverride: state.manualSelectionThisSession
+      });
+      const active = state.runtime.active || {};
+      const serverDay = active.journee || active.activeJournee || active.active_journee || null;
+      const serverWorkContext = state.runtime.workContext || active.work_context || active.workContext || null;
+      const responseMatches = Boolean(expected?.day && getDayId(serverDay) === getDayId(expected.day) &&
+        (!serverWorkContext || (
+          String(serverWorkContext.user_id || "").trim() === expected.context.user_id &&
+          String(serverWorkContext.journee_id || "").trim() === expected.context.journee_id &&
+          String(serverWorkContext.mission_id || "").trim() === expected.context.mission_id &&
+          String(serverWorkContext.stock_mission_id || "").trim() === expected.context.stock_mission_id
+        )));
+      if (expected?.day && !responseMatches) {
+        // Compatibilité avec Apps Script non encore aligné : relire les tables
+        // complètes pour ne jamais afficher les ventes d'une autre journée.
+        data = await loadRemoteDataWithCoreData();
+        state.apiMode = "getCoreData · contexte journée vérifié";
+        shouldCacheGeneric = true;
+      }
     } catch (homeError) {
       try {
         data = await loadRemoteDataWithCoreData();
@@ -1601,15 +1296,6 @@
     state.apiDurationMs = null;
     state.runtime = normalized.runtime;
 
-    if (normalized.selectedFromPayload?.id && !getCurrentSelection().id) {
-      state.selected = {
-        type:
-          normalized.selectedFromPayload.type ||
-          inferSelectedTypeFromId(normalized.selectedFromPayload.id),
-        id: normalized.selectedFromPayload.id
-      };
-    }
-
     const data = normalized.data;
     data.__rawCounts = normalized.rawCounts;
 
@@ -1656,123 +1342,6 @@
     return data;
   };
 
-  const getMissionJournees = (mission, journees) => {
-    const stockMissionId = typeof mission === "string" ? mission : getStockMissionId(mission);
-    const eventId = typeof mission === "string" ? "" : getStockMissionEventId(mission);
-
-    return journees
-      .filter((journee) => !isHistoricalDay(journee))
-      .filter((journee) => !isCancelledStatus(journee))
-      .filter((journee) => {
-        return (
-          String(journee.mission_id || "") === stockMissionId ||
-          String(journee.stock_mission_id || "") === stockMissionId ||
-          String(journee.mission_stock_id || "") === stockMissionId ||
-          String(journee.evenement_id || "") === stockMissionId ||
-          (eventId && String(journee.evenement_id || "") === eventId) ||
-          (eventId && String(journee.mission_id || "") === eventId)
-        );
-      })
-      .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-  };
-
-  const getFirstOpenDay = (mission, journees) => {
-    const linkedDays = getMissionJournees(mission, journees);
-    const openDays = linkedDays.filter((day) =>
-      !isClosedStatus(day) &&
-      !String(day.closed_at || "").trim() &&
-      !isCancelledStatus(day)
-    );
-
-    // Une journée réellement commencée ne bascule pas à minuit sans clôture.
-    // Sinon, privilégier la journée du jour (ou la première encore ouverte).
-    return (
-      openDays.find((day) => normalizeStatus(day.statut) === "en_cours") ||
-      openDays.find((day) => String(day.date || "").slice(0, 10) === todayIso()) ||
-      openDays[0] ||
-      linkedDays[linkedDays.length - 1] ||
-      null
-    );
-  };
-
-  const findFallbackActiveStockMission = (stockMissions) => {
-    const candidates = stockMissions
-      .filter((mission) => {
-        if (!isStockMissionUsefulForHome(mission)) return false;
-        if (isClosedStatus(mission)) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        const byDate = String(a.date_debut || "").localeCompare(String(b.date_debut || ""));
-        if (byDate !== 0) return byDate;
-
-        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
-      });
-
-    return candidates[0] || null;
-  };
-
-  const findStockMissionForEvent = (eventId, stockMissions, journees = []) => {
-    const id = String(eventId || "").trim();
-    if (!id) return null;
-
-    const candidates = stockMissions.filter((mission) => !isCancelledStatus(mission));
-    const linkedStockIds = new Set(
-      journees
-        .filter((day) => getDayEventId(day) === id && !isCancelledStatus(day))
-        .map((day) => getDayStockMissionId(day))
-        .filter(Boolean)
-    );
-
-    // Source de vérité : le stock lié aux journées, et non le premier doublon.
-    return (
-      candidates.find((mission) => linkedStockIds.has(getStockMissionId(mission))) ||
-      candidates.find((mission) => getStockMissionId(mission) === id) ||
-      candidates.find((mission) => getStockMissionEventId(mission) === id) ||
-      null
-    );
-  };
-
-  const getSelectedItemId = (item) =>
-    String(
-      item?.selected_id ||
-      item?.item_id ||
-      item?.id ||
-      item?.mission_id ||
-      item?.evenement_id ||
-      item?.inscription_id ||
-      ""
-    ).trim();
-
-  const getSelectedItemType = (item) =>
-    normalizeKey(
-      item?.selected_type ||
-      item?.item_type ||
-      item?.type ||
-      inferSelectedTypeFromId(getSelectedItemId(item))
-    );
-
-  const findEventForSelectedItem = (selectedItem, events) => {
-    const type = getSelectedItemType(selectedItem);
-    const id = getSelectedItemId(selectedItem);
-
-    if (type === "mission" || type === "event" || type === "evenement") {
-      return events.find((eventItem) => getEventId(eventItem) === id) || null;
-    }
-
-    const eventId =
-      selectedItem?.evenement_id ||
-      selectedItem?.event_id ||
-      selectedItem?.mission_id ||
-      "";
-
-    if (eventId) {
-      return events.find((eventItem) => getEventId(eventItem) === eventId) || null;
-    }
-
-    return null;
-  };
-
   const isInitialStockMovement = (mouvement) => {
     if (!mouvement || isCancelledStatus(mouvement)) return false;
 
@@ -1793,7 +1362,6 @@
         getStockMissionId(mission),
         String(mission.stock_mission_id || "").trim(),
         String(mission.mission_stock_id || "").trim(),
-        getStockMissionEventId(mission)
       ].filter(Boolean)
     );
 
@@ -1879,784 +1447,237 @@
     return `${eventItem.nom} — ${journee.jour_label || "Journée"}`;
   };
 
-  const getCleanInscriptions = (inscriptions) =>
-    inscriptions.filter((item) => !isCancelledStatus(item));
-
-  const getAcceptedInscriptions = (inscriptions) =>
-    inscriptions.filter(isAcceptedInscription);
-
-  const getUpcomingItemId = (item) => getSelectedItemId(item);
-
-  const getUpcomingItemType = (item) => getSelectedItemType(item) || "mission";
-
-  const getUpcomingItemTitle = (item) =>
-    String(item?.nom || item?.title || item?.label || item?.name || "Évènement").trim();
-
-  const getUpcomingItemCity = (item) =>
-    String(item?.ville || item?.city || "").trim();
-
-  const getUpcomingItemStatusLabel = (item) => {
-    const explicit =
-      item?.status_label ||
-      item?.statut_label ||
-      item?.acceptation_label ||
-      item?.label_statut ||
-      "";
-
-    if (!isPlaceholderValue(explicit)) {
-      return getReadableStatusLabel(explicit, item);
-    }
-
-    const type = getUpcomingItemType(item);
-    const statut = normalizeStatus(item?.statut || item?.acceptation || "");
-
-    if (type === "inscription") {
-      if (isAcceptedInscription(item)) return "Accepté";
-      return getInscriptionStatusLabel(item);
-    }
-
-    if (isClosedStatus(item)) return "Clôturé";
-
-    if (statut === "stock_a_preparer") return "Stock à préparer";
-    if (statut === "pret") return "Stock prêt";
-    if (statut === "en_cours") return "En cours";
-    if (statut === "prevu") return "Prévu";
-
-    return "Évènement";
-  };
-
-  const getUpcomingItemTone = (item) => {
-    const type = getUpcomingItemType(item);
-    const statut = normalizeStatus(item?.statut || item?.acceptation || "");
-
-    if (isClosedStatus(item)) return "closed";
-    if (type === "inscription" && !isAcceptedInscription(item)) return "pending";
-    if (statut === "stock_a_preparer") return "pending";
-    if (statut === "pret" || statut === "en_cours") return "ready";
-
-    return "accepted";
-  };
-
-  const buildFallbackUpcomingItems = (data) => {
-    const acceptedEventIds = new Set(
-      data.events
-        .map(getEventId)
-        .filter(Boolean)
-    );
-
-    const missionItems = data.events
-      .filter((eventItem) => !isHistoricalEvent(eventItem))
-      .filter((eventItem) => !isCancelledStatus(eventItem))
-      .filter(isUpcomingOrCurrent)
-      .map((eventItem) => {
-        const eventId = getEventId(eventItem);
-        const stockMission = findStockMissionForEvent(eventId, data.stockMissions, data.journees);
-
-        return {
-          ...eventItem,
-          selected_type: "mission",
-          selected_id: eventId,
-          item_type: "mission",
-          item_id: eventId,
-          type: "mission",
-          stock_mission_id: stockMission ? getStockMissionId(stockMission) : "",
-          statut:
-            stockMission?.statut ||
-            eventItem.statut ||
-            "",
-          status_label: stockMission
-            ? getUpcomingItemStatusLabel(stockMission)
-            : "Mission à préparer"
-        };
-      });
-
-    const inscriptionItems = data.inscriptions
-      .filter((item) => !isCancelledStatus(item))
-      .filter((item) => !isAcceptedInscription(item))
-      .filter(isUpcomingOrCurrent)
-      .filter((item) => {
-        const linkedEventId = String(item.evenement_id || "").trim();
-        return !linkedEventId || !acceptedEventIds.has(linkedEventId);
-      })
-      .map((item) => ({
-        ...item,
-        selected_type: "inscription",
-        selected_id: getInscriptionId(item),
-        item_type: "inscription",
-        item_id: getInscriptionId(item),
-        type: "inscription",
-        status_label: getUpcomingItemStatusLabel({
-          ...item,
-          type: "inscription"
-        })
-      }));
-
-    return [...missionItems, ...inscriptionItems]
-      .filter((item) => getUpcomingItemId(item))
-      .sort((a, b) => {
-        const byDate = String(a.date_debut || "").localeCompare(String(b.date_debut || ""));
-        if (byDate !== 0) return byDate;
-
-        return getUpcomingItemTitle(a).localeCompare(getUpcomingItemTitle(b), "fr");
-      });
-  };
-
-  const resolveSelectedItem = (data, upcomingItems) => {
-    const runtimeSelected = state.runtime.selectedItem;
-
-    if (runtimeSelected && getSelectedItemId(runtimeSelected)) {
-      return runtimeSelected;
-    }
-
-    const selected = getCurrentSelection();
-
-    if (selected.id) {
-      return (
-        upcomingItems.find((item) => {
-          return (
-            getUpcomingItemId(item) === selected.id &&
-            (!selected.type || getUpcomingItemType(item) === normalizeKey(selected.type))
-          );
-        }) ||
-        upcomingItems.find((item) => getUpcomingItemId(item) === selected.id) ||
-        null
-      );
-    }
-
-    return upcomingItems[0] || null;
-  };
-
-  const getSelectedContextFromItem = (selectedItem) => {
-    if (!selectedItem) {
-      return {
-        type: "",
-        id: ""
-      };
-    }
-
-    return {
-      type: getSelectedItemType(selectedItem),
-      id: getSelectedItemId(selectedItem)
-    };
-  };
-
-  const normalizeStep = (step) => {
-    const value = normalizeKey(step);
-
-    if (value === "mission" || value === "preparation_mission" || value === "missions_vente") {
-      return "missions";
-    }
-
-    if (value === "preparation_stock" || value === "stock_preparation") {
-      return "stock";
-    }
-
-    if (value === "journee" || value === "journee_vente" || value === "vente_rapide" || value === "sales") {
-      return "vente";
-    }
-
-    if (value === "clotures" || value === "cloture_journee") {
-      return "cloture";
-    }
-
-    return value || "inscriptions";
-  };
-
-  const buildFallbackProgress = (uiState) => {
-    const currentStep = normalizeStep(uiState?.step || "inscriptions");
-    const currentIndex = STEP_ORDER.indexOf(currentStep);
-
-    return STEP_ORDER.map((step, index) => {
-      let status = "upcoming";
-
-      if (currentIndex >= 0 && index < currentIndex) {
-        status = "done";
-      } else if (currentIndex >= 0 && index === currentIndex) {
-        status = "active";
-      }
-
-      return {
-        step,
-        status
-      };
-    });
-  };
-
-  const normalizeProgress = (progress, uiState) => {
-    const rows = toArray(progress);
-
-    if (rows.length === 0) {
-      return buildFallbackProgress(uiState);
-    }
-
-    const byStep = new Map();
-
-    rows.forEach((row) => {
-      const step = normalizeStep(row.step || row.key || row.code || row.id);
-      if (!step) return;
-
-      byStep.set(step, {
-        step,
-        status: normalizeKey(row.status || row.state || row.etat || ""),
-        raw: row
-      });
-    });
-
-    return STEP_ORDER.map((step) => {
-      const found = byStep.get(step);
-
-      if (!found) {
-        return {
-          step,
-          status: "upcoming"
-        };
-      }
-
-      const status = found.status;
-
-      return {
-        step,
-        status:
-          status === "done" ||
-          status === "complete" ||
-          status === "completed" ||
-          status === "ok" ||
-          status === "termine" ||
-          status === "terminee"
-            ? "done"
-            : status === "active" ||
-                status === "current" ||
-                status === "en_cours" ||
-                status === "todo" ||
-                status === "a_faire"
-              ? "active"
-              : "upcoming",
-        raw: found.raw
-      };
-    });
-  };
-
-  const buildSelectedSummaryFallback = (homeState) => {
-    const { selectedItem, mission, journee, linkedDays, stockPrepared, dayTransactions } = homeState;
-
-    if (homeState.assignedDay && !hasCapability("manage_inscriptions") &&
-        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
-      return {
-        statOneLabel: "CA jour",
-        statOneValue: homeState.summaryReliable
-          ? formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0)) : "—",
-        statTwoLabel: "Tickets",
-        statTwoValue: homeState.summaryReliable ? String(dayTransactions.length) : "—",
-        statThreeLabel: "À synchro",
-        statThreeValue: String(homeState.pending.total || 0)
-      };
-    }
-
-    if (!selectedItem) {
-      return null;
-    }
-
-    const type = getSelectedItemType(selectedItem);
-
-    if (type === "inscription") {
-      return {
-        statOneLabel: "Dossier",
-        statOneValue: getInscriptionStatusLabel(selectedItem),
-        statTwoLabel: "Paiement",
-        statTwoValue: getPaymentStatusLabel(selectedItem),
-        statThreeLabel: "À synchro",
-        statThreeValue: String(homeState.pending.total || 0)
-      };
-    }
-
-    if (mission && (!stockPrepared || normalizeStatus(mission.statut) === "stock_a_preparer")) {
-      return {
-        statOneLabel: "Journées",
-        statOneValue: String(linkedDays.length || 1),
-        statTwoLabel: "Stock",
-        statTwoValue: stockPrepared ? "Prêt" : "À faire",
-        statThreeLabel: "À synchro",
-        statThreeValue: String(homeState.pending.total || 0)
-      };
-    }
-
-    if (mission && journee) {
-      return {
-        statOneLabel: "CA jour",
-        statOneValue: homeState.summaryReliable
-          ? formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0))
-          : "—",
-        statTwoLabel: "Tickets",
-        statTwoValue: homeState.summaryReliable ? String(dayTransactions.length || 0) : "—",
-        statThreeLabel: "À synchro",
-        statThreeValue: String(homeState.pending.total || 0)
-      };
-    }
-
-    return {
-      statOneLabel: "Journées",
-      statOneValue: String(linkedDays.length || 0),
-      statTwoLabel: "Mission",
-      statTwoValue: "À préparer",
-      statThreeLabel: "À synchro",
-      statThreeValue: String(homeState.pending.total || 0)
-    };
-  };
-
-  const getMergedSelectedSummary = (homeState) => {
-    const fallback = buildSelectedSummaryFallback(homeState);
-    const server = state.runtime.selectedSummary;
-
-    if (!fallback) return null;
-    // Le résumé renvoyé par Apps Script peut encore concerner J1 alors
-    // que les lignes Sheets indiquent J1 clôturée et J2 active.
-    if (!homeState.runtimeDayMatches) return fallback;
-    if (!homeState.summaryReliable) return fallback;
-    // Ne pas afficher "Stock à faire" sur une mission validée lorsque
-    // l'API Apps Script n'a pas encore reçu son correctif.
-    if (homeState.mission && homeState.journee && homeState.stockPrepared &&
-        normalizeStep(state.runtime.ui?.step || "") === "stock") {
-      return fallback;
-    }
-    if (!server || typeof server !== "object") return fallback;
-
-    const label1 = pickFirst(server, ["statOneLabel", "one_label", "label_1", "stat_one_label", "stat1_label"]);
-    const value1 = pickFirst(server, ["statOneValue", "one_value", "value_1", "stat_one_value", "stat1_value"]);
-
-    const label2 = pickFirst(server, ["statTwoLabel", "two_label", "label_2", "stat_two_label", "stat2_label"]);
-    const value2 = pickFirst(server, ["statTwoValue", "two_value", "value_2", "stat_two_value", "stat2_value"]);
-
-    const label3 = pickFirst(server, ["statThreeLabel", "three_label", "label_3", "stat_three_label", "stat3_label"]);
-    const value3 = pickFirst(server, ["statThreeValue", "three_value", "value_3", "stat_three_value", "stat3_value"]);
-
-    return {
-      statOneLabel: isPlaceholderValue(label1) ? fallback.statOneLabel : String(label1),
-      statOneValue: isPlaceholderValue(value1) ? fallback.statOneValue : String(value1),
-      statTwoLabel: isPlaceholderValue(label2) ? fallback.statTwoLabel : String(label2),
-      statTwoValue: isPlaceholderValue(value2) ? fallback.statTwoValue : String(value2),
-      statThreeLabel: isPlaceholderValue(label3) ? fallback.statThreeLabel : String(label3),
-      statThreeValue: isPlaceholderValue(value3) ? fallback.statThreeValue : String(value3)
-    };
-  };
-
   const buildHomeState = () => {
     const data = {
       inscriptions: state.data.inscriptions,
       events: state.data.events.filter((eventItem) => !isHistoricalEvent(eventItem)),
       stockMissions: state.data.stockMissions.filter(isStockMissionUsefulForHome),
-      journees: state.data.journees
-        .filter((journee) => !isHistoricalDay(journee))
-        .filter((journee) => !isCancelledStatus(journee)),
+      journees: state.data.journees.filter((journee) => !isHistoricalDay(journee)),
       transactions: state.data.transactions,
       mouvementsStock: state.data.mouvementsStock
     };
+    const dayContext = window.LugdurumDayContext;
+    const resolved = dayContext?.resolveWorkContext({
+      days: data.journees,
+      events: data.events,
+      stockMissions: data.stockMissions,
+      userId: CURRENT_USER.user_id,
+      selectedDayId: state.selectedDayId,
+      today: dayContext.parisDateIso(),
+      forceSelection: state.forceSelectedDay,
+      manualOverride: state.manualSelectionThisSession
+    }) || {
+      day: null, event: null, stockMission: null, linkedDays: [], context: {
+        user_id: CURRENT_USER.user_id, journee_id: "", mission_id: "", stock_mission_id: ""
+      }, authorizedDays: [], selectableDays: [], schedule: { mode: "empty", days: [] },
+      selectionRequired: false, selectedDayWasInvalid: Boolean(state.selectedDayId)
+    };
 
-    const runtimeItems = state.runtime.upcomingItems.length > 0
-      ? state.runtime.upcomingItems
-      : buildFallbackUpcomingItems(data);
-
-    const upcomingItems = runtimeItems
-      .filter((item) => getUpcomingItemId(item))
-      .map((item) => {
-        if (getUpcomingItemType(item) !== "mission") return item;
-        const stockMission = findStockMissionForEvent(
-          getUpcomingItemId(item), data.stockMissions, data.journees
-        );
-        if (!stockMission) return item;
-        return {
-          ...item,
-          stock_mission_id: getStockMissionId(stockMission),
-          statut: stockMission.statut,
-          status_label: isStockPrepared(stockMission, data.mouvementsStock)
-            ? "Stock prêt"
-            : getUpcomingItemStatusLabel(stockMission)
-        };
-      })
-      .sort((a, b) => {
-        const byDate = String(a.date_debut || "").localeCompare(String(b.date_debut || ""));
-        if (byDate !== 0) return byDate;
-
-        return getUpcomingItemTitle(a).localeCompare(getUpcomingItemTitle(b), "fr");
-      });
-
-    let selectedItem = resolveSelectedItem(data, upcomingItems);
-
-    if (!selectedItem && upcomingItems.length > 0) {
-      selectedItem = upcomingItems[0];
-    }
-
-    let selected = getSelectedContextFromItem(selectedItem);
-
-    if (selected.id && (!state.selected.id || state.selected.id !== selected.id)) {
-      state.selected = selected;
-    }
-
-    let selectedEvent = selectedItem
-      ? findEventForSelectedItem(selectedItem, data.events)
-      : null;
-
-    let mission = null;
-
-    if (state.runtime.active?.mission) {
-      mission = state.runtime.active.mission;
-    }
-
-    if (!mission && state.runtime.active?.stockMission) {
-      mission = state.runtime.active.stockMission;
-    }
-
-    if (!mission && state.runtime.active?.stock_mission) {
-      mission = state.runtime.active.stock_mission;
-    }
-
-    if (!mission && selectedItem) {
-      const itemType = getSelectedItemType(selectedItem);
-      const itemId = getSelectedItemId(selectedItem);
-
-      if (itemType === "stock") {
-        mission = data.stockMissions.find((item) => getStockMissionId(item) === itemId) || null;
-      } else if (itemType === "mission" || itemType === "event" || itemType === "evenement") {
-        mission = findStockMissionForEvent(itemId, data.stockMissions, data.journees);
-      }
-
-      if (!mission && selectedEvent) {
-        mission = findStockMissionForEvent(getEventId(selectedEvent), data.stockMissions, data.journees);
-      }
-
-      if (!mission && selectedItem.stock_mission_id) {
-        mission =
-          data.stockMissions.find((item) => getStockMissionId(item) === String(selectedItem.stock_mission_id || "")) ||
-          null;
-      }
-    }
-
-    if (!mission && !selectedItem) {
-      mission = findFallbackActiveStockMission(data.stockMissions);
-    }
-
-    // L'API peut encore renvoyer une ancienne mission avant redéploiement Apps Script.
-    // Priorité au lien réellement enregistré dans journees_vente.
-    if (selectedEvent) {
-      const linkedMission = findStockMissionForEvent(
-        getEventId(selectedEvent), data.stockMissions, data.journees
-      );
-      if (linkedMission) mission = linkedMission;
-    }
-    if (mission && isCancelledStatus(mission)) mission = null;
-
-    // L'API peut conserver J1 dans active.journee malgré sa clôture.
-    // Ne JAMAIS réutiliser directement cette copie pour l'action de vente.
-    // Les lignes journees_vente lues dans le même appel sont prioritaires.
-    let linkedDays = mission ? getMissionJournees(mission, data.journees) : [];
-    let journee = mission ? getFirstOpenDay(mission, data.journees) : null;
-    const rememberedDayIsAccessible = window.LugdurumDayContext?.authorizedDaysFor(
-      data.journees, CURRENT_USER.user_id
-    ).some((day) => getDayId(day) === String(state.selectedDayId || ""));
-    if (state.selectedDayId && !rememberedDayIsAccessible) saveExplicitDaySelection(false);
-    const assignedDay = window.LugdurumDayContext?.preferredDay(
-      data.journees, CURRENT_USER.user_id, state.selectedDayId, undefined, state.forceSelectedDay
-    ) || null;
-    if (assignedDay) {
-      journee = assignedDay;
-      const stockMissionId = getDayStockMissionId(assignedDay);
-      mission = data.stockMissions.find((item) => getStockMissionId(item) === stockMissionId) || null;
-      linkedDays = mission ? getMissionJournees(mission, data.journees) : [];
-      const dayEventId = getDayEventId(assignedDay);
-      selectedEvent = data.events.find((item) => getEventId(item) === dayEventId) || null;
-      if (selectedEvent) {
-        selectedItem = { ...selectedEvent, selected_type: "mission", selected_id: dayEventId };
-        selected = { type: "mission", id: dayEventId };
-        state.selected = selected;
-      }
-      if (String(state.selectedDayId || "") !== getDayId(assignedDay)) {
-        saveSelectedDayId(getDayId(assignedDay));
-      }
-    } else if (state.selectedDayId) {
-      // L’affectation a été retirée ou le vendeur a changé : invalider l’ancien contexte.
+    if (resolved.selectedDayWasInvalid || (state.selectedDayId && !resolved.day)) {
       saveSelectedDayId("");
       saveExplicitDaySelection(false);
+      state.manualSelectionThisSession = false;
+    } else if (resolved.day) {
+      const chosenId = getDayId(resolved.day);
+      if (chosenId !== state.selectedDayId) {
+        saveSelectedDayId(chosenId);
+        if (resolved.schedule.mode === "today" || resolved.schedule.mode === "choose_today") {
+          saveExplicitDaySelection(false);
+          state.manualSelectionThisSession = false;
+        }
+      }
     }
-    if (!assignedDay && !hasCapability("manage_inscriptions") &&
-        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
-      mission = null;
-      journee = null;
-      linkedDays = [];
-      selectedItem = null;
-      selectedEvent = null;
-      selected = { type: "", id: "" };
-      state.selected = selected;
-    }
-    const serverJournee =
-      state.runtime.active?.journee ||
-      state.runtime.active?.activeJournee ||
-      state.runtime.active?.active_journee ||
-      null;
-    const serverJourneeId = getDayId(serverJournee);
-    const runtimeDayMatches = !serverJourneeId ||
-      Boolean(journee && getDayId(journee) === serverJourneeId);
-    // En cas de désaccord, getHomeData ne fournit que les transactions J1.
-    // Ne pas présenter un faux CA J2 à zéro avant déploiement Apps Script.
-    const selectedDayMatchesServer = assignedDay
-      ? state.apiMode !== "getHomeData" && Boolean(journee) || serverJourneeId === getDayId(journee)
-      : !serverJourneeId || serverJourneeId === getDayId(journee);
-    const summaryReliable = selectedDayMatchesServer &&
-      (runtimeDayMatches || state.apiMode !== "getHomeData");
-    const dayTransactions = getDayTransactions(journee?.journee_id || "", data.transactions);
-    const revenue = getRevenueForTransactions(dayTransactions);
-    // Source de vérité : mission_id de la journée = ID de l'évènement.
-    // Ne pas regrouper par stock_mission_id : un stock peut couvrir plusieurs foires.
-    const eventId = String(journee?.mission_id || (selectedEvent && getEventId(selectedEvent)) || "").trim();
-    const eventDayIds = new Set(
-      data.journees
-        .filter((day) => String(day.mission_id || "").trim() === eventId && !isCancelledStatus(day))
-        .map((day) => getDayId(day))
-        .filter(Boolean)
-    );
-    const eventTransactions = eventId
-      ? data.transactions.filter((tx) =>
-          eventDayIds.has(String(tx.journee_id || "").trim()) && isValidStatus(tx))
-      : [];
-    const serverEventRevenue = state.runtime.resume?.ca_evenement_ttc;
-    const serverEventRevenueAvailable = serverEventRevenue !== null &&
-      serverEventRevenue !== undefined && serverEventRevenue !== "" &&
-      Number.isFinite(Number(serverEventRevenue));
-    // getHomeData ne renvoie volontairement que les tickets du jour :
-    // pour le cumul, seule la nouvelle propriété serveur est complète.
-    const eventRevenue = state.apiMode === "getHomeData"
-      ? (selectedDayMatchesServer && serverEventRevenueAvailable ? Number(serverEventRevenue) : null)
-      : (eventId ? getRevenueForTransactions(eventTransactions) : null);
-    const stockPrepared = isStockPrepared(mission, data.mouvementsStock);
 
-    const legacyPendingTransactions = getUnmatchedLegacyPendingTransactions(data.transactions);
-    state.legacyPendingTransactionsCount = legacyPendingTransactions.length;
+    const journee = resolved.day;
+    const event = resolved.event;
+    const mission = resolved.stockMission;
+    const linkedDays = resolved.linkedDays;
+    const dayId = getDayId(journee);
+    const context = resolved.context;
+    const dayTransactions = dayId ? getDayTransactions(dayId, data.transactions) : [];
+    const dayRevenue = getRevenueForTransactions(dayTransactions);
+    const dayEventIds = new Set(dayId ? [dayId] : []);
+    const eventDayIds = new Set(journee ? data.journees
+      .filter((day) => getDayEventId(day) === context.mission_id)
+      .map(getDayId).filter(Boolean) : []);
+    const eventTransactions = eventDayIds.size ? data.transactions
+      .filter((transaction) => eventDayIds.has(String(transaction.journee_id || "").trim()))
+      .filter(isValidStatus) : [];
 
-    const totalPendingSync =
-      toNumber(state.pendingWritesCount, 0) +
-      toNumber(state.legacyPendingTransactionsCount, 0);
-
+    const active = state.runtime.active || {};
+    const serverDay = active.journee || active.activeJournee || active.active_journee || null;
+    const serverDayId = getDayId(serverDay);
+    const runtimeWorkContext = state.runtime.workContext || active.work_context || active.workContext || null;
+    const runtimeContextMatches = Boolean(journee && serverDayId === dayId && (
+      !runtimeWorkContext || (
+        String(runtimeWorkContext.user_id || "").trim() === context.user_id &&
+        String(runtimeWorkContext.journee_id || "").trim() === context.journee_id &&
+        String(runtimeWorkContext.mission_id || "").trim() === context.mission_id &&
+        String(runtimeWorkContext.stock_mission_id || "").trim() === context.stock_mission_id
+      )
+    ));
+    const runtimeDayMatches = Boolean(journee && serverDayId === dayId);
+    const serverResume = state.runtime.resume || {};
+    const serverDayRevenue = serverResume.ca_jour_ttc;
+    const serverEventRevenue = serverResume.ca_evenement_ttc;
+    const serverHasDayRevenue = runtimeContextMatches && serverDayRevenue !== null &&
+      serverDayRevenue !== undefined && serverDayRevenue !== "" && Number.isFinite(Number(serverDayRevenue));
+    const fullClientTransactions = state.apiMode !== "getHomeData";
+    const summaryReliable = serverHasDayRevenue || fullClientTransactions;
     const resume = {
-      ca_evenement_ttc: eventRevenue,
-      ca_jour_ttc: selectedDayMatchesServer && runtimeDayMatches
-        ? toNumber(state.runtime.resume?.ca_jour_ttc, revenue) : revenue,
-      nb_transactions: selectedDayMatchesServer && runtimeDayMatches
-        ? toNumber(state.runtime.resume?.nb_transactions, dayTransactions.length)
-        : dayTransactions.length,
-      ventes_en_attente_sync: legacyPendingTransactions.length,
-      total_pending_sync: totalPendingSync
+      ca_jour_ttc: serverHasDayRevenue ? Number(serverDayRevenue) : fullClientTransactions ? dayRevenue : null,
+      nb_transactions: serverHasDayRevenue ? toNumber(serverResume.nb_transactions, dayTransactions.length) :
+        fullClientTransactions ? dayTransactions.length : null,
+      ca_evenement_ttc: runtimeContextMatches && serverEventRevenue !== null &&
+        serverEventRevenue !== undefined && serverEventRevenue !== "" && Number.isFinite(Number(serverEventRevenue))
+          ? Number(serverEventRevenue)
+          : fullClientTransactions && journee ? getRevenueForTransactions(eventTransactions) : null
     };
+    const relevantMovements = context.stock_mission_id
+      ? data.mouvementsStock.filter((movement) => getMovementMissionId(movement) === context.stock_mission_id)
+      : [];
+    const stockPrepared = Boolean(mission && isStockPrepared(mission, relevantMovements));
+    const pendingLegacy = getUnmatchedLegacyPendingTransactions(data.transactions)
+      .filter((transaction) => !dayId || String(transaction.journee_id || "").trim() === dayId);
+    const pendingTotal = toNumber(state.pendingWritesCount, 0) + pendingLegacy.length;
+    state.legacyPendingTransactionsCount = getUnmatchedLegacyPendingTransactions(data.transactions).length;
 
     return {
       user: CURRENT_USER,
       dataSource: state.dataSource,
       loadError: state.loadError,
-
       apiMode: state.apiMode,
       apiFetchedAt: state.apiFetchedAt,
-      apiGeneratedAt: state.apiGeneratedAt,
       apiDurationMs: state.apiDurationMs,
-
       cacheSavedAt: state.cacheSavedAt,
       rawCounts: state.rawCounts,
-
-      selected,
-      selectedItem,
-      selectedEvent,
-      upcomingItems,
-
-      inscriptions: data.inscriptions,
-      activeInscriptions: getCleanInscriptions(data.inscriptions),
-      acceptedInscriptions: getAcceptedInscriptions(data.inscriptions),
-
+      workContext: context,
+      contextSelection: resolved,
+      selected: context.mission_id ? { type: "mission", id: context.mission_id } : { type: "", id: "" },
+      selectedItem: event,
+      selectedEvent: event,
       events: data.events,
       stockMissions: data.stockMissions,
       journees: data.journees,
       mouvementsStock: data.mouvementsStock,
-      linkedDays,
-      mission,
+      assignedDays: resolved.selectableDays,
+      assignedDay: journee,
       journee,
-      assignedDay,
+      event,
+      mission,
+      linkedDays,
       runtimeDayMatches,
+      runtimeContextMatches,
       summaryReliable,
       stockPrepared,
       dayTransactions,
-
+      resume,
       pending: {
         official: toNumber(state.pendingWritesCount, 0),
-        legacy_transactions: toNumber(state.legacyPendingTransactionsCount, 0),
-        total: totalPendingSync
-      },
-
-      filteredCounts: {
-        events: data.events.length,
-        stockMissions: data.stockMissions.length,
-        journees: data.journees.length,
-        mouvementsStock: data.mouvementsStock.length
-      },
-
-      resume
+        legacy_transactions: pendingLegacy.length,
+        total: pendingTotal
+      }
     };
   };
 
   const getUiState = (homeState) => {
-    const serverUi = state.runtime.ui;
-
-    if (!homeState.assignedDay && !hasCapability("manage_inscriptions") &&
-        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
-      return {
-        code: "no_mission", step: "vente", label: "Aucune journée affectée",
-        title: "Pas de marché à afficher",
-        meta: "Une journée devra être affectée à ton profil pour ouvrir les ventes.",
-        primaryText: "Ventes indisponibles", primaryHref: "./vente-rapide.html",
-        secondaryText: "Consulter le bilan", secondaryHref: "./dashboard.html"
-      };
-    }
-
-    if (homeState.assignedDay && !hasCapability("manage_inscriptions") &&
-        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
-      const day = homeState.assignedDay;
-      const permission = window.LugdurumDayContext?.canSell(
-        day, CURRENT_USER.user_id, homeState.mission
-      ) || { allowed: false, reason: "unauthorized" };
-      const closed = isClosedStatus(day);
-      const eventName = getDayReadableTitle(day, homeState.events);
-      const event = homeState.events.find((item) => getEventId(item) === getDayEventId(day));
-      const location = String(event?.lieu || event?.ville || "").trim();
-      const hours = String(event?.horaires || "").trim();
-      const meta = [formatDisplayDate(day.date), hours, location, CURRENT_USER.nom].filter(Boolean).join(" · ");
-      if (closed) return {
-        code: "closed", step: "cloture", label: "Journée clôturée", title: eventName,
-        meta,
-        primaryText: "Voir la clôture", primaryHref: "./cloture.html",
-        secondaryText: "Voir le bilan", secondaryHref: "./dashboard.html"
-      };
-      if (!permission.allowed) {
-        const blockedLabels = {
-          unauthorized: "Vendeur non autorisé",
-          not_today: "Journée pas encore ouverte",
-          stock_missing: "Mission de stock non rattachée",
-          stock_not_prepared: "Stock non préparé",
-          stock_closed: "Mission de stock clôturée"
-        };
-        return {
-          code: "stock_to_prepare", step: "vente", label: "Vente indisponible",
-          title: blockedLabels[permission.reason] || "Vente indisponible",
-          meta,
-          primaryText: "Voir la journée", primaryHref: "./vente-rapide.html",
-          secondaryText: "Ajouter des frais", secondaryHref: "./frais.html"
-        };
-      }
-      return {
-        code: "selling", step: "vente", label: "Journée de vente",
-        title: eventName, meta,
-        primaryText: "Ouvrir les ventes", primaryHref: "./vente-rapide.html",
-        secondaryText: "Clôturer la journée", secondaryHref: "./cloture.html"
-      };
-    }
-
-    if (
-      serverUi &&
-      (serverUi.title || serverUi.code || serverUi.step) &&
-      homeState.runtimeDayMatches &&
-      !(homeState.mission && homeState.journee && homeState.stockPrepared && normalizeStep(serverUi.step) === "stock")
-    ) {
-      return {
-        code: serverUi.code || "selected",
-        step: normalizeStep(serverUi.step || serverUi.current_step || "inscriptions"),
-        label: getReadableStatusLabel(
-          serverUi.label || serverUi.status_label || "Évènement sélectionné",
-          homeState.selectedItem
-        ),
-        title: serverUi.title || getUpcomingItemTitle(homeState.selectedItem),
-        meta: serverUi.meta || serverUi.subtitle || "",
-        primaryText: serverUi.primaryText || serverUi.primary_text || state.runtime.nextAction?.label || "Continuer",
-        primaryHref: serverUi.primaryHref || serverUi.primary_href || state.runtime.nextAction?.href || "./missions.html",
-        secondaryText: serverUi.secondaryText || serverUi.secondary_text || "Préparation mission",
-        secondaryHref: serverUi.secondaryHref || serverUi.secondary_href || "./missions.html"
-      };
-    }
-
-    const { selectedItem, selectedEvent, mission, journee, stockPrepared } = homeState;
-
-    if (selectedItem && getSelectedItemType(selectedItem) === "inscription") {
-      return {
-        code: "event_planning",
-        step: "inscriptions",
-        label: getUpcomingItemStatusLabel(selectedItem),
-        title: getUpcomingItemTitle(selectedItem),
-        meta: `${getDateLabel(selectedItem)}${getUpcomingItemCity(selectedItem) ? ` · ${getUpcomingItemCity(selectedItem)}` : ""}`,
-        primaryText: "Suivre l’inscription",
-        primaryHref: "./inscriptions-evenements.html",
-        secondaryText: "Voir les dossiers",
-        secondaryHref: "./inscriptions-evenements.html"
-      };
-    }
-
-    if (selectedItem && !mission) {
-      return {
-        code: "mission_to_prepare",
-        step: "missions",
-        label: "Mission à préparer",
-        title: getUpcomingItemTitle(selectedEvent || selectedItem),
-        meta: `${getDateLabel(selectedEvent || selectedItem)}${getUpcomingItemCity(selectedEvent || selectedItem) ? ` · ${getUpcomingItemCity(selectedEvent || selectedItem)}` : ""}`,
-        primaryText: "Préparation mission",
-        primaryHref: "./missions.html",
-        secondaryText: "Voir les inscriptions",
-        secondaryHref: "./inscriptions-evenements.html"
-      };
-    }
-
-    if (!mission || !journee) {
+    const day = homeState.journee;
+    if (!day) {
+      const multipleToday = homeState.contextSelection.selectionRequired &&
+        homeState.contextSelection.schedule.mode.includes("today");
       return {
         code: "no_mission",
-        step: "inscriptions",
-        label: "Aucune mission active",
-        title: "Commencer par les inscriptions",
-        meta: "Crée ou valide un évènement, puis prépare une mission de stock.",
-        primaryText: "Gérer les inscriptions",
-        primaryHref: "./inscriptions-evenements.html",
-        secondaryText: "Préparation mission",
-        secondaryHref: "./missions.html"
+        step: "missions",
+        label: multipleToday ? "Choisis ta journée" : "Aucune journée affectée",
+        title: multipleToday ? "Plusieurs journées aujourd’hui" : "Aucune journée de vente",
+        meta: multipleToday
+          ? "Sélectionne la journée que tu vas gérer sur l’ensemble de l’accueil."
+          : "Les journées en attente d’affectation ne font pas partie de ton parcours vendeur.",
+        primaryText: "",
+        primaryHref: "",
+        secondaryText: "",
+        secondaryHref: ""
       };
     }
 
-    if (!stockPrepared || normalizeStatus(mission.statut) === "stock_a_preparer") {
+    const event = homeState.event;
+    const eventName = event?.nom || event?.name || day.nom || day.jour_label || "Évènement";
+    const eventLocation = String(event?.lieu || event?.ville || "").trim();
+    const meta = [formatDisplayDate(day.date), day.jour_label, event?.horaires, eventLocation]
+      .filter(Boolean).join(" · ");
+    const context = homeState.workContext;
+    const stockId = context.stock_mission_id;
+    const stock = homeState.mission;
+    const stockStatus = normalizeStatus(stock?.statut);
+    const stockClosed = stockStatus.includes("clotur") || stockStatus.includes("annul");
+    const today = window.LugdurumDayContext?.parisDateIso() || todayIso();
+    const isToday = String(day.date || "").slice(0, 10) === today;
+    const salePermission = window.LugdurumDayContext?.canSell(day, CURRENT_USER.user_id, stock, today) ||
+      { allowed: false, reason: "unauthorized" };
+
+    if (!stockId) {
+      const canAssociate = hasCapability("manage_missions") || hasCapability("prepare_stock");
       return {
-        code: "stock_to_prepare",
-        step: "stock",
-        label: "Stock à préparer",
-        title: mission.nom || getUpcomingItemTitle(selectedEvent || selectedItem) || "Mission de stock",
-        meta: `${getDateLabel(mission)} · ${homeState.linkedDays.length || 1} journée(s) liée(s)`,
-        primaryText: "Préparer le stock",
-        primaryHref: "./preparation-stock.html",
-        secondaryText: "Préparation mission",
-        secondaryHref: "./missions.html"
+        code: "mission_to_prepare", step: "missions", label: "Mission de stock à associer",
+        title: eventName, meta,
+        primaryText: canAssociate ? "Associer une mission de stock" : "Mission à associer",
+        primaryHref: canAssociate ? "./missions.html" : "",
+        secondaryText: "Voir le bilan", secondaryHref: "./dashboard.html"
       };
     }
-
-    if (isClosedStatus(journee)) {
+    if (!stock) {
       return {
-        code: "closed",
-        step: "cloture",
-        label: "Journée clôturée",
-        title: getDayReadableTitle(journee, homeState.events),
-        meta: `${mission.nom || "Mission"} · ${formatDisplayDate(journee.date)}`,
-        primaryText: "Voir le dashboard",
-        primaryHref: "./dashboard.html",
-        secondaryText: "Préparation mission",
-        secondaryHref: "./missions.html"
+        code: "mission_to_prepare", step: "missions", label: "Mission de stock introuvable",
+        title: eventName, meta,
+        primaryText: "Vérifier la mission", primaryHref: "./missions.html",
+        secondaryText: "", secondaryHref: ""
       };
     }
-
+    if (stockClosed) {
+      return {
+        code: "stock_to_prepare", step: "stock", label: "Mission de stock clôturée",
+        title: eventName, meta,
+        primaryText: "Vérifier la mission", primaryHref: "./missions.html",
+        secondaryText: "Voir la journée", secondaryHref: "./cloture.html"
+      };
+    }
+    if (!homeState.stockPrepared) {
+      return {
+        code: "stock_to_prepare", step: "stock", label: "Stock à préparer",
+        title: eventName, meta,
+        primaryText: "Préparer le stock", primaryHref: "./preparation-stock.html",
+        secondaryText: "Ajouter des frais", secondaryHref: "./frais.html"
+      };
+    }
+    if (!isToday) {
+      return {
+        code: "selling", step: "vente", label: "Journée à venir",
+        title: eventName, meta,
+        primaryText: "Consulter le stock préparé", primaryHref: "./preparation-stock.html",
+        secondaryText: "Ajouter des frais", secondaryHref: "./frais.html"
+      };
+    }
+    if (!salePermission.allowed) {
+      const labels = {
+        unauthorized: "Vendeur non autorisé",
+        not_today: "Journée pas encore ouverte",
+        stock_missing: "Mission de stock indisponible",
+        stock_not_prepared: "Stock non préparé",
+        stock_closed: "Mission de stock clôturée"
+      };
+      return {
+        code: "stock_to_prepare", step: "stock", label: "Vente indisponible",
+        title: labels[salePermission.reason] || "Vente indisponible", meta,
+        primaryText: "Vérifier la préparation", primaryHref: "./preparation-stock.html",
+        secondaryText: "Ajouter des frais", secondaryHref: "./frais.html"
+      };
+    }
     return {
-      code: "selling",
-      step: "vente",
-      label: normalizeStatus(journee.statut) === "en_cours" ? "Journée en cours" : "Stock prêt",
-      title: getDayReadableTitle(journee, homeState.events),
-      meta: `${mission.nom || "Mission"} · ${formatDisplayDate(journee.date)}`,
-      primaryText: "+ Nouvelle vente",
-      primaryHref: "./vente-rapide.html",
-      secondaryText: "Clôturer la journée",
-      secondaryHref: "./cloture.html"
+      code: "selling", step: "vente",
+      label: normalizeStatus(day.statut) === "en_cours" ? "Journée en cours" : "Journée prête",
+      title: eventName, meta,
+      primaryText: "Ouvrir les ventes", primaryHref: "./vente-rapide.html",
+      secondaryText: "Clôturer la journée", secondaryHref: "./cloture.html"
     };
   };
 
@@ -2682,6 +1703,16 @@
     if (!el) return;
 
     el.textContent = text;
+    const enabled = Boolean(text && href);
+    el.hidden = !enabled;
+    if (!enabled) {
+      el.removeAttribute("href");
+      el.setAttribute("aria-disabled", "true");
+      el.tabIndex = -1;
+      return;
+    }
+    el.removeAttribute("aria-disabled");
+    el.tabIndex = 0;
     el.href = appendContextToHref(href, homeState);
   };
 
@@ -2691,225 +1722,44 @@
     setText("#currentUserName", CURRENT_USER.nom);
     setText("#activeStatusLabel", "Chargement");
     setText("#missionTitle", "Chargement…");
-    setText("#missionMeta", "Lecture des données.");
-
-    setText("#statOneLabel", "Inscriptions");
+    setText("#missionMeta", "Lecture des journées qui te sont affectées.");
+    setText("#statOneLabel", "CA jour");
     setText("#todayRevenue", "…");
-
-    setText("#statTwoLabel", "Acceptées");
+    setText("#statTwoLabel", "Ventes");
     setText("#todayTickets", "…");
-
-    setText("#statThreeLabel", "Préparation mission");
+    setText("#statThreeLabel", "À synchroniser");
     setText("#pendingSync", "…");
-
-    setLink("#primaryAction", "Gérer les inscriptions", "./inscriptions-evenements.html");
-    setLink("#secondaryAction", "Préparation mission", "./missions.html");
-
-    renderEventSelectorLoading();
-    renderWorkflow(null, { step: "inscriptions" }, []);
-    renderWatchList(["Chargement des données…"]);
+    setLink("#primaryAction", "", "");
+    setLink("#secondaryAction", "", "");
+    setText("#eventSelectorHint", "Lecture de tes journées affectées.");
+    renderWorkflow(null, { step: "missions" }, []);
+    renderWatchList(["Lecture du contexte vendeur…"]);
   };
 
-  const renderEventSelectorLoading = () => {
-    const list = qs("#eventSelectorList");
-    if (!list) return;
-
-    setText("#eventSelectorCount", "—");
-    setText("#eventSelectorHint", "Lecture des évènements à venir.");
-
-    list.innerHTML = `
-      <article class="eventOption isSkeleton" aria-hidden="true">
-        <span class="eventOptionDate">—</span>
-        <span class="eventOptionMain">
-          <strong>Chargement…</strong>
-          <small>Lecture des évènements.</small>
-        </span>
-      </article>
-    `;
-  };
-
-  const buildEventOptionClass = (item, selected) => {
-    const classes = ["eventOption"];
-    const tone = getUpcomingItemTone(item);
-
-    if (selected?.id && getUpcomingItemId(item) === selected.id) {
-      classes.push("isSelected");
-    }
-
-    if (tone === "pending") {
-      classes.push("isPending");
-    } else if (tone === "ready") {
-      classes.push("isReady");
-    } else if (tone === "closed") {
-      classes.push("isClosed");
-    } else {
-      classes.push("isAccepted");
-    }
-
-    return classes.join(" ");
-  };
-
-  const renderEventSelector = (homeState) => {
-    const list = qs("#eventSelectorList");
-    if (!list) return;
-
-    const items = homeState.upcomingItems;
-    const selected = homeState.selected;
-
-    setText(
-      "#eventSelectorCount",
-      items.length > 0
-        ? `${items.length} à venir`
-        : "Aucun"
-    );
-
-    setText(
-      "#eventSelectorHint",
-      selected?.id
-        ? "Le choix est temporaire : au prochain chargement sans sélection, l’accueil reprend le prochain évènement prioritaire."
-        : "L’accueil se cale par défaut sur le prochain évènement lié à l’utilisateur connecté."
-    );
-
-    list.innerHTML = "";
-    // Le panneau vendeur est la navigation principale. Le sélecteur historique
-    // reste accessible via le lien de consultation, sans carte redondante.
-    const hasSellerSchedule = Boolean(window.LugdurumDayContext?.scheduleFor(state.data.journees, CURRENT_USER.user_id).days.length);
-    const selectorSection = list.closest(".eventSelectorSection");
-    if (selectorSection) selectorSection.classList.toggle("hasSellerSchedule", hasSellerSchedule);
-    if (hasSellerSchedule) return;
-
-    if (items.length === 0) {
-      const empty = document.createElement("article");
-      empty.className = "eventOption isSkeleton";
-      empty.innerHTML = `
-        <span class="eventOptionDate">—</span>
-        <span class="eventOptionMain">
-          <strong>Aucun évènement à venir</strong>
-          <small>Ajoute ou valide un dossier depuis les inscriptions.</small>
-        </span>
-      `;
-      list.appendChild(empty);
-      return;
-    }
-
-    items.forEach((item) => {
-      const type = getUpcomingItemType(item);
-      const id = getUpcomingItemId(item);
-      const title = getUpcomingItemTitle(item);
-      const city = getUpcomingItemCity(item);
-      const statusLabel = getUpcomingItemStatusLabel(item);
-      const tone = getUpcomingItemTone(item);
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = buildEventOptionClass(item, selected);
-      button.dataset.selectedType = type;
-      button.dataset.selectedId = id;
-      button.setAttribute("role", "listitem");
-      button.setAttribute("aria-pressed", selected?.id === id ? "true" : "false");
-
-      const statusClass =
-        tone === "pending"
-          ? "isAmber"
-          : tone === "closed"
-            ? ""
-            : "isGreen";
-
-      button.innerHTML = `
-        <span class="eventOptionDate">${formatEventDateBadge(item)}</span>
-        <span class="eventOptionMain">
-          <strong>${escapeHtml(title)}</strong>
-          <small>${escapeHtml([getDateLabel(item), city].filter(Boolean).join(" · "))}</small>
-          <span class="eventOptionMeta">
-            <span class="eventChip ${statusClass}">${escapeHtml(statusLabel)}</span>
-          </span>
-        </span>
-      `;
-
-      button.addEventListener("click", () => {
-        handleSelectEvent(type, id);
-      });
-
-      list.appendChild(button);
-    });
-  };
-
-  const renderStats = (homeState, uiState) => {
+  const renderStats = (homeState) => {
     const eventRevenuePanel = qs("#homeEventRevenue");
-    const showEventRevenue = Boolean(homeState.journee && homeState.mission);
+    const showEventRevenue = Boolean(homeState.workContext.journee_id && homeState.workContext.mission_id);
     if (eventRevenuePanel) eventRevenuePanel.hidden = !showEventRevenue;
     if (showEventRevenue) {
       const amount = homeState.resume.ca_evenement_ttc;
-      setText("#homeEventRevenueTotal", amount == null
-        ? "—"
-        : new Intl.NumberFormat("fr-FR", {
-            style: "currency", currency: "EUR",
-            minimumFractionDigits: 2, maximumFractionDigits: 2
-          }).format(amount));
+      setText("#homeEventRevenueTotal", amount == null ? "—" : new Intl.NumberFormat("fr-FR", {
+        style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2
+      }).format(amount));
       setText("#homeEventRevenueStatus", amount == null
-        ? "Cumul indisponible · actualisation nécessaire"
-        : "Toutes les journées de cet évènement");
+        ? "Cumul indisponible pour les données chargées"
+        : "Journées rattachées à cet évènement uniquement");
     }
+
     const syncCard = qs("#syncStatCard");
-    syncCard?.classList.remove("hasWarning");
-
-    const summary = getMergedSelectedSummary(homeState);
-
-    if (summary) {
-      setText("#statOneLabel", summary.statOneLabel);
-      setText("#todayRevenue", summary.statOneValue);
-
-      setText("#statTwoLabel", summary.statTwoLabel);
-      setText("#todayTickets", summary.statTwoValue);
-
-      setText("#statThreeLabel", summary.statThreeLabel);
-      setText("#pendingSync", summary.statThreeValue);
-
-      syncCard?.classList.toggle(
-        "hasWarning",
-        Number(homeState.pending.total || 0) > 0
-      );
-
-      return;
-    }
-
-    if (!homeState.assignedDay && !hasCapability("manage_inscriptions") &&
-        !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
-      setText("#statOneLabel", "Journée");
-      setText("#todayRevenue", "Aucune affectée");
-      setText("#statTwoLabel", "Ventes");
-      setText("#todayTickets", "—");
-      setText("#statThreeLabel", "À synchro");
-      setText("#pendingSync", String(homeState.pending.total || 0));
-      return;
-    }
-
-    if (uiState.code === "no_mission") {
-      setText("#statOneLabel", "Inscriptions");
-      setText("#todayRevenue", String(homeState.activeInscriptions.length));
-
-      setText("#statTwoLabel", "Acceptées");
-      setText("#todayTickets", String(homeState.acceptedInscriptions.length));
-
-      setText("#statThreeLabel", "Préparation mission");
-      setText("#pendingSync", String(homeState.stockMissions.length));
-
-      return;
-    }
-
+    syncCard?.classList.toggle("hasWarning", Number(homeState.pending.total || 0) > 0);
     setText("#statOneLabel", "CA jour");
-    setText("#todayRevenue", formatEuro.format(Number(homeState.resume.ca_jour_ttc || 0)));
-
+    setText("#todayRevenue", homeState.workContext.journee_id && homeState.summaryReliable && homeState.resume.ca_jour_ttc != null
+      ? formatEuro.format(Number(homeState.resume.ca_jour_ttc)) : "—");
     setText("#statTwoLabel", "Tickets");
-    setText("#todayTickets", String(homeState.resume.nb_transactions || 0));
-
-    setText("#statThreeLabel", "À synchro");
+    setText("#todayTickets", homeState.workContext.journee_id && homeState.summaryReliable && homeState.resume.nb_transactions != null
+      ? String(homeState.resume.nb_transactions) : "—");
+    setText("#statThreeLabel", "À synchroniser");
     setText("#pendingSync", String(homeState.pending.total || 0));
-
-    syncCard?.classList.toggle(
-      "hasWarning",
-      Number(homeState.pending.total || 0) > 0
-    );
   };
 
   const renderHero = (homeState, uiState) => {
@@ -2949,39 +1799,80 @@
     setText("#missionTitle", uiState.title);
     setText("#missionMeta", uiState.meta);
 
-    renderStats(homeState, uiState);
+    renderStats(homeState);
 
     setLink("#primaryAction", uiState.primaryText, uiState.primaryHref, homeState);
     setLink("#secondaryAction", uiState.secondaryText, uiState.secondaryHref, homeState);
   };
 
-  const renderWorkflow = (homeState, uiState, progress = []) => {
+  const renderWorkflow = (homeState, uiState) => {
     const grid = qs(".workflowGrid");
     if (!grid) return;
-    const simplified = !hasCapability("manage_inscriptions") &&
-      !hasCapability("manage_missions") && !hasCapability("prepare_stock");
-    const normalizedProgress = normalizeProgress(progress, uiState);
-    const statusByStep = new Map(normalizedProgress.map((item) => [normalizeStep(item.step), item.status]));
-    const rows = simplified
-      ? [
-          { step: "vente", title: "Ventes", text: "Vente rapide, encaissements, suivi des ventes et frais.", href: "./vente-rapide.html", status: isClosedStatus(homeState?.journee) ? "done" : uiState.step === "vente" ? "active" : "upcoming" },
-          { step: "cloture", title: "Clôture", text: "Vérifier les ventes, les encaissements, les frais et le bilan.", href: "./cloture.html", status: isClosedStatus(homeState?.journee) ? "active" : "upcoming" }
-        ]
-      : [
-          { step: "inscriptions", title: "Inscriptions", text: "Dossiers, réponses, contacts et matériel.", href: "./inscriptions-evenements.html" },
-          { step: "missions", title: "Préparation mission", text: "Regrouper les journées couvertes par un même stock.", href: "./missions.html" },
-          { step: "stock", title: "Préparation stock", text: "Saisir le stock emporté avant l’évènement.", href: "./preparation-stock.html" },
-          { step: "vente", title: "Journée de vente", text: "Enregistrer les ventes pendant la journée.", href: "./vente-rapide.html" },
-          { step: "cloture", title: "Clôture", text: "Contrôler la caisse, les frais et le bilan.", href: "./cloture.html" }
-        ];
     grid.replaceChildren();
+    const planning = qs("#generalPlanning");
+    const canManagePlanning = ["manage_inscriptions", "manage_missions", "prepare_stock"]
+      .some(hasCapability);
+    if (planning) planning.hidden = !canManagePlanning;
+
+    if (!homeState?.workContext?.journee_id) {
+      const empty = document.createElement("p");
+      empty.className = "workflowEmpty";
+      empty.textContent = homeState?.contextSelection?.selectionRequired
+        ? "Choisis une journée dans la liste pour afficher son parcours."
+        : "Ton parcours apparaîtra dès qu’une journée de vente te sera affectée.";
+      grid.appendChild(empty);
+      return;
+    }
+
+    const context = homeState.workContext;
+    const stockReady = homeState.stockPrepared;
+    const today = window.LugdurumDayContext?.parisDateIso() || todayIso();
+    const saleAllowed = window.LugdurumDayContext?.canSell(
+      homeState.journee, CURRENT_USER.user_id, homeState.mission, today
+    )?.allowed === true;
+    let rows;
+
+    if (!context.stock_mission_id || !homeState.mission) {
+      const canAssociate = hasCapability("manage_missions") || hasCapability("prepare_stock");
+      rows = [
+        { step: "missions", title: "Mission de stock", text: canAssociate ? "Associer cette journée à un stock partagé." : "L’association doit être faite par un responsable.", href: canAssociate ? "./missions.html" : "", status: "active" },
+        { step: "stock", title: "Préparation du stock", text: context.stock_mission_id && homeState.mission
+          ? "Saisir le stock emporté pour cette mission."
+          : "Disponible après l’association d’une mission de stock valide.",
+          href: context.stock_mission_id && homeState.mission ? "./preparation-stock.html" : "", status: "upcoming" },
+        { step: "vente", title: "Ventes", text: "Disponible après l’association et la préparation du stock.", href: "", status: "upcoming" },
+        { step: "cloture", title: "Clôture", text: "Disponible après l’ouverture du parcours de vente.", href: "", status: "upcoming" }
+      ];
+    } else if (!stockReady) {
+      rows = [
+        { step: "stock", title: "Préparation du stock", text: "Saisir le stock emporté pour cette mission.", href: "./preparation-stock.html", status: "active" },
+        { step: "vente", title: "Ventes", text: "Enregistrer les ventes après préparation du stock.", href: "", status: "upcoming" },
+        { step: "cloture", title: "Clôture", text: "Disponible après l’ouverture du parcours de vente.", href: "", status: "upcoming" }
+      ];
+    } else if (!hasCapability("manage_inscriptions") && !hasCapability("manage_missions") && !hasCapability("prepare_stock")) {
+      rows = [
+        { step: "vente", title: "Ventes", text: "Vente rapide, encaissements, suivi des ventes et frais.", href: "./vente-rapide.html", status: saleAllowed ? "active" : "upcoming" },
+        { step: "cloture", title: "Clôture", text: "Vérifier les ventes, les encaissements, les frais et le bilan.", href: "./cloture.html", status: "upcoming" }
+      ];
+    } else {
+      rows = [
+        { step: "stock", title: "Préparation du stock", text: `${homeState.linkedDays.length} journée(s) partagent cette mission de stock.`, href: "./preparation-stock.html", status: "done" },
+        { step: "vente", title: "Ventes", text: "Enregistrer les ventes de la journée sélectionnée.", href: "./vente-rapide.html", status: saleAllowed ? "active" : "upcoming" },
+        { step: "cloture", title: "Clôture", text: "Contrôler la caisse, les frais et le bilan.", href: "./cloture.html", status: "upcoming" }
+      ];
+    }
+
     rows.forEach((row, index) => {
       const card = document.createElement("a");
       card.className = "workflowCard";
       card.dataset.step = row.step;
-      card.href = appendContextToHref(row.href, homeState);
-      const status = row.status || statusByStep.get(row.step) || "upcoming";
-      card.classList.add(status === "done" ? "isDone" : status === "active" ? "isActive" : "isUpcoming");
+      card.href = row.href ? appendContextToHref(row.href, homeState) : "#";
+      if (!row.href) {
+        card.removeAttribute("href");
+        card.setAttribute("aria-disabled", "true");
+        card.tabIndex = -1;
+      }
+      card.classList.add(row.status === "done" ? "isDone" : row.status === "active" ? "isActive" : "isUpcoming");
       const number = document.createElement("span");
       number.className = "workflowNumber";
       number.textContent = String(index + 1);
@@ -2998,111 +1889,32 @@
   };
 
   const buildWatchItems = (homeState, uiState) => {
-    const serverWatch = (homeState.runtimeDayMatches ? state.runtime.watchItems : [])
-      .map((item) => String(item || "").trim())
-      .filter(Boolean);
-
-    if (serverWatch.length > 0) {
-      return serverWatch;
-    }
-
     const items = [];
-
-    if (homeState.dataSource === "remote") {
-      const fetched = homeState.apiFetchedAt
-        ? ` à ${formatShortDateTime(homeState.apiFetchedAt)}`
-        : "";
-
-      const duration =
-        homeState.apiDurationMs !== null && homeState.apiDurationMs !== undefined
-          ? ` · ${homeState.apiDurationMs} ms API`
-          : "";
-
-      items.push(`Source active confirmée : API en ligne${fetched} (${homeState.apiMode || "API"}${duration}).`);
-    }
-
-    if (homeState.dataSource === "cache") {
-      const cacheInfo = homeState.cacheSavedAt
-        ? ` Cache du ${formatShortDateTime(homeState.cacheSavedAt)}.`
-        : "";
-
-      items.push(`Source active : cache local.${cacheInfo} ${homeState.loadError || ""}`.trim());
-    }
-
-    if (homeState.selectedItem) {
-      items.push(`Évènement sélectionné : ${getUpcomingItemTitle(homeState.selectedItem)}.`);
-    }
-
-    items.push(
-      `Brut Sheets : ${homeState.rawCounts.inscriptions} inscription(s), ${homeState.rawCounts.events} évènement(s), ${homeState.rawCounts.stockMissions} mission(s) stock, ${homeState.rawCounts.journees} journée(s), ${homeState.rawCounts.mouvementsStock} mouvement(s) stock.`
-    );
-
-    items.push(
-      `Après filtres accueil : ${homeState.activeInscriptions.length} inscription(s), ${homeState.acceptedInscriptions.length} acceptée(s), ${homeState.filteredCounts.stockMissions} mission(s) stock utile(s), ${homeState.filteredCounts.journees} journée(s).`
-    );
-
-    if (homeState.dataSource === "remote" && homeState.apiMode === "getHomeData") {
-      items.push("Mode accueil rapide : seules les données utiles à l’accueil sont chargées.");
-    }
-
-    if (!homeState.mission || !homeState.journee) {
-      if (homeState.selectedItem && getSelectedItemType(homeState.selectedItem) === "inscription") {
-        items.push("Le dossier n’est pas encore transformé en évènement confirmé / mission de vente.");
-      } else if (homeState.selectedItem && !homeState.mission) {
-        items.push("L’évènement est confirmé, mais aucune mission de stock associée n’est encore détectée.");
-      } else if (homeState.stockMissions.length > 0) {
-        items.push(`${homeState.stockMissions.length} mission(s) de stock utile(s) trouvée(s), mais aucune journée active associée.`);
-      } else {
-        items.push("Aucune mission de stock active détectée pour l’accueil.");
+    if (homeState.workContext.journee_id) {
+      if (!homeState.workContext.stock_mission_id) {
+        items.push("Aucune mission de stock n’est associée à cette journée.");
+      } else if (!homeState.mission) {
+        items.push("La mission de stock associée n’a pas été retrouvée.");
+      } else if (!homeState.stockPrepared) {
+        items.push("Le stock de cette mission n’est pas encore préparé.");
       }
-
-      if (homeState.pending.total > 0) {
-        items.push(
-          `Synchronisation locale : ${homeState.pending.official} écriture(s) API et ${homeState.pending.legacy_transactions} ancienne(s) transaction(s) locale(s).`
-        );
-      } else {
-        items.push("Aucune écriture en attente de synchronisation locale.");
+      items.push(`${homeState.linkedDays.length} journée(s) sont liées à la mission de stock sélectionnée.`);
+      if (!homeState.summaryReliable) {
+        items.push("Les indicateurs financiers attendent une réponse API correspondant à cette journée.");
       }
-
-      return items;
+    } else if (homeState.contextSelection.selectionRequired) {
+      items.push("Plusieurs journées te sont affectées aujourd’hui : choisis celle à afficher.");
+    } else {
+      items.push("Aucune journée ouverte ne t’est affectée pour le moment.");
     }
-
-    items.push(
-      `${homeState.linkedDays.length || 1} journée(s) liée(s) à la mission “${homeState.mission.nom}”.`
-    );
-
-    if (uiState.code === "stock_to_prepare") {
-      items.push("Le stock initial n’est pas encore validé pour cette mission.");
-    }
-
-    if (homeState.stockPrepared) {
-      items.push("Stock initial considéré comme préparé.");
-    }
-
-    if (uiState.code === "selling") {
-      items.push("La vente rapide est disponible pour la journée active.");
-    }
-
     if (homeState.pending.total > 0) {
-      if (homeState.pending.official > 0 && homeState.pending.legacy_transactions > 0) {
-        items.push(
-          `${homeState.pending.total} écriture(s) en attente : ${homeState.pending.official} via file API, ${homeState.pending.legacy_transactions} ancienne(s) transaction(s) locale(s).`
-        );
-      } else if (homeState.pending.official > 0) {
-        items.push(`${homeState.pending.official} écriture(s) API en attente de synchronisation.`);
-      } else {
-        items.push(`${homeState.pending.legacy_transactions} ancienne(s) transaction(s) locale(s) non retrouvée(s) dans Sheets.`);
-      }
+      items.push(`${homeState.pending.total} écriture(s) locale(s) attendent la synchronisation.`);
     } else {
-      items.push("Aucune écriture en attente de synchronisation locale.");
+      items.push("Aucune écriture en attente de synchronisation.");
     }
-
-    if (uiState.code !== "closed") {
-      items.push("Pense à saisir les frais avant la clôture si besoin.");
-    } else {
-      items.push("La journée active semble clôturée.");
+    if (homeState.dataSource === "local" && homeState.loadError) {
+      items.push("Hors ligne : dernière lecture réseau conservée en mémoire.");
     }
-
     return items;
   };
 
@@ -3235,25 +2047,29 @@
     renderDiagnosticSyncLink();
   };
 
-  const getAuthorizedHomeDays = () => window.LugdurumDayContext?.authorizedDaysFor(
+  const getOpenAuthorizedHomeDays = () => window.LugdurumDayContext?.openAuthorizedDaysFor(
     state.data.journees, CURRENT_USER.user_id
   ) || [];
 
   const renderDaySelector = (homeState) => {
     const select = qs("#homeDaySelect");
-    const button = qs("#selectHomeDay");
     const hint = qs("#eventSelectorHint");
-    if (!select || !button) return;
-
-    const assignedDays = getAuthorizedHomeDays();
-    const days = assignedDays.filter((day) => window.LugdurumDayContext?.isOpen(day));
-    const currentId = getDayId(homeState.assignedDay);
+    if (!select) return;
+    const days = getOpenAuthorizedHomeDays();
+    const currentId = homeState.workContext.journee_id;
     select.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = currentId ? "Choisir une autre journée" :
+      homeState.contextSelection.selectionRequired ? "Choisir une journée d’aujourd’hui…" :
+      days.length ? "Choisir une journée de vente…" : "Aucune journée affectée";
+    select.appendChild(placeholder);
+
     days.forEach((day) => {
       const event = homeState.events.find((item) => getEventId(item) === getDayEventId(day));
       const dateLabel = new Intl.DateTimeFormat("fr-FR", {
         timeZone: "Europe/Paris", weekday: "short", day: "numeric", month: "short"
-      }).format(new Date(`${day.date}T12:00:00`));
+      }).format(new Date(`${String(day.date).slice(0, 10)}T12:00:00`));
       const eventName = event?.nom || event?.name || day.nom || "Marché";
       const option = document.createElement("option");
       option.value = getDayId(day);
@@ -3261,76 +2077,49 @@
       select.appendChild(option);
     });
 
-    if (!days.length) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = CURRENT_USER.user_id
-        ? assignedDays.length ? "Aucune journée active ou à venir" : "Aucune journée affectée"
-        : "Choisis ton profil vendeur";
-      select.appendChild(option);
-      select.disabled = true;
-      button.disabled = true;
-      if (hint) hint.textContent = CURRENT_USER.user_id
-        ? assignedDays.length
-          ? "Aucune journée active ou à venir. Les journées terminées restent consultables dans l’historique."
-          : "Aucune journée ne t’est actuellement affectée."
-        : "Choisis ton profil vendeur pour afficher tes journées affectées.";
-      return;
-    }
+    select.disabled = days.length === 0;
+    // La journée courante est déjà lisible dans le bloc principal ; ce contrôle
+    // sert uniquement à basculer vers une autre journée affectée.
+    select.value = "";
+    select.setAttribute("aria-label", currentId ? "Mes autres journées de vente" : "Choisir une journée de vente");
+    const title = qs("#eventSelectorTitle");
+    if (title) title.textContent = currentId ? "Mes autres journées de vente" : "Ma journée de vente";
 
-    select.disabled = false;
-    select.value = currentId || getDayId(days[0]);
-    if (!days.some((day) => getDayId(day) === select.value)) select.value = getDayId(days[0]);
-    button.disabled = select.value === currentId;
-    const currentDay = days.find((day) => getDayId(day) === currentId);
-    const event = currentDay && homeState.events.find((item) => getEventId(item) === getDayEventId(currentDay));
-    const status = currentDay ? getReadableStatusLabel(currentDay.statut, currentDay) : "";
-    const location = String(event?.lieu || event?.ville || "").trim();
-    const hours = String(event?.horaires || "").trim();
-    if (hint) hint.textContent = currentDay
-      ? [status, location, hours].filter(Boolean).join(" · ")
-      : "Choisis une journée puis valide pour actualiser l’accueil.";
+    if (hint) {
+      if (!CURRENT_USER.user_id) hint.textContent = "Choisis ton profil vendeur pour afficher les journées affectées.";
+      else if (homeState.contextSelection.selectionRequired) hint.textContent = "Plusieurs journées te sont affectées aujourd’hui. Choisis-en une pour piloter toute la page.";
+      else if (currentId) hint.textContent = "Changer de journée actualise le parcours, les indicateurs et les liens.";
+      else hint.textContent = days.length ? "Sélectionne une journée pour afficher son parcours." : "Aucune journée ouverte ne t’est affectée pour le moment.";
+    }
   };
 
   const applySelectedHomeDay = () => {
-    const select = qs("#homeDaySelect");
-    const selectedId = String(select?.value || "").trim();
-    const day = getAuthorizedHomeDays().find((item) => getDayId(item) === selectedId);
+    const selectedId = String(qs("#homeDaySelect")?.value || "").trim();
+    const day = getOpenAuthorizedHomeDays().find((item) => getDayId(item) === selectedId);
     if (!day || !window.LugdurumDayContext?.isAuthorized(day, CURRENT_USER.user_id)) {
-      const hint = qs("#eventSelectorHint");
-      if (hint) hint.textContent = "Cette journée ne fait plus partie de tes affectations.";
+      setText("#eventSelectorHint", "Cette journée n’est plus ouverte ou ne t’est plus affectée.");
       return;
     }
-
+    state.manualSelectionThisSession = true;
     saveSelectedDayId(selectedId);
     saveExplicitDaySelection(true);
-    const eventId = getDayEventId(day);
-    if (eventId) {
-      state.selected = { type: "mission", id: eventId };
-      setSelectionInUrl("mission", eventId);
-    }
-    // Le changement de journée ne navigue pas et ne déclenche aucune écriture métier.
+    // Mise à jour immédiate de toute la page à partir des lignes déjà chargées.
     renderHome();
+    if (state.dataSource === "remote") refreshHomeFromRemote();
   };
 
   const renderHome = () => {
     refreshPendingCounts();
-
     const homeState = buildHomeState();
     const uiState = getUiState(homeState);
-    const serverStep = normalizeStep(state.runtime.ui?.step || "");
-    const progress = normalizeProgress(
-      !homeState.runtimeDayMatches ||
-      (serverStep && serverStep !== normalizeStep(uiState.step))
-        ? [] : state.runtime.progress,
-      uiState
-    );
-
     renderDaySelector(homeState);
     renderHero(homeState, uiState);
-    renderWorkflow(homeState, uiState, progress);
+    renderWorkflow(homeState, uiState);
     const feesLink = qs("#feesToolLink");
-    if (feesLink) feesLink.href = appendContextToHref("./frais.html", homeState);
+    if (feesLink) {
+      feesLink.hidden = !homeState.workContext.journee_id || !homeState.workContext.stock_mission_id;
+      if (!feesLink.hidden) feesLink.href = appendContextToHref("./frais.html", homeState);
+    }
     renderWatchList(buildWatchItems(homeState, uiState));
   };
 
@@ -3341,15 +2130,15 @@
       if (!cachedData) return false;
 
       state.data = cachedData;
-      state.dataSource = "cache";
-      state.loadError = "";
+      state.dataSource = "local";
+      state.loadError = "Réseau indisponible · dernière réponse accueil en cache";
       refreshPendingCounts();
 
       setDataState(
         "local",
         state.cacheSavedAt
-          ? `Données locales · cache du ${formatShortDateTime(state.cacheSavedAt)}`
-          : "Données locales · cache accueil"
+          ? `Hors ligne · dernière réponse du ${formatShortDateTime(state.cacheSavedAt)}`
+          : "Hors ligne · dernière réponse accueil en cache"
       );
 
       renderHome();
@@ -3362,7 +2151,7 @@
   };
 
   const refreshHomeFromRemote = async () => {
-    setDataState("refreshing", "Actualisation · évènement sélectionné");
+    setDataState("refreshing", "Actualisation · journée sélectionnée");
 
     try {
       state.data = await loadRemoteData();
@@ -3385,26 +2174,20 @@
     }
   };
 
-  const handleSelectEvent = (type, id) => {
-    const safeType = String(type || "").trim();
-    const safeId = String(id || "").trim();
-
-    if (!safeId) return;
-
-    setCurrentSelection(safeType || inferSelectedTypeFromId(safeId), safeId);
-    refreshHomeFromRemote();
-  };
-
   const initHome = async () => {
-    state.selected = readSelectionFromUrl();
-    const requestedDayId = String(getUrlParams().get("journee_id") || "").trim();
+    const params = getUrlParams();
+    const routeUserId = String(params.get("user_id") || "").trim();
+    const requestedDayId = routeUserId && routeUserId !== CURRENT_USER.user_id
+      ? ""
+      : String(params.get("journee_id") || "").trim();
     state.selectedDayId = requestedDayId || readSelectedDayId();
-    state.forceSelectedDay = !requestedDayId && readExplicitDaySelection();
+    state.forceSelectedDay = requestedDayId ? true : readExplicitDaySelection();
+    state.manualSelectionThisSession = false;
 
-    // Accueil strictement réseau : ne jamais afficher un contexte vendeur issu
-    // du cache local, y compris pendant le chargement.
+    // Priorité au réseau ; le cache validé par le même résolveur sert uniquement
+    // après l’échec de lecture, avec un état hors ligne explicite.
     renderLoading();
-    setDataState("refreshing", "Actualisation · lecture en ligne");
+    setDataState("refreshing", "Actualisation · lecture des journées affectées");
 
     try {
       state.data = await loadRemoteData();
@@ -3421,6 +2204,7 @@
       renderHome();
     } catch (error) {
       state.loadError = error.message || "Lecture API impossible.";
+      if (renderFromHomeCacheIfAvailable()) return;
       setDataState("refreshing", "Connexion impossible · réessayer");
       setText("#eventSelectorHint", "Les données en ligne sont indisponibles. Recharge la page pour réessayer.");
       setText("#missionTitle", "Connexion indisponible");
@@ -3447,8 +2231,6 @@
   });
 
   window.addEventListener("popstate", () => {
-    state.selected = readSelectionFromUrl();
-
     if (state.dataSource !== "loading") {
       refreshHomeFromRemote();
     }
@@ -3467,16 +2249,10 @@
   });
 
   window.addEventListener("online", () => {
-    if (state.dataSource === "local") refreshHomeFromRemote();
+    if (state.dataSource === "local" || state.dataSource === "cache") refreshHomeFromRemote();
   });
 
-  document.getElementById("homeDaySelect")?.addEventListener("change", () => {
-    const select = qs("#homeDaySelect");
-    const activeDayId = getDayId(buildHomeState().assignedDay);
-    const button = qs("#selectHomeDay");
-    if (button) button.disabled = !select?.value || select.value === activeDayId;
-  });
-  document.getElementById("selectHomeDay")?.addEventListener("click", applySelectedHomeDay);
+  document.getElementById("homeDaySelect")?.addEventListener("change", applySelectedHomeDay);
 
   window.LugdurumUsers?.mount({
     button: document.querySelector(".userPill"),
@@ -3488,12 +2264,18 @@
       CURRENT_USER.capabilities = Array.isArray(user.capabilities) ? user.capabilities : [];
       state.selectedDayId = readSelectedDayId(user.user_id);
       state.forceSelectedDay = readExplicitDaySelection(user.user_id);
-      state.selected = { type: "", id: "" };
-      setSelectionInUrl("", "");
+      state.manualSelectionThisSession = false;
+      const url = new URL(window.location.href);
+      ["selected_type", "selected_id", "selectedType", "selectedId", "item_type", "item_id",
+        "event_id", "mission_id", "stock_mission_id", "journee_id", "user_id"].forEach((key) =>
+        url.searchParams.delete(key));
+      window.history.replaceState({}, "", url.toString());
       if (state.dataSource === "loading") {
         setText("#currentUserName", user.nom);
       } else {
-        refreshHomeFromRemote();
+        renderHome();
+        if (navigator.onLine) refreshHomeFromRemote();
+        else setDataState("local", "Données de la dernière lecture réseau · hors ligne");
       }
     }
   });
