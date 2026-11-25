@@ -9,6 +9,7 @@ on:
       - "docs/index.html"
       - "tests/home-j2.test.cjs"
       - "tests/home-day-selection.test.cjs"
+      - "tests/home-work-context.test.cjs"
       - "tests/cloture-profile.test.cjs"
       - "docs/lugdurum-day-context.js"
       - "docs/lugdurum-users.js"
@@ -48,4 +49,4 @@ jobs:
           node --check docs/home.js
           node --check docs/lugdurum-day-context.js
           node --check docs/lugdurum-users.js
-          node --test tests/cloture-profile.test.cjs tests/cloture-write.test.cjs tests/home-j2.test.cjs tests/day-context.test.cjs tests/home-day-selection.test.cjs
+          node --test tests/cloture-profile.test.cjs tests/cloture-write.test.cjs tests/home-j2.test.cjs tests/day-context.test.cjs tests/home-day-selection.test.cjs tests/home-work-context.test.cjs
