@@ -1519,13 +1519,3 @@ video {
     padding-top: 0;
   }
 }
-
-/* Diagnostic iOS PWA: keep header content sharp without changing layout. */
-@supports (-webkit-touch-callout: none) {
-  @media (display-mode: standalone) {
-    .appShell > .topbar {
-      -webkit-backdrop-filter: none;
-      backdrop-filter: none;
-    }
-  }
-}
