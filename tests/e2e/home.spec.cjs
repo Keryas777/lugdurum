@@ -62,7 +62,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4173') await route.abort();
     else await route.fallback();
   });
-  await page.route(url => url.includes('/lugdurum-api.js'), async route => {
+  await page.route(request => request.url().includes('/lugdurum-api.js'), async route => {
     const response = await route.fetch();
     const source = await response.text();
     await route.fulfill({
