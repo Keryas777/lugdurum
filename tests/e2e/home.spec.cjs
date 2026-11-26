@@ -25,7 +25,7 @@ const users = [
 ];
 
 async function installFixture(page, { selected = D.ch, offline = false, delayed = false } = {}) {
-  await page.addInitScript(({ userId, staleDay, users }) => {
+  await page.addInitScript(({ userId, staleDay, users, events, days, ids, delayed }) => {
     const NativeDate = globalThis.Date;
     const fixedNow = NativeDate.parse('2026-11-26T11:00:00.000Z');
     globalThis.Date = class extends NativeDate {
@@ -36,36 +36,35 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     localStorage.setItem('lugdurum_home_selected_journee:' + userId, staleDay);
     localStorage.setItem('lugdurum_home_selected_journee:' + userId + ':explicit', 'true');
     localStorage.setItem('lugdurum_users_list_cache', JSON.stringify(users));
-  }, { userId: U.j, staleDay: selected, users });
+    const fixtureApi = {
+      setCurrentUserId() {},
+      getHomeData(params = {}) {
+        const activeUser = params.user_id || params.current_user_id || userId;
+        const todayIso = params.today || '2026-11-26';
+        const authorized = days.filter(d => JSON.parse(d.vendeurs_autorises).some(v => v.user_id === activeUser));
+        const today = authorized.filter(d => d.date === todayIso && !/clotur|annul/i.test(d.statut || ''));
+        const selected = authorized.find(d => d.journee_id === params.selected_day_id && !/clotur|annul/i.test(d.statut || ''));
+        const day = today[0] || selected || authorized.find(d => d.date > todayIso && !/clotur|annul/i.test(d.statut || '')) || null;
+        const event = events.find(e => e.mission_id === day?.mission_id) || null;
+        const stock = day?.stock_mission_id ? { mission_id: day.stock_mission_id, statut: 'preparee', nom: 'Stock partagé' } : null;
+        const context = { user_id: activeUser, journee_id: day?.journee_id || '', mission_id: day?.mission_id || '', stock_mission_id: day?.stock_mission_id || '' };
+        const payload = { tables: { inscriptions: [], events, stockMissions: stock ? [stock] : [], journees: days, transactions: [], mouvementsStock: [] }, active: { journee: day, mission: stock, work_context: context, resume: { ca_jour_ttc: day?.journee_id === ids.c ? 125 : 450, nb_transactions: day?.journee_id === ids.c ? 2 : 7, ca_evenement_ttc: day?.journee_id === ids.c ? 125 : 950 } } };
+        const respond = () => payload;
+        return delayed && params.selected_day_id === ids.g
+          ? new Promise(resolve => setTimeout(() => resolve(respond()), 500))
+          : Promise.resolve(respond());
+      },
+      getCoreData() { return { inscriptions: [], missions: events, missionsStock: [], journees: days, transactions: [], mouvementsStock: [] }; }
+    };
+    Object.defineProperty(globalThis, 'LugdurumAPI', {
+      configurable: true, enumerable: true,
+      get() { return fixtureApi; },
+      set() { /* conserve le mock d’API au lieu d’écraser les données simulées */ }
+    });
+  }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed });
   await page.route('**/*', async route => {
-    const requestedUrl = new URL(route.request().url());
-    if (requestedUrl.origin !== 'http://127.0.0.1:4173') {
-      if (requestedUrl.hostname !== 'script.google.com' || !requestedUrl.pathname.includes('/macros/s/')) {
-        await route.abort();
-        return;
-      }
-    } else {
-      await route.continue();
-      return;
-    }
-    if (route.request().method() !== 'GET') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Fixture E2E : écritures désactivées' }) });
-      return;
-    }
-    const url = new URL(route.request().url());
-    const callback = url.searchParams.get('callback');
-    const userId = url.searchParams.get('user_id') || U.j;
-    const askedDay = url.searchParams.get('selected_day_id') || '';
-    const allowed = days.filter(d => JSON.parse(d.vendeurs_autorises).some(v => v.user_id === userId));
-    const today = allowed.find(d => d.date === '2026-11-26');
-    const selectedDay = allowed.find(d => d.journee_id === askedDay);
-    const activeDay = today || selectedDay || allowed.find(d => d.date > '2026-11-26') || null;
-    const event = events.find(e => e.mission_id === activeDay?.mission_id) || null;
-    const stock = activeDay?.stock_mission_id ? { mission_id: activeDay.stock_mission_id, statut: 'preparee', nom: 'Stock partagé' } : null;
-    const context = { user_id: userId, journee_id: activeDay?.journee_id || '', mission_id: activeDay?.mission_id || '', stock_mission_id: activeDay?.stock_mission_id || '' };
-    const payload = { tables: { inscriptions: [], events, stockMissions: stock ? [stock] : [], journees: days, transactions: [], mouvementsStock: [] }, active: { journee: activeDay, mission: stock, work_context: context, resume: { ca_jour_ttc: activeDay?.journee_id === D.c ? 125 : 450, nb_transactions: activeDay?.journee_id === D.c ? 2 : 7, ca_evenement_ttc: activeDay?.journee_id === D.c ? 125 : 950 } } };
-    if (delayed && askedDay === D.g) await new Promise(resolve => setTimeout(resolve, 500));
-    await route.fulfill({ status: 200, contentType: 'application/javascript', body: `${callback}(${JSON.stringify({ ok: true, data: payload })});` });
+    if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4173') await route.abort();
+    else await route.continue();
   });
   if (offline) await page.context().setOffline(true);
 }
