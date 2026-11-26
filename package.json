@@ -1,0 +1,11 @@
+{
+  "name": "lugdurum-webapp",
+  "private": true,
+  "scripts": {
+    "test:e2e:home": "playwright test tests/e2e/home.spec.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "http-server": "^14.1.1"
+  }
+}
