@@ -37,7 +37,17 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     localStorage.setItem('lugdurum_home_selected_journee:' + userId + ':explicit', 'true');
     localStorage.setItem('lugdurum_users_list_cache', JSON.stringify(users));
   }, { userId: U.j, staleDay: selected, users });
-  await page.route('https://script.google.com/macros/s/**', async route => {
+  await page.route('**/*', async route => {
+    const requestedUrl = new URL(route.request().url());
+    if (requestedUrl.origin !== 'http://127.0.0.1:4173') {
+      if (requestedUrl.hostname !== 'script.google.com' || !requestedUrl.pathname.includes('/macros/s/')) {
+        await route.abort();
+        return;
+      }
+    } else {
+      await route.continue();
+      return;
+    }
     if (route.request().method() !== 'GET') {
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Fixture E2E : écritures désactivées' }) });
       return;
