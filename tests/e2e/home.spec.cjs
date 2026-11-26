@@ -25,8 +25,13 @@ const users = [
 ];
 
 async function installFixture(page, { selected = D.ch, offline = false, delayed = false } = {}) {
-  await page.clock.install({ time: new Date('2026-11-26T11:00:00.000Z') });
   await page.addInitScript(({ userId, staleDay, users }) => {
+    const NativeDate = globalThis.Date;
+    const fixedNow = NativeDate.parse('2026-11-26T11:00:00.000Z');
+    globalThis.Date = class extends NativeDate {
+      constructor(...args) { super(...(args.length ? args : [fixedNow])); }
+      static now() { return fixedNow; }
+    };
     localStorage.setItem('lugdurum_current_user_id', userId);
     localStorage.setItem('lugdurum_home_selected_journee:' + userId, staleDay);
     localStorage.setItem('lugdurum_home_selected_journee:' + userId + ':explicit', 'true');
