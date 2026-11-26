@@ -56,16 +56,16 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       },
       getCoreData() { return { inscriptions: [], missions: events, missionsStock: [], journees: days, transactions: [], mouvementsStock: [] }; }
     };
-    globalThis.__LUGDURUM_HOME_FIXTURE__ = fixtureApi.getHomeData;
+    document.addEventListener('DOMContentLoaded', () => {
+      if (globalThis.LugdurumAPI) {
+        globalThis.LugdurumAPI.getHomeData = fixtureApi.getHomeData;
+        document.documentElement.dataset.playwrightApiFixture = 'installed';
+      }
+    }, { once: true });
   }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed });
   await page.route('**/*', async route => {
     if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4173') await route.abort();
     else await route.fallback();
-  });
-  await page.route('**/home.js*', async route => {
-    const response = await route.fetch();
-    const source = await response.text();
-    await route.fulfill({ response, body: `window.LugdurumAPI.getHomeData = window.__LUGDURUM_HOME_FIXTURE__;\n${source}` });
   });
   if (offline) await page.context().setOffline(true);
 }
