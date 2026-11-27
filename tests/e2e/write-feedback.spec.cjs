@@ -211,11 +211,14 @@ test('la synchronisation automatique en arrière-plan ne couvre pas l’interfac
   await page.evaluate(() => window.LugdurumAPI.batchUpsert([]));
   await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistré sur cet appareil');
   await context.setOffline(false);
-  await page.evaluate(() => window.LugdurumAPI.flushPendingWrites());
+  await page.evaluate(() => {
+    window.__flushPromise = window.LugdurumAPI.flushPendingWrites();
+  });
   await control.enteredPromise;
   await expect(page.locator('.lugdurumWriteOverlay')).toBeHidden();
   await expect(page.locator('.appShell')).not.toHaveAttribute('aria-busy', 'true');
   control.release();
+  await page.evaluate(() => window.__flushPromise);
   await expect.poll(() => page.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(0);
 });
 
