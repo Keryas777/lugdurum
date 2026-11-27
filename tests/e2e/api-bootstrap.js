@@ -5,6 +5,9 @@
   }
   window.LugdurumAPI.getHomeData = window.__LUGDURUM_HOME_FIXTURE__;
   window.LugdurumAPI.getCoreData = window.__LUGDURUM_HOME_FIXTURE_CORE__;
+  if (typeof window.__LUGDURUM_FIXTURE_COLLECTIVE_GOAL__ === 'function') {
+    window.LugdurumAPI.getCollectiveGoal = window.__LUGDURUM_FIXTURE_COLLECTIVE_GOAL__;
+  }
   if (typeof window.__LUGDURUM_FIXTURE_VENTE_RAPIDE__ === 'function') {
     window.LugdurumAPI.getVenteRapideData = window.__LUGDURUM_FIXTURE_VENTE_RAPIDE__;
   }
