@@ -207,6 +207,8 @@
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
 
+  const normalizeStatus = (value) => normalizeText(value);
+
   const normalizeKey = (value) =>
     normalizeText(value)
       .replace(/[-\s]+/g, "_")
