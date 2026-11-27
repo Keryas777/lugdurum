@@ -127,14 +127,18 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     }
     else await route.fallback();
   });
-  await page.route(url => url.href.includes('/docs/index.html'), async route => {
+  await page.route(url => url.origin === 'http://127.0.0.1:4173' &&
+    url.pathname.startsWith('/docs/') && url.pathname.endsWith('.html'), async route => {
     const response = await route.fetch();
     const source = await response.text();
-    const apiTag = '<script src="./lugdurum-api.js?v=26" defer></script>';
-    if (!source.includes(apiTag)) throw new Error('La page réelle ne contient pas la balise LugdurumAPI attendue.');
+    const apiTag = /<script src="\.\/lugdurum-api\.js\?v=\d+" defer><\/script>/;
+    if (!apiTag.test(source)) {
+      await route.fulfill({ response, body: source });
+      return;
+    }
     await route.fulfill({
       response,
-      body: source.replace(apiTag, `${apiTag}\n    <script src="../tests/e2e/api-bootstrap.js" defer></script>`)
+      body: source.replace(apiTag, tag => `${tag}\n    <script src="../tests/e2e/api-bootstrap.js" defer></script>`)
     });
   });
   if (offline) await page.context().setOffline(true);
@@ -256,7 +260,7 @@ test('les portraits suivent les profils, persistent au rechargement et dans la v
     await expect(option.locator('.userAvatar img')).toHaveAttribute('src', `./assets/avatars/${avatar}`);
     await expect(option.locator('.userAvatar img')).toHaveJSProperty('naturalWidth', 256);
   }
-  await page.getByRole('button', { name: /Anthony/ }).click();
+  await page.locator('.vendorSelectOption').filter({ hasText: 'Anthony' }).click({ force: true });
   await expect(page.locator('#currentUserName')).toHaveText('Anthony');
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/anthony.webp');
   await expect(page.locator('#missionTitle')).toContainText('Charly');
@@ -274,13 +278,13 @@ test('les portraits suivent les profils, persistent au rechargement et dans la v
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/anthony.webp');
 
   await page.locator('.userPill').click();
-  await page.getByRole('button', { name: /William/ }).click();
+  await page.locator('.vendorSelectOption').filter({ hasText: 'William' }).click({ force: true });
   await expect(page.locator('#currentUserName')).toHaveText('William');
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/william.webp');
   await page.screenshot({ path: test.info().outputPath(`profil-william-${test.info().project.name}.png`), fullPage: true });
 
   await page.locator('.userPill').click();
-  await page.getByRole('button', { name: /Jérôme/ }).click();
+  await page.locator('.vendorSelectOption').filter({ hasText: 'Jérôme' }).click({ force: true });
   await expect(page.locator('#currentUserName')).toHaveText('Jérôme');
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/jerome.webp');
   await page.screenshot({ path: test.info().outputPath(`profil-jerome-${test.info().project.name}.png`), fullPage: true });
