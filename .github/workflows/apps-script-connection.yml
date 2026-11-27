@@ -49,3 +49,5 @@ jobs:
         run: |
           clasp deployments > /dev/null
           echo "Connexion Google Apps Script reussie"
+
+# Déclenchement ponctuel du contrôle préproduction, sans modifier son comportement.
