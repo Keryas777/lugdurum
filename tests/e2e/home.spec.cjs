@@ -38,8 +38,11 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       static now() { return fixedNow; }
     };
     localStorage.setItem('lugdurum_current_user_id', userId);
-    localStorage.setItem('lugdurum_home_selected_journee:' + userId, staleDay);
-    localStorage.setItem('lugdurum_home_selected_journee:' + userId + ':explicit', 'true');
+    const selectedDayKey = 'lugdurum_home_selected_journee:' + userId;
+    if (localStorage.getItem(selectedDayKey) === null) {
+      localStorage.setItem(selectedDayKey, staleDay);
+      localStorage.setItem(selectedDayKey + ':explicit', 'true');
+    }
     localStorage.setItem('lugdurum_users_list_cache', JSON.stringify(users));
     const fixtureState = {
       events: structuredClone(events), days: structuredClone(days), users: structuredClone(users),
@@ -103,9 +106,17 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       }
     };
     globalThis.__LUGDURUM_HOME_FIXTURE__ = fixtureApi.getHomeData;
+    globalThis.__LUGDURUM_HOME_FIXTURE_CORE__ = fixtureApi.getCoreData;
   }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy });
+  page.__fixtureExternalRequests = [];
+  page.on('request', request => {
+    if (new URL(request.url()).origin !== 'http://127.0.0.1:4173') page.__fixtureExternalRequests.push(request.url());
+  });
   await page.route('**/*', async route => {
-    if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4173') await route.abort();
+    if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4173') {
+      page.__fixtureExternalRequests.push(route.request().url());
+      await route.abort();
+    }
     else await route.fallback();
   });
   await page.route(url => url.href.includes('/docs/index.html'), async route => {
@@ -125,6 +136,12 @@ test.beforeEach(async ({ page }, testInfo) => installFixture(page, {
   delayed: testInfo.title.includes('réseau retardée') || testInfo.title.includes('réponse retardée'),
   legacy: testInfo.title.includes('ancien Apps Script')
 }));
+
+test.afterEach(async ({ page }) => {
+  const pages = new Set([page, ...page.context().pages()]);
+  const externalRequests = [...pages].flatMap(currentPage => currentPage.__fixtureExternalRequests || []);
+  expect(externalRequests, 'aucune requête vers API ou service externe ne doit sortir du mock').toEqual([]);
+});
 
 async function expectActionContext(page, locator, { user, day, event, stock = '' }) {
   const href = await locator.getAttribute('href');
@@ -191,32 +208,36 @@ test('le changement de journée actualise le contexte et le retour sans recharge
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
 });
 
-test('la sélection manuelle valide est restaurée au rechargement et le planning reste distinct', async ({ page }) => {
+test('la sélection manuelle valide est restaurée après fermeture et réouverture', async ({ page }) => {
   await page.goto('./index.html');
   await page.locator('#homeDaySelect').selectOption(D.g);
   await expect(page.locator('#missionTitle')).toContainText('Genas');
-  await page.reload();
-  await expect(page.locator('#missionTitle')).toContainText('Genas');
-  await expect(page.locator('#generalPlanning')).toBeVisible();
-  await expect(page.locator('#generalPlanning')).toContainText('Planning général Lugdurum');
-  await expect(page.locator('#missionTitle')).not.toContainText('Charly');
-  await expect(page.locator('#missionTitle')).not.toContainText('Salvagny');
+  const context = page.context();
+  await page.close();
+  const reopenedPage = await context.newPage();
+  await installFixture(reopenedPage);
+  await reopenedPage.goto('./index.html');
+  await expect(reopenedPage.locator('#missionTitle')).toContainText('Genas');
+  await expect(reopenedPage.locator('#generalPlanning')).toBeVisible();
+  await expect(reopenedPage.locator('#generalPlanning')).toContainText('Planning général Lugdurum');
+  await expect(reopenedPage.locator('#missionTitle')).not.toContainText('Charly');
+  await expect(reopenedPage.locator('#missionTitle')).not.toContainText('Salvagny');
 });
 
 test('les identités ne réutilisent pas une journée mémorisée d’un autre profil', async ({ page }) => {
   await page.goto('./index.html');
-  await page.locator('.userPill').click();
+  await page.locator('.userPill').click({ force: true });
   await page.getByRole('button', { name: /Anthony/ }).click();
   await expect(page.locator('#missionTitle')).toContainText('Charly');
   await expect(page.locator('#generalPlanning')).toBeVisible();
-  await page.locator('.userPill').click();
+  await page.locator('.userPill').click({ force: true });
   await page.getByRole('button', { name: /William/ }).click();
   await expect(page.locator('#missionTitle')).toContainText('La Tour de Salvagny');
   await expect(page.locator('.workflowGrid [data-step="vente"]')).toBeVisible();
   await expect(page.locator('.workflowGrid [data-step="cloture"]')).toBeVisible();
   await expect(page.locator('.workflowGrid [data-step="stock"]')).toHaveCount(0);
   await expectActionContext(page, page.locator('.workflowGrid [data-step="vente"]'), { user: U.w, day: D.t2, event: E.t, stock: 'MST_SHARED' });
-  await page.locator('.userPill').click();
+  await page.locator('.userPill').click({ force: true });
   await page.getByRole('button', { name: /Jérôme/ }).click();
   await expect(page.locator('#missionTitle')).toContainText('Communay');
 });
@@ -362,12 +383,14 @@ test('sans journée affectée, l’accueil affiche un état vide explicite', asy
 test('une réponse retardée de Jérôme ne remplace pas le contexte après changement de profil', async ({ page }) => {
   await page.goto('./index.html');
   await page.locator('#homeDaySelect').selectOption(D.g);
-  await page.locator('.userPill').click();
+  await page.locator('.userPill').click({ force: true });
   await page.getByRole('button', { name: /Anthony/ }).click();
   await expect(page.locator('#missionTitle')).toContainText('Charly');
-  await page.waitForTimeout(1400);
+  await page.waitForTimeout(1800);
   await expect(page.locator('#missionTitle')).toContainText('Charly');
-  await expect(page.locator('#todayRevenue')).toContainText('—');
+  await expect(page.locator('#todayRevenue')).toContainText('777');
+  await expectActionContext(page, page.locator('#primaryAction'), { user: U.a, day: D.ch, event: E.ch });
+  await expect(page.locator('body')).not.toContainText('Genas');
 });
 
 test('le nouveau frontend retombe sur les tables complètes avec un ancien Apps Script', async ({ page }) => {
@@ -394,7 +417,9 @@ test('le planning général ne modifie pas la journée et une journée étrangè
   }, D.ch);
   await expect(page.locator('#missionTitle')).toContainText('Communay');
   await expect(page.locator('#eventSelectorHint')).toContainText('n’est plus ouverte ou ne t’est plus affectée');
-  await expect(page.locator('.workflowGrid [data-step="vente"]')).toHaveAttribute('href', /journee_id=J_COMMUNAY/);
+  await expect(page.locator('.workflowGrid [data-step="vente"]')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('.workflowGrid [data-step="vente"]')).not.toHaveAttribute('href', /./);
+  await expectActionContext(page, page.locator('#primaryAction'), { user: U.j, day: D.c, event: E.c });
 });
 
 test('une réponse réseau retardée ne rétablit pas une journée précédente', async ({ page }) => {

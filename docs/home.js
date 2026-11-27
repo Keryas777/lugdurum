@@ -75,6 +75,7 @@
   const state = {
     dataSource: "loading",
     loadError: "",
+    homeRequestId: 0,
     pendingWritesCount: 0,
     legacyPendingTransactionsCount: 0,
 
@@ -1091,13 +1092,14 @@
     };
   };
 
-  const loadRemoteDataWithHomeData = async () => {
+  const loadRemoteDataWithHomeData = async (isCurrent = () => true) => {
     if (!hasApi() || typeof api().getHomeData !== "function") {
       throw new Error("LugdurumAPI.getHomeData() est indisponible.");
     }
 
     const startedAt = performance.now();
     const payload = await api().getHomeData(buildSelectedParams());
+    if (!isCurrent()) return null;
     const networkElapsedMs = Math.round(performance.now() - startedAt);
     console.info("[Lugdurum accueil] getHomeData réseau :", networkElapsedMs, "ms");
     const normalized = normalizeHomeDataPayload(payload);
@@ -1122,12 +1124,13 @@
     return data;
   };
 
-  const loadRemoteDataWithCoreData = async () => {
+  const loadRemoteDataWithCoreData = async (isCurrent = () => true) => {
     if (!hasApi() || typeof api().getCoreData !== "function") {
       throw new Error("LugdurumAPI.getCoreData() est indisponible.");
     }
 
     const coreData = await api().getCoreData(CORE_TABLES);
+    if (!isCurrent()) return null;
 
     if (!coreData || typeof coreData !== "object" || Array.isArray(coreData)) {
       throw new Error("Réponse getCoreData invalide.");
@@ -1152,7 +1155,7 @@
     });
   };
 
-  const loadRemoteDataWithSeparateCalls = async () => {
+  const loadRemoteDataWithSeparateCalls = async (isCurrent = () => true) => {
     const [
       inscriptions,
       events,
@@ -1168,6 +1171,7 @@
       callArray("getTransactions", { required: false }),
       callArray("getMouvementsStock", { required: false })
     ]);
+    if (!isCurrent()) return null;
 
     state.remoteTransactionIds = null;
     state.remoteTransactionIndexComplete = true;
@@ -1188,9 +1192,10 @@
     });
   };
 
-  const loadRemoteData = async () => {
+  const loadRemoteData = async (isCurrent = () => true) => {
     const ready = await waitForApi();
 
+    if (!isCurrent()) return null;
     if (!ready) {
       throw new Error("lugdurum-api.js n’est pas chargé.");
     }
@@ -1199,7 +1204,8 @@
     let shouldCacheGeneric = false;
 
     try {
-      data = await loadRemoteDataWithHomeData();
+      data = await loadRemoteDataWithHomeData(isCurrent);
+      if (!isCurrent()) return null;
       const contextApi = window.LugdurumDayContext;
       const expected = contextApi?.resolveWorkContext({
         days: data.journees,
@@ -1224,18 +1230,23 @@
       if (expected?.day && !responseMatches) {
         // Compatibilité avec Apps Script non encore aligné : relire les tables
         // complètes pour ne jamais afficher les ventes d'une autre journée.
-        data = await loadRemoteDataWithCoreData();
+        data = await loadRemoteDataWithCoreData(isCurrent);
+        if (!isCurrent()) return null;
         state.apiMode = "getCoreData · contexte journée vérifié";
         shouldCacheGeneric = true;
       }
     } catch (homeError) {
       try {
-        data = await loadRemoteDataWithCoreData();
+        if (!isCurrent()) return null;
+        data = await loadRemoteDataWithCoreData(isCurrent);
+        if (!isCurrent()) return null;
         state.apiMode = `getCoreData après échec getHomeData : ${homeError.message}`;
         shouldCacheGeneric = true;
       } catch (coreError) {
         try {
-          data = await loadRemoteDataWithSeparateCalls();
+          if (!isCurrent()) return null;
+          data = await loadRemoteDataWithSeparateCalls(isCurrent);
+          if (!isCurrent()) return null;
           state.apiMode = `getters séparés après échec getHomeData/getCoreData : ${homeError.message} · ${coreError.message}`;
           shouldCacheGeneric = true;
         } catch (separateError) {
@@ -1246,6 +1257,7 @@
       }
     }
 
+    if (!isCurrent() || !data) return null;
     const rawCounts = data.__rawCounts || {};
 
     if (state.lastHomePayload) {
@@ -1268,6 +1280,7 @@
     const legacyCleanup = await Promise.resolve(
       reconcileLegacyPendingTransactions(data)
     );
+    if (!isCurrent()) return null;
 
     state.legacyPendingTransactionsCount = toNumber(
       legacyCleanup?.pending_count,
@@ -2105,6 +2118,7 @@
     state.manualSelectionThisSession = true;
     saveSelectedDayId(selectedId);
     saveExplicitDaySelection(true);
+    state.homeRequestId += 1;
     // Mise à jour immédiate de toute la page à partir des lignes déjà chargées.
     renderHome();
     if (state.dataSource === "remote") refreshHomeFromRemote();
@@ -2153,10 +2167,14 @@
   };
 
   const refreshHomeFromRemote = async () => {
+    const requestId = ++state.homeRequestId;
+    const isCurrent = () => requestId === state.homeRequestId;
     setDataState("refreshing", "Actualisation · journée sélectionnée");
 
     try {
-      state.data = await loadRemoteData();
+      const data = await loadRemoteData(isCurrent);
+      if (!data || !isCurrent()) return;
+      state.data = data;
       state.dataSource = "remote";
       state.loadError = "";
       refreshPendingCounts();
@@ -2168,6 +2186,7 @@
       setDataState("online", onlineLabel);
       renderHome();
     } catch (error) {
+      if (!isCurrent()) return;
       state.loadError = error.message || "Lecture API impossible.";
       refreshPendingCounts();
 
@@ -2177,6 +2196,8 @@
   };
 
   const initHome = async () => {
+    const requestId = ++state.homeRequestId;
+    const isCurrent = () => requestId === state.homeRequestId;
     const params = getUrlParams();
     const routeUserId = String(params.get("user_id") || "").trim();
     const requestedDayId = routeUserId && routeUserId !== CURRENT_USER.user_id
@@ -2192,7 +2213,9 @@
     setDataState("refreshing", "Actualisation · lecture des journées affectées");
 
     try {
-      state.data = await loadRemoteData();
+      const data = await loadRemoteData(isCurrent);
+      if (!data || !isCurrent()) return;
+      state.data = data;
       state.dataSource = "remote";
       state.loadError = "";
       refreshPendingCounts();
@@ -2205,6 +2228,7 @@
 
       renderHome();
     } catch (error) {
+      if (!isCurrent()) return;
       state.loadError = error.message || "Lecture API impossible.";
       if (renderFromHomeCacheIfAvailable()) return;
       setDataState("refreshing", "Connexion impossible · réessayer");
@@ -2239,6 +2263,7 @@
   });
 
   window.addEventListener("offline", () => {
+    if (state.dataSource !== "loading") state.homeRequestId += 1;
     // La réponse réseau déjà chargée reste utilisable en mémoire, avec son état hors ligne explicite.
     if (state.dataSource !== "remote") return;
     state.dataSource = "local";
@@ -2260,6 +2285,8 @@
     button: document.querySelector(".userPill"),
     nameElement: document.getElementById("currentUserName"),
     onChange(user) {
+      const initialLoadInProgress = state.dataSource === "loading";
+      if (!initialLoadInProgress) state.homeRequestId += 1;
       CURRENT_USER.user_id = user.user_id;
       CURRENT_USER.nom = user.nom;
       CURRENT_USER.role = user.role;
@@ -2272,7 +2299,7 @@
         "event_id", "mission_id", "stock_mission_id", "journee_id", "user_id"].forEach((key) =>
         url.searchParams.delete(key));
       window.history.replaceState({}, "", url.toString());
-      if (state.dataSource === "loading") {
+      if (initialLoadInProgress) {
         setText("#currentUserName", user.nom);
       } else {
         renderHome();

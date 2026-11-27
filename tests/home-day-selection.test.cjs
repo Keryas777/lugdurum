@@ -121,9 +121,10 @@ test("l’accueil essaie le réseau avant d’utiliser le cache hors ligne", () 
   const home = read("docs/home.js");
   const init = home.slice(home.indexOf("  const initHome ="), home.indexOf("  window.addEventListener(\"lugdurum:sync-status\""));
   assert.match(init, /renderLoading\(\);/);
-  const networkRead = init.indexOf("state.data = await loadRemoteData()");
+  const networkRead = init.indexOf("const data = await loadRemoteData(isCurrent)");
   const cacheFallback = init.indexOf("if (renderFromHomeCacheIfAvailable()) return;");
   assert.ok(networkRead >= 0 && cacheFallback > networkRead);
+  assert.match(init, /if \(!data \|\| !isCurrent\(\)\) return;/);
   assert.match(home, /state\.dataSource = "local";[\s\S]*?Hors ligne · dernière réponse/);
   assert.match(read("docs/index.html"), /homeDaySelect/);
   assert.doesNotMatch(read("docs/index.html"), /selectHomeDay/);
