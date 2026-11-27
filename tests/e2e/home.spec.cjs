@@ -249,6 +249,9 @@ test('Anthony conserve Charly comme contexte et une adresse absente reste explic
 });
 
 test('les portraits suivent les profils, persistent au rechargement et dans la vente rapide', async ({ page }) => {
+  // Cette séquence parcourt l'accueil, la vente rapide et trois captures.
+  // WebKit sur runner GitHub dépasse 15 s sans que l'interface soit bloquée.
+  test.setTimeout(45_000);
   const avatarFor = { [U.j]: 'jerome.webp', [U.a]: 'anthony.webp', [U.w]: 'william.webp' };
   await page.goto('./index.html');
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', `./assets/avatars/${avatarFor[U.j]}`);
@@ -269,7 +272,7 @@ test('les portraits suivent les profils, persistent au rechargement et dans la v
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/anthony.webp');
   await expect(page.locator('#missionTitle')).toContainText('Charly');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lugdurum_current_user_id'))).toBe(U.a);
-  await page.screenshot({ path: test.info().outputPath(`profil-anthony-${test.info().project.name}.png`), fullPage: true });
+  await page.screenshot({ path: test.info().outputPath(`profil-anthony-${test.info().project.name}.png`) });
 
   await page.reload();
   await expect(page.locator('#currentUserName')).toHaveText('Anthony');
@@ -285,13 +288,13 @@ test('les portraits suivent les profils, persistent au rechargement et dans la v
   await page.locator('.vendorSelectOption').filter({ hasText: 'William' }).click({ force: true });
   await expect(page.locator('#currentUserName')).toHaveText('William');
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/william.webp');
-  await page.screenshot({ path: test.info().outputPath(`profil-william-${test.info().project.name}.png`), fullPage: true });
+  await page.screenshot({ path: test.info().outputPath(`profil-william-${test.info().project.name}.png`) });
 
   await page.locator('.userPill').click();
   await page.locator('.vendorSelectOption').filter({ hasText: 'Jérôme' }).click({ force: true });
   await expect(page.locator('#currentUserName')).toHaveText('Jérôme');
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/jerome.webp');
-  await page.screenshot({ path: test.info().outputPath(`profil-jerome-${test.info().project.name}.png`), fullPage: true });
+  await page.screenshot({ path: test.info().outputPath(`profil-jerome-${test.info().project.name}.png`) });
 });
 
 test('un portrait indisponible retombe sur les initiales', async ({ page }) => {
