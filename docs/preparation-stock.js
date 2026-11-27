@@ -800,14 +800,19 @@
       // L’API gère sa propre file offline. Un cache de lecture saturé
       // ne doit pas empêcher une tentative d’écriture via cette API.
       let cacheError = null;
-      try {
-        upsertLocalMouvementsStock(payload.movements);
-        upsertLocalStockMission(missionPatch);
-        if (journeesPatch.length > 0) upsertLocalJournees(journeesPatch);
-      } catch (error) {
-        if (error?.name !== "QuotaExceededError") throw error;
-        cacheError = error;
-        console.warn("Cache préparation stock saturé", error);
+      const updateCache = (operation) => {
+        try {
+          operation();
+        } catch (error) {
+          if (error?.name !== "QuotaExceededError") throw error;
+          cacheError = error;
+          console.warn("Cache préparation stock saturé", error);
+        }
+      };
+      updateCache(() => upsertLocalMouvementsStock(payload.movements));
+      updateCache(() => upsertLocalStockMission(missionPatch));
+      if (journeesPatch.length > 0) {
+        updateCache(() => upsertLocalJournees(journeesPatch));
       }
 
       await saveMouvementsStockToApi(payload.movements);
@@ -844,8 +849,7 @@
         journees: journeesPatch
       };
     } catch (error) {
-      setStatus(`Erreur enregistrement : ${error.message}`, "isError");
-      renderAll();
+      setStatus(`Erreur enregistrement : ${error.message}. Quantités conservées à l’écran ; ne recharge pas la page.`, "isError");
       return null;
     } finally {
       setSaving(false);
