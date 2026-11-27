@@ -250,7 +250,9 @@ test('les portraits suivent les profils, persistent au rechargement et dans la v
   const options = page.locator('.vendorSelectOption');
   await expect(options).toHaveCount(3);
   for (const [userId, avatar] of Object.entries(avatarFor)) {
-    const option = page.getByRole('button', { name: new RegExp(userId === U.j ? 'Jérôme' : userId === U.a ? 'Anthony' : 'William') });
+    const option = page.locator('.vendorSelectOption').filter({
+      hasText: new RegExp(userId === U.j ? 'Jérôme' : userId === U.a ? 'Anthony' : 'William')
+    });
     await expect(option.locator('.userAvatar img')).toHaveAttribute('src', `./assets/avatars/${avatar}`);
     await expect(option.locator('.userAvatar img')).toHaveJSProperty('naturalWidth', 256);
   }
