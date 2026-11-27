@@ -49,6 +49,15 @@ test("une identité inconnue ne peut pas devenir vendeur", () => {
   assert.equal(phone.users.getUserId(), "");
 });
 
+test("les portraits sont associés aux identifiants existants sans changer les identités", () => {
+  const phone = makePhone();
+  assert.equal(phone.users.avatarPathFor("U_JEROME"), "./assets/avatars/jerome.webp");
+  assert.equal(phone.users.avatarPathFor("U_ANTHONY"), "./assets/avatars/anthony.webp");
+  assert.equal(phone.users.avatarPathFor("U_WILL"), "./assets/avatars/william.webp");
+  assert.equal(phone.users.avatarPathFor("U_UNKNOWN"), "");
+  assert.deepEqual([...phone.users.list()].map((user) => user.user_id), ["U_JEROME", "U_ANTHONY", "U_WILL"]);
+});
+
 test("une lecture serveur d'utilisateurs inactifs retire ces choix", async () => {
   const phone = makePhone([
     { user_id: "U_JEROME", nom: "Jérôme", role: "admin", actif: "TRUE" },

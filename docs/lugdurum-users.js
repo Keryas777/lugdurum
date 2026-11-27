@@ -5,6 +5,11 @@
   // N'est ni une connexion ni une autorisation d'accès aux données.
   const KEY = "lugdurum_current_user_id";
   const CACHE = "lugdurum_users_list_cache";
+  const AVATARS = Object.freeze({
+    U_JEROME: "./assets/avatars/jerome.webp",
+    U_ANTHONY: "./assets/avatars/anthony.webp",
+    U_WILL: "./assets/avatars/william.webp"
+  });
   // Repli initial fidèle à l'onglet utilisateurs, vérifié le 10/10/2026.
   // Dès que l'API serveur sait lire cet onglet, sa liste prévaut.
   const SEED = [
@@ -54,8 +59,45 @@
     return users.find((u) => u.user_id === id) || null;
   };
 
+  const avatarPathFor = (userId) => AVATARS[String(userId || "").trim()] || "";
+
+  const renderAvatar = (container, user) => {
+    if (!container) return;
+    container.classList.add("userAvatar");
+    container.setAttribute("aria-hidden", "true");
+    container.replaceChildren();
+
+    const path = avatarPathFor(user?.user_id);
+    const drawFallback = () => {
+      const fallback = document.createElement("span");
+      fallback.className = "userAvatarFallback";
+      const initials = String(user?.nom || "").trim().split(/\s+/)
+        .filter(Boolean).slice(0, 2).map((part) => Array.from(part)[0] || "").join("");
+      fallback.textContent = initials ? initials.toLocaleUpperCase("fr-FR") : "👤";
+      container.replaceChildren(fallback);
+    };
+
+    if (!path) {
+      drawFallback();
+      return;
+    }
+
+    const image = document.createElement("img");
+    image.src = path;
+    image.alt = "";
+    image.decoding = "async";
+    image.draggable = false;
+    image.addEventListener("error", () => {
+      // Une ancienne image peut échouer après un changement de profil.
+      if (container.querySelector("img") !== image) return;
+      drawFallback();
+    }, { once: true });
+    container.appendChild(image);
+  };
+
   const draw = (mount) => {
     const current = getCurrent();
+    renderAvatar(mount.avatarElement, current);
     if (mount.nameElement) {
       mount.nameElement.textContent = current ? current.nom : "Choisir vendeur";
     }
@@ -87,6 +129,12 @@
     const style = document.createElement("style");
     style.id = "lugdurumVendorStyle";
     style.textContent = [
+      ".userAvatar{width:38px;height:38px;display:inline-grid;place-items:center;",
+      "flex:0 0 38px;overflow:hidden;border:1px solid rgba(138,90,43,.28);",
+      "border-radius:50%;background:#e9dfcf;color:#8a5a2b;font-size:.76rem;",
+      "font-weight:850;line-height:1}",
+      ".userAvatar img{width:100%;height:100%;display:block;border-radius:inherit;object-fit:cover}",
+      ".userAvatarFallback{display:grid;width:100%;height:100%;place-items:center}",
       ".vendorSelectOverlay[hidden]{display:none!important}",
       ".vendorSelectOverlay{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;",
       "padding:16px;background:rgba(31,27,22,.55)}",
@@ -97,8 +145,10 @@
       ".vendorSelectPanel p{font-size:.88rem;line-height:1.4;margin:0 0 16px}",
       ".vendorSelectList{display:grid;gap:10px}",
       ".vendorSelectOption{min-height:54px;border:1px solid #c7b79e;border-radius:14px;",
-      "background:#fffaf1;color:#1f1b16;text-align:left;padding:12px 15px;",
-      "font-size:1.03rem;font-weight:800;touch-action:manipulation}",
+      "display:flex;align-items:center;gap:12px;background:#fffaf1;color:#1f1b16;",
+      "text-align:left;padding:8px 12px;font-size:1.03rem;font-weight:800;touch-action:manipulation}",
+      ".vendorSelectOption .userAvatar{width:36px;height:36px;flex-basis:36px}",
+      ".vendorSelectOptionLabel{min-width:0}",
       ".vendorSelectOption.isSelected{border:2px solid #3f6f4f;background:#e4f1e5}",
       ".vendorSelectCancel{width:100%;min-height:44px;margin-top:16px;border:0;",
       "border-radius:12px;background:#e5ddd0;color:#1f1b16;font-weight:800}",
@@ -138,7 +188,13 @@
       button.type = "button";
       button.className = "vendorSelectOption" +
         (current && current.user_id === u.user_id ? " isSelected" : "");
-      button.textContent = u.nom + " · " + (u.role === "admin" ? "Administrateur" : "Vendeur");
+      const avatar = document.createElement("span");
+      renderAvatar(avatar, u);
+      const label = document.createElement("span");
+      label.className = "vendorSelectOptionLabel";
+      label.textContent = u.nom + " · " + (u.role === "admin" ? "Administrateur" : "Vendeur");
+      button.appendChild(avatar);
+      button.appendChild(label);
       button.addEventListener("click", () => {
         if (select(u.user_id)) close();
       });
@@ -164,9 +220,11 @@
 
   const mount = (options = {}) => {
     if (!options.button) return;
+    ensureStyle();
     const instance = {
       button: options.button,
       nameElement: options.nameElement || null,
+      avatarElement: options.avatarElement || options.button.querySelector?.("[data-user-avatar]") || null,
       onChange: options.onChange,
       canChange: options.canChange,
       onBlocked: options.onBlocked
@@ -201,6 +259,8 @@
   window.LugdurumUsers = {
     getCurrent,
     getUserId: () => getCurrent()?.user_id || "",
+    avatarPathFor,
+    renderAvatar,
     select,
     mount,
     refreshFromSheet,
