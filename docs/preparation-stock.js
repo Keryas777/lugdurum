@@ -784,28 +784,37 @@
   const savePreparation = async (status = "brouillon", { fromStart = false } = {}) => {
     if (state.isSaving || (state.isStarting && !fromStart)) return null;
 
-    const payload = buildPreparationMovements(status);
-
-    if (!payload) return null;
-
-    const missionPatch = buildStockMissionPatch({
-      status,
-      totals: payload.totals
-    });
-
-    const journeesPatch = buildJourneesReadyPatch(status);
-
-    upsertLocalMouvementsStock(payload.movements);
-    upsertLocalStockMission(missionPatch);
-
-    if (journeesPatch.length > 0) {
-      upsertLocalJournees(journeesPatch);
-    }
-
     setSaving(true);
     setStatus(status === "valide" ? "Validation du stock..." : "Enregistrement du brouillon...");
 
     try {
+      const payload = buildPreparationMovements(status);
+      if (!payload) return null;
+
+      const missionPatch = buildStockMissionPatch({
+        status,
+        totals: payload.totals
+      });
+      const journeesPatch = buildJourneesReadyPatch(status);
+
+      // L’API gère sa propre file offline. Un cache de lecture saturé
+      // ne doit pas empêcher une tentative d’écriture via cette API.
+      let cacheError = null;
+      const updateCache = (operation) => {
+        try {
+          operation();
+        } catch (error) {
+          if (error?.name !== "QuotaExceededError") throw error;
+          cacheError = error;
+          console.warn("Cache préparation stock saturé", error);
+        }
+      };
+      updateCache(() => upsertLocalMouvementsStock(payload.movements));
+      updateCache(() => upsertLocalStockMission(missionPatch));
+      if (journeesPatch.length > 0) {
+        updateCache(() => upsertLocalJournees(journeesPatch));
+      }
+
       await saveMouvementsStockToApi(payload.movements);
       await saveStockMissionToApi(missionPatch);
 
@@ -828,6 +837,11 @@
       );
 
       renderAll();
+      if (cacheError) {
+        setStatus(pendingCount > 0
+          ? "Écritures en attente de synchronisation ; cache local saturé."
+          : "Enregistrement terminé ; cache local saturé.", "isError");
+      }
 
       return {
         movements: payload.activeMovements,
@@ -835,8 +849,7 @@
         journees: journeesPatch
       };
     } catch (error) {
-      setStatus(`Erreur enregistrement : ${error.message}`, "isError");
-      renderAll();
+      setStatus(`Erreur enregistrement : ${error.message}. Quantités conservées à l’écran ; ne recharge pas la page.`, "isError");
       return null;
     } finally {
       setSaving(false);
