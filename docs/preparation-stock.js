@@ -784,28 +784,32 @@
   const savePreparation = async (status = "brouillon", { fromStart = false } = {}) => {
     if (state.isSaving || (state.isStarting && !fromStart)) return null;
 
-    const payload = buildPreparationMovements(status);
-
-    if (!payload) return null;
-
-    const missionPatch = buildStockMissionPatch({
-      status,
-      totals: payload.totals
-    });
-
-    const journeesPatch = buildJourneesReadyPatch(status);
-
-    upsertLocalMouvementsStock(payload.movements);
-    upsertLocalStockMission(missionPatch);
-
-    if (journeesPatch.length > 0) {
-      upsertLocalJournees(journeesPatch);
-    }
-
     setSaving(true);
     setStatus(status === "valide" ? "Validation du stock..." : "Enregistrement du brouillon...");
 
     try {
+      const payload = buildPreparationMovements(status);
+      if (!payload) return null;
+
+      const missionPatch = buildStockMissionPatch({
+        status,
+        totals: payload.totals
+      });
+      const journeesPatch = buildJourneesReadyPatch(status);
+
+      // L’API gère sa propre file offline. Un cache de lecture saturé
+      // ne doit pas empêcher une tentative d’écriture via cette API.
+      let cacheError = null;
+      try {
+        upsertLocalMouvementsStock(payload.movements);
+        upsertLocalStockMission(missionPatch);
+        if (journeesPatch.length > 0) upsertLocalJournees(journeesPatch);
+      } catch (error) {
+        if (error?.name !== "QuotaExceededError") throw error;
+        cacheError = error;
+        console.warn("Cache préparation stock saturé", error);
+      }
+
       await saveMouvementsStockToApi(payload.movements);
       await saveStockMissionToApi(missionPatch);
 
@@ -828,6 +832,11 @@
       );
 
       renderAll();
+      if (cacheError) {
+        setStatus(pendingCount > 0
+          ? "Écritures en attente de synchronisation ; cache local saturé."
+          : "Enregistrement terminé ; cache local saturé.", "isError");
+      }
 
       return {
         movements: payload.activeMovements,
