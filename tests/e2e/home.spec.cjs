@@ -42,7 +42,9 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       constructor(...args) { super(...(args.length ? args : [fixedNow])); }
       static now() { return fixedNow; }
     };
-    localStorage.setItem('lugdurum_current_user_id', userId);
+    if (localStorage.getItem('lugdurum_current_user_id') === null) {
+      localStorage.setItem('lugdurum_current_user_id', userId);
+    }
     const selectedDayKey = 'lugdurum_home_selected_journee:' + userId;
     if (localStorage.getItem(selectedDayKey) === null) {
       localStorage.setItem(selectedDayKey, staleDay);
@@ -109,10 +111,14 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       getCoreData() {
         fixtureState.coreDataCalls += 1;
         return { inscriptions: [], missions: fixtureState.events, missionsStock: fixtureState.stockMissions, journees: fixtureState.days, transactions: [], mouvementsStock: [] };
+      },
+      getVenteRapideData() {
+        return { catalogue: [], offresVente: [], tables: { catalogue: [], offresVente: [] } };
       }
     };
     globalThis.__LUGDURUM_HOME_FIXTURE__ = fixtureApi.getHomeData;
     globalThis.__LUGDURUM_HOME_FIXTURE_CORE__ = fixtureApi.getCoreData;
+    globalThis.__LUGDURUM_FIXTURE_VENTE_RAPIDE__ = fixtureApi.getVenteRapideData;
   }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy });
   page.__fixtureExternalRequests = [];
   page.on('request', request => {
@@ -125,14 +131,18 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     }
     else await route.fallback();
   });
-  await page.route(url => url.href.includes('/docs/index.html'), async route => {
+  await page.route(url => url.origin === 'http://127.0.0.1:4173' &&
+    url.pathname.startsWith('/docs/') && url.pathname.endsWith('.html'), async route => {
     const response = await route.fetch();
     const source = await response.text();
-    const apiTag = '<script src="./lugdurum-api.js?v=26" defer></script>';
-    if (!source.includes(apiTag)) throw new Error('La page réelle ne contient pas la balise LugdurumAPI attendue.');
+    const apiTag = /<script src="\.\/lugdurum-api\.js\?v=\d+" defer><\/script>/;
+    if (!apiTag.test(source)) {
+      await route.fulfill({ response, body: source });
+      return;
+    }
     await route.fulfill({
       response,
-      body: source.replace(apiTag, `${apiTag}\n    <script src="../tests/e2e/api-bootstrap.js" defer></script>`)
+      body: source.replace(apiTag, tag => `${tag}\n    <script src="../tests/e2e/api-bootstrap.js" defer></script>`)
     });
   });
   if (offline) await page.context().setOffline(true);
@@ -236,6 +246,65 @@ test('Anthony conserve Charly comme contexte et une adresse absente reste explic
   await expect(page.locator('#homeAddressMissingText')).toContainText('Adresse complète non renseignée');
   await expect(page.locator('#homeSetupHours')).toHaveText('Non renseigné');
   await expect(page.locator('#homePublicHours')).toHaveText('Non renseigné');
+});
+
+test('les portraits suivent les profils, persistent au rechargement et dans la vente rapide', async ({ page }) => {
+  // Cette séquence parcourt l'accueil, la vente rapide et trois captures.
+  // WebKit sur runner GitHub dépasse 15 s sans que l'interface soit bloquée.
+  test.setTimeout(45_000);
+  const avatarFor = { [U.j]: 'jerome.webp', [U.a]: 'anthony.webp', [U.w]: 'william.webp' };
+  await page.goto('./index.html');
+  await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', `./assets/avatars/${avatarFor[U.j]}`);
+  await expect(page.locator('[data-user-avatar] img')).toHaveJSProperty('naturalWidth', 256);
+
+  await page.locator('.userPill').click();
+  const options = page.locator('.vendorSelectOption');
+  await expect(options).toHaveCount(3);
+  for (const [userId, avatar] of Object.entries(avatarFor)) {
+    const option = page.locator('.vendorSelectOption').filter({
+      hasText: new RegExp(userId === U.j ? 'Jérôme' : userId === U.a ? 'Anthony' : 'William')
+    });
+    await expect(option.locator('.userAvatar img')).toHaveAttribute('src', `./assets/avatars/${avatar}`);
+    await expect(option.locator('.userAvatar img')).toHaveJSProperty('naturalWidth', 256);
+  }
+  await page.locator('.vendorSelectOption').filter({ hasText: 'Anthony' }).click({ force: true });
+  await expect(page.locator('#currentUserName')).toHaveText('Anthony');
+  await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/anthony.webp');
+  await expect(page.locator('#missionTitle')).toContainText('Charly');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('lugdurum_current_user_id'))).toBe(U.a);
+  await page.screenshot({ path: test.info().outputPath(`profil-anthony-${test.info().project.name}.png`) });
+
+  await page.reload();
+  await expect(page.locator('#currentUserName')).toHaveText('Anthony');
+  await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/anthony.webp');
+  await page.goto('./vente-rapide.html');
+  await expect(page.locator('#saleSellerName')).toHaveText('Anthony');
+  await expect(page.locator('#saleSellerBtn [data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/anthony.webp');
+  await page.locator('.backBtn').click();
+  await expect(page.locator('#currentUserName')).toHaveText('Anthony');
+  await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/anthony.webp');
+
+  await page.locator('.userPill').click();
+  await page.locator('.vendorSelectOption').filter({ hasText: 'William' }).click({ force: true });
+  await expect(page.locator('#currentUserName')).toHaveText('William');
+  await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/william.webp');
+  await page.screenshot({ path: test.info().outputPath(`profil-william-${test.info().project.name}.png`) });
+
+  await page.locator('.userPill').click();
+  await page.locator('.vendorSelectOption').filter({ hasText: 'Jérôme' }).click({ force: true });
+  await expect(page.locator('#currentUserName')).toHaveText('Jérôme');
+  await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/jerome.webp');
+  await page.screenshot({ path: test.info().outputPath(`profil-jerome-${test.info().project.name}.png`) });
+});
+
+test('un portrait indisponible retombe sur les initiales', async ({ page }) => {
+  await page.goto('./index.html');
+  await page.route('**/assets/avatars/anthony.webp', route => route.abort());
+  await page.locator('.userPill').click();
+  await page.getByRole('button', { name: /Anthony/ }).click();
+  const avatar = page.locator('[data-user-avatar]');
+  await expect(avatar.locator('.userAvatarFallback')).toHaveText('A');
+  await page.screenshot({ path: test.info().outputPath(`profil-repli-${test.info().project.name}.png`), fullPage: true });
 });
 
 test('les anciens paramètres URL ne remplacent pas la journée personnelle', async ({ page }) => {
