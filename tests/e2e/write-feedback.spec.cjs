@@ -276,17 +276,23 @@ test('la synchronisation automatique en arrière-plan ne couvre pas l’interfac
 });
 
 test('après fermeture et réouverture, la file locale reste intacte sans voile bloqué', async ({ page, context }) => {
+  const control = { kind: 'hold' };
+  control.enteredPromise = new Promise((resolve) => { control.entered = resolve; });
   await bootWriteFixture(page);
   await context.setOffline(true);
   await page.evaluate(() => window.LugdurumAPI.batchUpsert([]));
   await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistré sur cet appareil');
   await page.close();
 
-  const reopened = await context.newPage();
-  await bootWriteFixture(reopened);
-  await expect(reopened.locator('.lugdurumWriteOverlay')).toBeHidden();
-  await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(1);
   await context.setOffline(false);
+  const reopened = await context.newPage();
+  await bootWriteFixture(reopened, control);
+  await control.enteredPromise;
+  await expect(reopened.locator('.lugdurumWriteOverlay')).toBeHidden();
+  await expect(reopened.locator('.appShell')).not.toHaveAttribute('aria-busy', 'true');
+  await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(1);
+  control.release();
+  await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(0);
 });
 
 test('une vente SumUp reste sur son chemin local rapide, sans voile réseau', async ({ page, context }) => {

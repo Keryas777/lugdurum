@@ -205,7 +205,7 @@ test('la tuile regroupe le sélecteur, l’adresse Waze et les horaires exacts d
   await expect(page.locator('#homePublicHours')).toHaveText('10h - 17h');
   await expect(page.locator('#homePublicHours')).not.toContainText('samedi');
   await page.locator('#homeDaySelect').selectOption(D.g);
-  await expect(page.locator('#homeDayDate')).toContainText('samedi 5 décembre 2026 · J1');
+  await expect(page.locator('#homeDayDate')).toContainText('samedi 05 décembre 2026 · J1');
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
 });
 
@@ -303,9 +303,9 @@ test('les identités ne réutilisent pas une journée mémorisée d’un autre p
   await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.col1);
   await page.locator('#homeDaySelect').selectOption(D.t1);
   await expect(page.locator('#missionTitle')).toContainText('La Tour de Salvagny');
-  await expectActionContext(page, page.locator('#primaryAction'), { user: U.w, day: D.t1, event: E.t });
+  await expect(page.locator('#primaryAction')).toBeHidden();
   await expect(page.locator('.workflowGrid [data-step="vente"]')).toBeVisible();
-  await expect(page.locator('.workflowGrid [data-step="vente"]')).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('.workflowGrid [data-step="missions"]')).toContainText('responsable');
   await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.t1);
   await expect(page.locator('#generalPlanning')).toBeHidden();
   await page.locator('.userPill').click({ force: true });
