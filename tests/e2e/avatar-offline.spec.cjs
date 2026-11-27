@@ -1,8 +1,10 @@
-const { test, expect } = require('@playwright/test');
 
 test.use({ serviceWorkers: 'allow' });
 
 test('les portraits mis en cache par la PWA restent disponibles hors ligne', async ({ page }) => {
+  // WebKit iPhone sur runner GitHub attend parfois plusieurs secondes la stabilité
+  // du bouton de profil après l’activation du mode hors ligne.
+  test.setTimeout(45_000);
   await page.addInitScript(() => {
     localStorage.setItem('lugdurum_current_user_id', 'U_JEROME');
     localStorage.setItem('lugdurum_users_list_cache', JSON.stringify([
