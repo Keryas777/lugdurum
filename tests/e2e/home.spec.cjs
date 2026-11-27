@@ -236,7 +236,8 @@ test('les identités ne réutilisent pas une journée mémorisée d’un autre p
   await expect(page.locator('#missionTitle')).toContainText('La Tour de Salvagny');
   await expect(page.locator('.workflowGrid [data-step="vente"]')).toBeVisible();
   await expect(page.locator('.workflowGrid [data-step="vente"]')).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.locator('.workflowGrid [data-step="missions"]')).toContainText('Associer cette journée');
+  await expect(page.locator('.workflowGrid [data-step="missions"]')).toContainText('responsable');
+  await expect(page.locator('#primaryAction')).toBeHidden();
   await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.t1);
   await expect(page.locator('#generalPlanning')).toBeHidden();
   await page.locator('.userPill').click({ force: true });
