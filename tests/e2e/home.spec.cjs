@@ -16,8 +16,8 @@ const day = (id, event, date, sellers, stock = '', jour = 'J1', statut = 'prevu'
 const days = [
   day(D.c, E.c, '2026-11-28', [U.j]), day(D.g, E.g, '2026-12-05', [U.j], 'MST_SHARED'),
   day(D.ch, E.ch, '2026-11-28', [U.a]),
-  day(D.t1, E.t, '2026-12-05', [U.a, U.w], 'MST_SHARED', 'J1', 'cloture'),
-  day(D.t2, E.t, '2026-12-06', [U.a, U.w], 'MST_SHARED', 'J2'),
+  day(D.t1, E.t, '2026-12-05', [U.a, U.w], '', 'J1'),
+  day(D.t2, E.t, '2026-12-06', [U.a, U.w], '', 'J2'),
   day(D.s1, E.shared, '2026-12-12', [U.j], 'MST_SHARED', 'J1', 'cloture'),
   day(D.s2, E.shared, '2026-12-13', [U.j], 'MST_SHARED', 'J2'),
   day(D.noStock, E.shared, '2026-12-20', [U.j]),
@@ -227,18 +227,20 @@ test('la sélection manuelle valide est restaurée après fermeture et réouvert
 test('les identités ne réutilisent pas une journée mémorisée d’un autre profil', async ({ page }) => {
   await page.goto('./index.html');
   await page.locator('.userPill').click({ force: true });
-  await page.getByRole('button', { name: /Anthony/ }).click();
+  await page.getByRole('button', { name: /Anthony/ }).click({ force: true });
   await expect(page.locator('#missionTitle')).toContainText('Charly');
   await expect(page.locator('#generalPlanning')).toBeVisible();
+  await expectActionContext(page, page.locator('#primaryAction'), { user: U.a, day: D.ch, event: E.ch });
   await page.locator('.userPill').click({ force: true });
-  await page.getByRole('button', { name: /William/ }).click();
+  await page.getByRole('button', { name: /William/ }).click({ force: true });
   await expect(page.locator('#missionTitle')).toContainText('La Tour de Salvagny');
   await expect(page.locator('.workflowGrid [data-step="vente"]')).toBeVisible();
-  await expect(page.locator('.workflowGrid [data-step="cloture"]')).toBeVisible();
-  await expect(page.locator('.workflowGrid [data-step="stock"]')).toHaveCount(0);
-  await expectActionContext(page, page.locator('.workflowGrid [data-step="vente"]'), { user: U.w, day: D.t2, event: E.t, stock: 'MST_SHARED' });
+  await expect(page.locator('.workflowGrid [data-step="vente"]')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('.workflowGrid [data-step="missions"]')).toContainText('Associer cette journée');
+  await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.t1);
+  await expect(page.locator('#generalPlanning')).toBeHidden();
   await page.locator('.userPill').click({ force: true });
-  await page.getByRole('button', { name: /Jérôme/ }).click();
+  await page.getByRole('button', { name: /Jérôme/ }).click({ force: true });
   await expect(page.locator('#missionTitle')).toContainText('Communay');
 });
 
@@ -384,7 +386,7 @@ test('une réponse retardée de Jérôme ne remplace pas le contexte après chan
   await page.goto('./index.html');
   await page.locator('#homeDaySelect').selectOption(D.g);
   await page.locator('.userPill').click({ force: true });
-  await page.getByRole('button', { name: /Anthony/ }).click();
+  await page.getByRole('button', { name: /Anthony/ }).click({ force: true });
   await expect(page.locator('#missionTitle')).toContainText('Charly');
   await page.waitForTimeout(1800);
   await expect(page.locator('#missionTitle')).toContainText('Charly');
