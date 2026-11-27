@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    PWA Lugdurum V16_DATA_STATE_BRIDGE :
+    PWA Lugdurum V17_WRITE_FEEDBACK :
     - Nettoie uniquement les caches PWA CacheStorage Lugdurum.
     - Ne touche pas aux caches métier localStorage.
     - Force la mise à jour du service worker.
@@ -14,7 +14,7 @@
     - Garde window.LugdurumDataState comme point d’entrée global.
   */
 
-  const PWA_VERSION = "v16-data-state-bridge";
+  const PWA_VERSION = "v17-write-feedback";
   const SW_URL = `./sw.js?v=${encodeURIComponent(PWA_VERSION)}`;
 
   const VERSION_STORAGE_KEY = "lugdurum_pwa_version";
@@ -125,15 +125,31 @@
   const getDataStateText = (state) => {
     const status = normalizeDataStateStatus(state?.status);
     const label = String(state?.label || DATA_STATE_LABELS[status]).trim();
-    const message = String(state?.message || "").trim();
-
-    if (!message) return label;
-
-    if (label.includes(message)) {
-      return label;
+    let pendingCount = Number(state?.pending_count);
+    if (!Number.isFinite(pendingCount)) {
+      try {
+        const writes = JSON.parse(safeLocalGet("lugdurum_pending_writes") || "[]");
+        pendingCount = Array.isArray(writes) ? writes.length : 0;
+      } catch {
+        pendingCount = 0;
+      }
     }
 
-    return `${label} · ${message}`;
+    if (status === "online") {
+      return pendingCount > 0 ? `${pendingCount} opération(s) à synchroniser` : "Données en ligne";
+    }
+    if (status === "refreshing") {
+      return state?.is_flushing ? "Synchronisation en cours…" : "Actualisation…";
+    }
+    if (navigator.onLine === false) {
+      return pendingCount > 0
+        ? `Mode hors ligne · ${pendingCount} opération(s) en attente`
+        : "Mode hors ligne";
+    }
+    if (pendingCount > 0) return `${pendingCount} opération(s) à synchroniser`;
+    return ["Mode hors ligne", "Synchronisation à vérifier", "Données locales"].includes(label)
+      ? label
+      : "Données locales";
   };
 
   const getDataStateTitle = (state) => {
@@ -207,6 +223,12 @@
         background: #3f6f4f;
         box-shadow: 0 0 0 4px rgba(63, 111, 79, 0.15);
       }
+
+      .lugdurumDataStateBadge.isPending .lugdurumDataStateBadgeDot,
+      .lugdurumDataStateBadge.isOffline .lugdurumDataStateBadgeDot {
+        background: #d8a04f;
+        box-shadow: 0 0 0 4px rgba(216, 160, 79, 0.18);
+      }
     `;
 
     document.head.appendChild(style);
@@ -269,12 +291,16 @@
       const status = normalizeDataStateStatus(currentDataState.status);
       const text = badge.querySelector(".lugdurumDataStateBadgeText");
 
-      badge.classList.remove("isLocal", "isRefreshing", "isOnline");
+      badge.classList.remove("isLocal", "isRefreshing", "isOnline", "isPending", "isOffline");
 
       if (status === "online") {
         badge.classList.add("isOnline");
       } else if (status === "refreshing") {
         badge.classList.add("isRefreshing");
+      } else if (navigator.onLine === false) {
+        badge.classList.add("isOffline");
+      } else if (Number(currentDataState.pending_count || 0) > 0 || getPendingWriteCountFromStorage() > 0) {
+        badge.classList.add("isPending");
       } else {
         badge.classList.add("isLocal");
       }
@@ -291,6 +317,15 @@
       render();
     } else {
       document.addEventListener("DOMContentLoaded", render, { once: true });
+    }
+  };
+
+  const getPendingWriteCountFromStorage = () => {
+    try {
+      const writes = JSON.parse(safeLocalGet("lugdurum_pending_writes") || "[]");
+      return Array.isArray(writes) ? writes.length : 0;
+    } catch {
+      return 0;
     }
   };
 

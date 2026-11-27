@@ -347,6 +347,131 @@
   const getDayStockMissionId = (journee) =>
     String(journee?.stock_mission_id || journee?.mission_stock_id || "").trim();
 
+  const getWeekdayKey = (isoDate) => {
+    const date = String(isoDate || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
+    const weekday = new Intl.DateTimeFormat("fr-FR", {
+      timeZone: "Europe/Paris", weekday: "long"
+    }).format(new Date(`${date}T12:00:00Z`));
+    return normalizeKey(weekday);
+  };
+
+  const getDayNumber = (journee) => {
+    const match = String(journee?.jour_label || "").match(/\bJ\s*(\d+)\b/i);
+    return match ? Number(match[1]) : 0;
+  };
+
+  const getDayNoteSchedule = (note, kind) => {
+    const text = String(note || "");
+    const label = kind === "setup"
+      ? "(?:mise\\s+en\\s+place|installation)"
+      : "(?:ouverture\\s+au\\s+public|horaires?\\s+(?:d['’]\\s*)?ouverture)";
+    const marker = new RegExp(`(?:^|[\\s·])(${label})\\s*:\\s*`, "i");
+    const match = marker.exec(text);
+    if (!match) return "";
+    const start = match.index + match[0].length;
+    const rest = text.slice(start);
+    const nextField = /\s+(?:ouverture\s+au\s+public|horaires?\s+(?:d['’]\s*)?ouverture|mise\s+en\s+place|installation)\s*:/i.exec(rest);
+    return rest.slice(0, nextField ? nextField.index : rest.length).trim();
+  };
+
+  const resolveHoursForDay = (value, journee, isMultiDay) => {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    const markerPattern = /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|J\s*([1-9]\d*))\b/gi;
+    const markers = [...text.matchAll(markerPattern)];
+    if (!markers.length) return isMultiDay ? "" : text;
+
+    const dayIndex = getDayNumber(journee);
+    const weekday = getWeekdayKey(journee?.date);
+    for (let index = 0; index < markers.length; index += 1) {
+      const marker = markers[index];
+      const markerText = normalizeKey(marker[1]);
+      const markerIndex = marker[2] ? Number(marker[2]) : 0;
+      const matchesDay = markerIndex
+        ? markerIndex === dayIndex
+        : markerText === weekday;
+      if (!matchesDay) continue;
+
+      const start = marker.index + marker[0].length;
+      const end = index + 1 < markers.length ? markers[index + 1].index : text.length;
+      const segment = text.slice(start, end)
+        .replace(/^[\s:·–—-]+/, "")
+        .replace(/[\s|,;]+$/, "")
+        .trim();
+      if (segment) return segment;
+    }
+    return "";
+  };
+
+  const getDayHours = (homeState, kind) => {
+    const day = homeState.journee;
+    const event = homeState.event || {};
+    const eventIsMultiDay = Boolean(
+      (event.date_debut && event.date_fin && event.date_debut !== event.date_fin) ||
+      (homeState.linkedDays || []).length > 1
+    );
+    const noteValue = getDayNoteSchedule(day?.note, kind);
+    const eventValue = kind === "setup" ? event.mise_en_place : event.horaires;
+    const resolved = resolveHoursForDay(noteValue, day, eventIsMultiDay) ||
+      resolveHoursForDay(eventValue, day, eventIsMultiDay);
+    return resolved || "Non renseigné";
+  };
+
+  const renderPracticalInfo = (homeState) => {
+    const container = qs("#missionMeta");
+    if (!container) return;
+    const day = homeState.journee;
+    const event = homeState.event || {};
+    const daySelector = qs(".homeDaySelector");
+    const assignedDays = homeState.assignedDays || [];
+    container.hidden = !day && assignedDays.length === 0;
+
+    const practicalRows = [
+      qs("#homeDayDateRow"), qs("#homeAddressLink"), qs("#homeAddressMissingRow"),
+      qs("#homeSetupHours")?.closest(".marketPracticalLine"),
+      qs("#homePublicHours")?.closest(".marketPracticalLine")
+    ].filter(Boolean);
+    practicalRows.forEach((row) => { row.hidden = !day; });
+    if (daySelector) daySelector.hidden = false;
+    if (!day) return;
+
+    const dayDate = qs("#homeDayDate");
+    if (dayDate) dayDate.textContent = `${formatDisplayDate(day.date)}${day.jour_label ? ` · ${day.jour_label}` : ""}`;
+
+    const address = String(event.adresse || "").trim();
+    const addressParts = [event.adresse, event.ville, event.lieu]
+      .map((part) => String(part || "").trim())
+      .filter((part, index, all) => part && all.findIndex((item) => normalizeKey(item) === normalizeKey(part)) === index);
+    const addressText = addressParts.join(" · ");
+    const addressLink = qs("#homeAddressLink");
+    const addressMissing = qs("#homeAddressMissingRow");
+    if (addressLink && address && addressText) {
+      const wazeUrl = window.LugdurumAPI?.buildWazeUrl?.(event) || "";
+      addressLink.hidden = !wazeUrl;
+      addressLink.href = wazeUrl || "#";
+      addressLink.setAttribute("aria-label", `Ouvrir l’itinéraire vers ${addressText} dans Waze`);
+      setText("#homeAddressText", addressText);
+      if (addressMissing) addressMissing.hidden = Boolean(wazeUrl);
+      if (!wazeUrl && addressMissing) {
+        setText("#homeAddressMissingText", `Itinéraire indisponible · ${addressText}`);
+      }
+    } else {
+      if (addressLink) {
+        addressLink.hidden = true;
+        addressLink.removeAttribute("href");
+      }
+      if (addressMissing) {
+        addressMissing.hidden = false;
+        setText("#homeAddressMissingText", addressParts.length
+          ? `Adresse complète non renseignée · ${addressParts.join(" · ")}`
+          : "Adresse · Non renseignée");
+      }
+    }
+    setText("#homeSetupHours", getDayHours(homeState, "setup"));
+    setText("#homePublicHours", getDayHours(homeState, "public"));
+  };
+
   const daySelectionKey = (userId = CURRENT_USER.user_id) =>
     `lugdurum_home_selected_journee:${String(userId || "").trim()}`;
   const daySelectionExplicitKey = (userId = CURRENT_USER.user_id) => `${daySelectionKey(userId)}:explicit`;
@@ -1617,9 +1742,7 @@
 
     const event = homeState.event;
     const eventName = event?.nom || event?.name || day.nom || day.jour_label || "Évènement";
-    const eventLocation = String(event?.lieu || event?.ville || "").trim();
-    const meta = [formatDisplayDate(day.date), day.jour_label, event?.horaires, eventLocation]
-      .filter(Boolean).join(" · ");
+    const meta = "";
     const context = homeState.workContext;
     const stockId = context.stock_mission_id;
     const stock = homeState.mission;
@@ -1737,7 +1860,8 @@
     setText("#currentUserName", CURRENT_USER.nom);
     setText("#activeStatusLabel", "Chargement");
     setText("#missionTitle", "Chargement…");
-    setText("#missionMeta", "Lecture des journées qui te sont affectées.");
+    const practicalInfo = qs("#missionMeta");
+    if (practicalInfo) practicalInfo.hidden = true;
     setText("#statOneLabel", "CA jour");
     setText("#todayRevenue", "…");
     setText("#statTwoLabel", "Ventes");
@@ -1746,7 +1870,6 @@
     setText("#pendingSync", "…");
     setLink("#primaryAction", "", "");
     setLink("#secondaryAction", "", "");
-    setText("#eventSelectorHint", "Lecture de tes journées affectées.");
     renderWorkflow(null, { step: "missions" }, []);
     renderWatchList(["Lecture du contexte vendeur…"]);
   };
@@ -1812,7 +1935,7 @@
     );
     setText("#activeStatusLabel", uiState.label);
     setText("#missionTitle", uiState.title);
-    setText("#missionMeta", uiState.meta);
+    renderPracticalInfo(homeState);
 
     renderStats(homeState);
 
@@ -2068,7 +2191,6 @@
 
   const renderDaySelector = (homeState) => {
     const select = qs("#homeDaySelect");
-    const hint = qs("#eventSelectorHint");
     if (!select) return;
     const days = getOpenAuthorizedHomeDays();
     const currentId = homeState.workContext.journee_id;
@@ -2096,23 +2218,16 @@
     // La journée courante est déjà lisible dans le bloc principal ; ce contrôle
     // sert uniquement à basculer vers une autre journée affectée.
     select.value = "";
-    select.setAttribute("aria-label", currentId ? "Mes autres journées de vente" : "Choisir une journée de vente");
+    select.setAttribute("aria-label", "Changer de journée");
     const title = qs("#eventSelectorTitle");
-    if (title) title.textContent = currentId ? "Mes autres journées de vente" : "Ma journée de vente";
-
-    if (hint) {
-      if (!CURRENT_USER.user_id) hint.textContent = "Choisis ton profil vendeur pour afficher les journées affectées.";
-      else if (homeState.contextSelection.selectionRequired) hint.textContent = "Plusieurs journées te sont affectées aujourd’hui. Choisis-en une pour piloter toute la page.";
-      else if (currentId) hint.textContent = "Changer de journée actualise le parcours, les indicateurs et les liens.";
-      else hint.textContent = days.length ? "Sélectionne une journée pour afficher son parcours." : "Aucune journée ouverte ne t’est affectée pour le moment.";
-    }
+    if (title) title.textContent = "Changer de journée";
   };
 
   const applySelectedHomeDay = () => {
     const selectedId = String(qs("#homeDaySelect")?.value || "").trim();
     const day = getOpenAuthorizedHomeDays().find((item) => getDayId(item) === selectedId);
     if (!day || !window.LugdurumDayContext?.isAuthorized(day, CURRENT_USER.user_id)) {
-      setText("#eventSelectorHint", "Cette journée n’est plus ouverte ou ne t’est plus affectée.");
+      setText("#activeStatusLabel", "Journée indisponible");
       return;
     }
     state.manualSelectionThisSession = true;
@@ -2150,12 +2265,7 @@
       state.loadError = "Réseau indisponible · dernière réponse accueil en cache";
       refreshPendingCounts();
 
-      setDataState(
-        "local",
-        state.cacheSavedAt
-          ? `Hors ligne · dernière réponse du ${formatShortDateTime(state.cacheSavedAt)}`
-          : "Hors ligne · dernière réponse accueil en cache"
-      );
+      setDataState("local", "Mode hors ligne");
 
       renderHome();
 
@@ -2169,7 +2279,7 @@
   const refreshHomeFromRemote = async () => {
     const requestId = ++state.homeRequestId;
     const isCurrent = () => requestId === state.homeRequestId;
-    setDataState("refreshing", "Actualisation · journée sélectionnée");
+    setDataState("refreshing", "Actualisation…");
 
     try {
       const data = await loadRemoteData(isCurrent);
@@ -2179,19 +2289,15 @@
       state.loadError = "";
       refreshPendingCounts();
 
-      const onlineLabel = state.apiFetchedAt
-        ? `Données en ligne · ${formatShortDateTime(state.apiFetchedAt)}`
-        : "Données en ligne";
-
-      setDataState("online", onlineLabel);
+      setDataState("online", "Données en ligne");
       renderHome();
     } catch (error) {
       if (!isCurrent()) return;
       state.loadError = error.message || "Lecture API impossible.";
       refreshPendingCounts();
 
-      setDataState("refreshing", "Connexion impossible · réessayer");
-      setText("#eventSelectorHint", "Impossible de récupérer les données en ligne. Réessaie.");
+      setDataState("local", "Synchronisation à vérifier");
+      setText("#activeStatusLabel", "Connexion indisponible");
     }
   };
 
@@ -2210,7 +2316,7 @@
     // Priorité au réseau ; le cache validé par le même résolveur sert uniquement
     // après l’échec de lecture, avec un état hors ligne explicite.
     renderLoading();
-    setDataState("refreshing", "Actualisation · lecture des journées affectées");
+    setDataState("refreshing", "Actualisation…");
 
     try {
       const data = await loadRemoteData(isCurrent);
@@ -2220,21 +2326,18 @@
       state.loadError = "";
       refreshPendingCounts();
 
-      const onlineLabel = state.apiFetchedAt
-        ? `Données en ligne · ${formatShortDateTime(state.apiFetchedAt)}`
-        : "Données en ligne";
-
-      setDataState("online", onlineLabel);
+      setDataState("online", "Données en ligne");
 
       renderHome();
     } catch (error) {
       if (!isCurrent()) return;
       state.loadError = error.message || "Lecture API impossible.";
       if (renderFromHomeCacheIfAvailable()) return;
-      setDataState("refreshing", "Connexion impossible · réessayer");
-      setText("#eventSelectorHint", "Les données en ligne sont indisponibles. Recharge la page pour réessayer.");
+      setDataState("local", "Synchronisation à vérifier");
+      setText("#activeStatusLabel", "Connexion indisponible");
       setText("#missionTitle", "Connexion indisponible");
-      setText("#missionMeta", "Aucune donnée locale affichée : l’accueil attend le réseau.");
+      const practicalInfo = qs("#missionMeta");
+      if (practicalInfo) practicalInfo.hidden = true;
     }
   };
 
@@ -2268,9 +2371,10 @@
     if (state.dataSource !== "remote") return;
     state.dataSource = "local";
     state.loadError = "Connexion perdue · données de la dernière lecture réseau";
-    const label = state.apiFetchedAt
-      ? `Dernières données en ligne · ${formatShortDateTime(state.apiFetchedAt)} · hors ligne`
-      : "Données de la dernière lecture réseau · hors ligne";
+    const pending = getPendingWritesCount();
+    const label = pending > 0
+      ? `Mode hors ligne · ${pending} opération(s) en attente`
+      : "Mode hors ligne";
     setDataState("local", label);
     renderHome();
   });
@@ -2304,7 +2408,7 @@
       } else {
         renderHome();
         if (navigator.onLine) refreshHomeFromRemote();
-        else setDataState("local", "Données de la dernière lecture réseau · hors ligne");
+        else setDataState("local", "Mode hors ligne");
       }
     }
   });

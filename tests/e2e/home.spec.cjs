@@ -1,23 +1,28 @@
 const { test, expect } = require('@playwright/test');
 
 const U = { j: 'U_JEROME', a: 'U_ANTHONY', w: 'U_WILL' };
-const E = { c: 'EVT_COMMUNAY', g: 'EVT_GENAS', ch: 'EVT_CHARLY', t: 'EVT_TOUR', shared: 'EVT_SHARED' };
-const D = { c: 'J_COMMUNAY', g: 'J_GENAS', ch: 'J_CHARLY', t1: 'J_TOUR_1', t2: 'J_TOUR_2', s1: 'J_SHARED_1', s2: 'J_SHARED_2', noStock: 'J_NO_STOCK', unprepared: 'J_UNPREPARED' };
+const E = { c: 'EVT_COMMUNAY', g: 'EVT_GENAS', ch: 'EVT_CHARLY', t: 'EVT_TOUR', col: 'EVT_COLOMBIER', shared: 'EVT_SHARED' };
+const D = { c: 'J_COMMUNAY', g: 'J_GENAS_J1', g2: 'J_GENAS_J2', ch: 'J_CHARLY', t1: 'J_TOUR_1', t2: 'J_TOUR_2', col1: 'J_COLOMBIER_J1', col2: 'J_COLOMBIER_J2', s1: 'J_SHARED_1', s2: 'J_SHARED_2', noStock: 'J_NO_STOCK', unprepared: 'J_UNPREPARED' };
 const auth = (...ids) => JSON.stringify(ids.map(user_id => ({ user_id })));
 
 const events = [
-  { mission_id: E.c, nom: 'Marché de Noël de Communay', date_debut: '2026-11-28', date_fin: '2026-11-28', lieu: 'Communay' },
-  { mission_id: E.g, nom: 'Marché de Noël de Genas', date_debut: '2026-12-05', date_fin: '2026-12-05', lieu: 'Genas' },
-  { mission_id: E.ch, nom: 'Marché de Noël de Charly', date_debut: '2026-11-28', date_fin: '2026-11-28', lieu: 'Charly' },
+  { mission_id: E.c, nom: 'Marché de Noël de Communay', date_debut: '2026-11-28', date_fin: '2026-11-28', ville: 'Communay', adresse: 'Place de la Mairie, 69360 Communay', horaires: 'Samedi 11h - 19h', mise_en_place: 'Samedi 9h - 10h30' },
+  { mission_id: E.g, nom: 'Marché de Noël de Genas', date_debut: '2026-12-05', date_fin: '2026-12-06', ville: 'Genas', lieu: 'Place Ronshausen', horaires: 'Samedi 10h - 18h Dimanche 10h - 17h', mise_en_place: 'Samedi 8h - 9h Dimanche 8h30 - 9h30' },
+  { mission_id: E.ch, nom: 'Marché de Noël de Charly', date_debut: '2026-11-28', date_fin: '2026-11-28', ville: 'Charly' },
   { mission_id: E.t, nom: 'Marché de Noël de La Tour de Salvagny', date_debut: '2026-12-05', date_fin: '2026-12-06', lieu: 'La Tour de Salvagny' },
+  { mission_id: E.col, nom: 'Marché de Noël de Colombier-Saugnieu', date_debut: '2026-11-28', date_fin: '2026-11-29', ville: 'Colombier-Saugnieu', lieu: 'Salle Dauphinoise', adresse: '2 route de Pont de Chéruy, 69124 Colombier-Saugnieu', horaires: 'Samedi 11h - 19h Dimanche 10h - 18h', mise_en_place: 'Samedi 9h - 10h30' },
   { mission_id: E.shared, nom: 'Marché partagé', date_debut: '2026-12-12', date_fin: '2026-12-19' }
 ];
-const day = (id, event, date, sellers, stock = '', jour = 'J1', statut = 'prevu') => ({ journee_id: id, mission_id: event, stock_mission_id: stock, date, jour_label: jour, statut, vendeurs_autorises: auth(...sellers) });
+const day = (id, event, date, sellers, stock = '', jour = 'J1', statut = 'prevu', extra = {}) => ({ journee_id: id, mission_id: event, stock_mission_id: stock, date, jour_label: jour, statut, vendeurs_autorises: auth(...sellers), ...extra });
 const days = [
-  day(D.c, E.c, '2026-11-28', [U.j]), day(D.g, E.g, '2026-12-05', [U.j], 'MST_SHARED'),
+  day(D.c, E.c, '2026-11-28', [U.j]),
+  day(D.g, E.g, '2026-12-05', [U.j], 'MST_SHARED', 'J1'),
+  day(D.g2, E.g, '2026-12-06', [U.j], 'MST_SHARED', 'J2'),
   day(D.ch, E.ch, '2026-11-28', [U.a]),
   day(D.t1, E.t, '2026-12-05', [U.a, U.w], '', 'J1'),
   day(D.t2, E.t, '2026-12-06', [U.a, U.w], '', 'J2'),
+  day(D.col1, E.col, '2026-11-28', [U.w], 'MST_COLOMBIER', 'J1', 'prevu', { note: 'Ouverture au public : Samedi 11h - 19h Mise en place : Samedi 9h - 10h30' }),
+  day(D.col2, E.col, '2026-11-29', [U.w], 'MST_COLOMBIER', 'J2', 'prevu', { note: 'Ouverture au public : Dimanche 10h - 18h' }),
   day(D.s1, E.shared, '2026-12-12', [U.j], 'MST_SHARED', 'J1', 'cloture'),
   day(D.s2, E.shared, '2026-12-13', [U.j], 'MST_SHARED', 'J2'),
   day(D.noStock, E.shared, '2026-12-20', [U.j]),
@@ -48,6 +53,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       events: structuredClone(events), days: structuredClone(days), users: structuredClone(users),
       stockMissions: [
         { mission_id: 'MST_SHARED', nom: 'Stock partagé', statut: 'preparee', stock_prepare: true },
+        { mission_id: 'MST_COLOMBIER', nom: 'Stock Colombier', statut: 'preparee', stock_prepare: true },
         { mission_id: 'MST_UNPREPARED', nom: 'Stock à préparer', statut: 'a_preparer', stock_prepare: false }
       ],
       calls: [], coreDataCalls: 0
@@ -85,7 +91,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
         const event = fixtureState.events.find(e => e.mission_id === day?.mission_id) || null;
         const stock = fixtureState.stockMissions.find(m => m.mission_id === day?.stock_mission_id) || null;
         const context = { user_id: activeUser, journee_id: day?.journee_id || '', mission_id: day?.mission_id || '', stock_mission_id: day?.stock_mission_id || '' };
-        const revenue = day?.journee_id === ids.c ? 125 : day?.journee_id === ids.g ? 450 : day?.journee_id?.includes('TOUR') ? 650 : 777;
+        const revenue = day?.journee_id === ids.c ? 125 : day?.journee_id === ids.g ? 450 : day?.journee_id === ids.g2 ? 350 : day?.journee_id?.includes('TOUR') ? 650 : 777;
         const payload = { tables: { inscriptions: [], events: fixtureState.events, stockMissions: fixtureState.stockMissions, journees: fixtureState.days, transactions: [], mouvementsStock: [] }, active: { journee: day, mission: stock, work_context: context, resume: { ca_jour_ttc: revenue, nb_transactions: day?.journee_id === ids.c ? 2 : 7, ca_evenement_ttc: revenue } } };
         if (legacy) {
           return Promise.resolve({
@@ -122,7 +128,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
   await page.route(url => url.href.includes('/docs/index.html'), async route => {
     const response = await route.fetch();
     const source = await response.text();
-    const apiTag = '<script src="./lugdurum-api.js?v=24" defer></script>';
+    const apiTag = '<script src="./lugdurum-api.js?v=26" defer></script>';
     if (!source.includes(apiTag)) throw new Error('La page réelle ne contient pas la balise LugdurumAPI attendue.');
     await route.fulfill({
       response,
@@ -175,8 +181,61 @@ test('Jérôme voit Communay, Genas comme autre journée, et aucun marché d’u
   expect(homeCall.work_context).toBe(true);
   expect(homeCall.ignore_legacy_context).toBe(true);
   await expectActionContext(page, page.locator('#primaryAction'), { user: U.j, day: D.c, event: E.c });
-  await expect(page.locator('.lugdurumDataStateBadgeText')).toContainText('en ligne');
+  await expect(page.locator('.lugdurumDataStateBadgeText')).toHaveText('Données en ligne');
   await page.screenshot({ path: test.info().outputPath(`accueil-${test.info().project.name}.png`), fullPage: true });
+});
+
+test('la tuile regroupe le sélecteur, l’adresse Waze et les horaires exacts de la journée', async ({ page }) => {
+  await page.goto('./index.html');
+  await expect(page.locator('#homeDaySelect')).toBeVisible();
+  await expect(page.locator('#statusHero #homeDaySelect')).toBeVisible();
+  await expect(page.locator('#eventSelectorTitle')).toHaveText('Changer de journée');
+  await expect(page.locator('body')).not.toContainText('Changer de journée actualise le parcours');
+  await expect(page.locator('#homeDayDate')).toContainText('samedi 28 novembre 2026 · J1');
+  await expect(page.locator('#homeSetupHours')).toHaveText('9h - 10h30');
+  await expect(page.locator('#homePublicHours')).toHaveText('11h - 19h');
+  const route = new URL(await page.locator('#homeAddressLink').getAttribute('href'));
+  expect(route.hostname).toBe('waze.com');
+  expect(decodeURIComponent(route.searchParams.get('q'))).toContain('69360 Communay');
+  await page.screenshot({ path: test.info().outputPath(`accueil-pratique-${test.info().project.name}.png`), fullPage: true });
+
+  await page.locator('#homeDaySelect').selectOption(D.g2);
+  await expect(page.locator('#homeDayDate')).toContainText('dimanche 06 décembre 2026 · J2');
+  await expect(page.locator('#homeSetupHours')).toHaveText('8h30 - 9h30');
+  await expect(page.locator('#homePublicHours')).toHaveText('10h - 17h');
+  await expect(page.locator('#homePublicHours')).not.toContainText('samedi');
+  await page.locator('#homeDaySelect').selectOption(D.g);
+  await expect(page.locator('#homeDayDate')).toContainText('samedi 05 décembre 2026 · J1');
+  expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
+});
+
+test('William voit Colombier J1 et J2 sans reporter les horaires absents', async ({ page }) => {
+  await page.goto('./index.html');
+  await page.locator('.userPill').click({ force: true });
+  await page.getByRole('button', { name: /William/ }).click({ force: true });
+  await expect(page.locator('#missionTitle')).toContainText('Colombier-Saugnieu');
+  await expect(page.locator('#homeDayDate')).toContainText('samedi 28 novembre 2026 · J1');
+  await expect(page.locator('#homeSetupHours')).toHaveText('9h - 10h30');
+  await expect(page.locator('#homePublicHours')).toHaveText('11h - 19h');
+  const wazeQuery = new URL(await page.locator('#homeAddressLink').getAttribute('href')).searchParams.get('q');
+  expect(decodeURIComponent(wazeQuery)).toContain('2 route de Pont de Chéruy');
+  expect(decodeURIComponent(wazeQuery)).toContain('Colombier-Saugnieu');
+
+  await page.locator('#homeDaySelect').selectOption(D.col2);
+  await expect(page.locator('#homeDayDate')).toContainText('dimanche 29 novembre 2026 · J2');
+  await expect(page.locator('#homeSetupHours')).toHaveText('Non renseigné');
+  await expect(page.locator('#homePublicHours')).toHaveText('10h - 18h');
+});
+
+test('Anthony conserve Charly comme contexte et une adresse absente reste explicite', async ({ page }) => {
+  await page.goto('./index.html');
+  await page.locator('.userPill').click({ force: true });
+  await page.getByRole('button', { name: /Anthony/ }).click({ force: true });
+  await expect(page.locator('#missionTitle')).toContainText('Charly');
+  await expect(page.locator('#homeAddressLink')).toBeHidden();
+  await expect(page.locator('#homeAddressMissingText')).toContainText('Adresse complète non renseignée');
+  await expect(page.locator('#homeSetupHours')).toHaveText('Non renseigné');
+  await expect(page.locator('#homePublicHours')).toHaveText('Non renseigné');
 });
 
 test('les anciens paramètres URL ne remplacent pas la journée personnelle', async ({ page }) => {
@@ -239,11 +298,14 @@ test('les identités ne réutilisent pas une journée mémorisée d’un autre p
   await expectActionContext(page, page.locator('#primaryAction'), { user: U.a, day: D.ch, event: E.ch });
   await page.locator('.userPill').click({ force: true });
   await page.getByRole('button', { name: /William/ }).click({ force: true });
+  await expect(page.locator('#missionTitle')).toContainText('Colombier-Saugnieu');
+  await expectActionContext(page, page.locator('#primaryAction'), { user: U.w, day: D.col1, event: E.col, stock: 'MST_COLOMBIER' });
+  await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.col1);
+  await page.locator('#homeDaySelect').selectOption(D.t1);
   await expect(page.locator('#missionTitle')).toContainText('La Tour de Salvagny');
-  await expect(page.locator('.workflowGrid [data-step="vente"]')).toBeVisible();
-  await expect(page.locator('.workflowGrid [data-step="vente"]')).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.locator('.workflowGrid [data-step="missions"]')).toContainText('responsable');
   await expect(page.locator('#primaryAction')).toBeHidden();
+  await expect(page.locator('.workflowGrid [data-step="vente"]')).toBeVisible();
+  await expect(page.locator('.workflowGrid [data-step="missions"]')).toContainText('responsable');
   await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.t1);
   await expect(page.locator('#generalPlanning')).toBeHidden();
   await page.locator('.userPill').click({ force: true });
@@ -425,7 +487,7 @@ test('le planning général ne modifie pas la journée et une journée étrangè
     select.dispatchEvent(new Event('change', { bubbles: true }));
   }, D.ch);
   await expect(page.locator('#missionTitle')).toContainText('Communay');
-  await expect(page.locator('#eventSelectorHint')).toContainText('n’est plus ouverte ou ne t’est plus affectée');
+  await expect(page.locator('#activeStatusLabel')).toContainText('Journée indisponible');
   await expect(page.locator('.workflowGrid [data-step="vente"]')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('.workflowGrid [data-step="vente"]')).not.toHaveAttribute('href', /./);
   await expectActionContext(page, page.locator('#primaryAction'), { user: U.j, day: D.c, event: E.c });

@@ -635,19 +635,7 @@
     cacheAll();
   };
 
-  const buildWazeUrl = (item) => {
-    const addressParts = [
-      item.adresse,
-      item.lieu,
-      item.ville
-    ].filter(Boolean);
-
-    const query = addressParts.join(" ");
-
-    if (!query.trim()) return "";
-
-    return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
-  };
+  const buildWazeUrl = (item) => api()?.buildWazeUrl?.(item) || "";
 
   const buildNoteFromInscription = (inscription) =>
     [

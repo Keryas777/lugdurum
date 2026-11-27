@@ -223,6 +223,13 @@
   let consecutiveSyncFailures = 0;
   let retryNotBefore = 0;
 
+  const buildWazeUrl = (item = {}) => {
+    const addressParts = [item.adresse, item.lieu, item.ville].filter(Boolean);
+    const query = addressParts.join(" ").trim();
+    if (!query) return "";
+    return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
+  };
+
   const nowIso = () => new Date().toISOString();
 
   const safeLocalGet = (key) => {
@@ -552,6 +559,14 @@
         background: #3f6f4f;
         box-shadow: 0 0 0 4px rgba(63, 111, 79, 0.15);
       }
+
+      .lugdurumDataStateBadge.isPending .lugdurumDataStateBadgeDot,
+      .lugdurumDataStateBar.isPending .lugdurumDataStateBadgeDot,
+      .lugdurumDataStateBadge.isOffline .lugdurumDataStateBadgeDot,
+      .lugdurumDataStateBar.isOffline .lugdurumDataStateBadgeDot {
+        background: #d8a04f;
+        box-shadow: 0 0 0 4px rgba(216, 160, 79, 0.18);
+      }
     `;
 
     document.head.appendChild(style);
@@ -599,7 +614,16 @@
     const safeStatus = DATA_STATE_LABELS[status] ? status : "local";
     const label = details.label || DATA_STATE_LABELS[safeStatus];
     const message = String(details.message || "").trim();
-    const text = message ? `${label} · ${message}` : label;
+    const pendingCount = Array.isArray(readJson(STORAGE_KEYS.pendingWrites, []))
+      ? readJson(STORAGE_KEYS.pendingWrites, []).length
+      : 0;
+    const text = safeStatus === "online"
+      ? pendingCount > 0 ? `${pendingCount} opération(s) à synchroniser` : "Données en ligne"
+      : safeStatus === "refreshing"
+        ? isFlushing ? "Synchronisation en cours…" : "Actualisation…"
+        : !isOnline()
+          ? pendingCount > 0 ? `Mode hors ligne · ${pendingCount} opération(s) en attente` : "Mode hors ligne"
+          : pendingCount > 0 ? `${pendingCount} opération(s) à synchroniser` : "Données locales";
 
     const state = {
       ...details,
@@ -616,12 +640,16 @@
 
       if (!badge) return;
 
-      badge.classList.remove("isLocal", "isRefreshing", "isOnline");
+      badge.classList.remove("isLocal", "isRefreshing", "isOnline", "isPending", "isOffline");
 
       if (safeStatus === "online") {
         badge.classList.add("isOnline");
       } else if (safeStatus === "refreshing") {
         badge.classList.add("isRefreshing");
+      } else if (!isOnline()) {
+        badge.classList.add("isOffline");
+      } else if (pendingCount > 0) {
+        badge.classList.add("isPending");
       } else {
         badge.classList.add("isLocal");
       }
@@ -1601,17 +1629,280 @@
       return result;
     } catch (error) {
       if (queueIfUnavailable && error.queueable !== false) {
-        return enqueueWrite(action, payload, error.message);
+        const queued = enqueueWrite(action, payload, error.message);
+        return {
+          ...queued,
+          server_uncertain: error.queueable === true
+        };
       }
 
       throw error;
     }
   };
 
-  const requestQueuedPost = (action, payload = {}) =>
-    requestPost(action, payload, {
-      queueIfUnavailable: true
+  const WRITE_FEEDBACK_COPY = {
+    progressTitle: "Écriture en cours…",
+    progressDetail: "Merci de patienter.",
+    successTitle: "Enregistrement effectué",
+    localTitle: "Enregistré sur cet appareil",
+    localDetail: "Les données seront synchronisées au retour de la connexion.",
+    uncertainTitle: "Enregistrement non confirmé"
+  };
+
+  let writeFeedbackUi = null;
+  let activeFeedbackWrites = 0;
+  let feedbackFinishFrame = null;
+  let feedbackToastTimer = null;
+  let feedbackPreviousFocus = null;
+  let feedbackShellState = null;
+  let feedbackGroupOutcome = null;
+
+  const requestWriteFeedbackFrame = (callback) =>
+    typeof window.requestAnimationFrame === "function"
+      ? window.requestAnimationFrame(callback)
+      : window.setTimeout(() => callback(Date.now()), 0);
+
+  const cancelWriteFeedbackFrame = (frameId) => {
+    if (typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(frameId);
+    } else {
+      window.clearTimeout(frameId);
+    }
+  };
+
+  const ensureWriteFeedbackUi = () => {
+    if (writeFeedbackUi || !document.body) return writeFeedbackUi;
+
+    const overlay = document.createElement("div");
+    overlay.className = "lugdurumWriteOverlay";
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+      <section class="lugdurumWritePanel" role="dialog" aria-modal="true" aria-labelledby="lugdurumWriteTitle" tabindex="-1">
+        <img class="lugdurumWriteLogo" src="./assets/icons/icon-180.png" alt="Logo Lugdurum" />
+        <span class="lugdurumWriteSpinner" aria-hidden="true"></span>
+        <strong id="lugdurumWriteTitle">${WRITE_FEEDBACK_COPY.progressTitle}</strong>
+        <span class="lugdurumWriteDetail">${WRITE_FEEDBACK_COPY.progressDetail}</span>
+      </section>
+    `;
+
+    const toast = document.createElement("section");
+    toast.className = "lugdurumWriteToast";
+    toast.hidden = true;
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    toast.innerHTML = `
+      <span class="lugdurumWriteToastIcon" aria-hidden="true"></span>
+      <span class="lugdurumWriteToastCopy">
+        <strong class="lugdurumWriteToastTitle"></strong>
+        <span class="lugdurumWriteToastDetail"></span>
+        <a class="lugdurumWriteDiagnostic" href="./diagnostic-sync.html" hidden>Vérifier les opérations en attente</a>
+      </span>
+      <button class="lugdurumWriteToastClose" type="button" aria-label="Fermer le message">×</button>
+    `;
+
+    document.body.append(overlay, toast);
+    overlay.querySelector(".lugdurumWritePanel")?.addEventListener("click", (event) => event.stopPropagation());
+    toast.querySelector(".lugdurumWriteToastClose")?.addEventListener("click", () => {
+      toast.hidden = true;
+      if (feedbackToastTimer) window.clearTimeout(feedbackToastTimer);
+      feedbackToastTimer = null;
     });
+
+    writeFeedbackUi = { overlay, toast, shell: document.querySelector(".appShell") };
+    return writeFeedbackUi;
+  };
+
+  const showWriteOverlay = () => {
+    const ui = ensureWriteFeedbackUi();
+    if (!ui) return;
+
+    if (feedbackToastTimer) window.clearTimeout(feedbackToastTimer);
+    feedbackToastTimer = null;
+    ui.toast.hidden = true;
+    if (ui.overlay.hidden) {
+      feedbackPreviousFocus = document.activeElement;
+      if (ui.shell) {
+        feedbackShellState = {
+          inert: Boolean(ui.shell.inert),
+          ariaBusy: ui.shell.getAttribute("aria-busy")
+        };
+        ui.shell.inert = true;
+        ui.shell.setAttribute("aria-busy", "true");
+      }
+    }
+    ui.overlay.hidden = false;
+    ui.overlay.setAttribute("aria-hidden", "false");
+    document.body.classList.add("lugdurumWriteIsOpen");
+    ui.overlay.querySelector(".lugdurumWritePanel")?.focus({ preventScroll: true });
+  };
+
+  const renderWriteToast = (outcome) => {
+    const ui = ensureWriteFeedbackUi();
+    if (!ui) return;
+    const { toast } = ui;
+    const title = toast.querySelector(".lugdurumWriteToastTitle");
+    const detail = toast.querySelector(".lugdurumWriteToastDetail");
+    const diagnostic = toast.querySelector(".lugdurumWriteDiagnostic");
+    const icon = toast.querySelector(".lugdurumWriteToastIcon");
+
+    toast.classList.remove("isSuccess", "isLocal", "isWarning", "isError");
+    toast.classList.add(outcome.type);
+    title.textContent = outcome.title;
+    detail.textContent = outcome.detail || "";
+    diagnostic.hidden = !outcome.showDiagnostic;
+    icon.textContent = outcome.type === "isSuccess" ? "✓" : outcome.type === "isLocal" ? "↻" : "!";
+    toast.hidden = false;
+
+    if (feedbackToastTimer) window.clearTimeout(feedbackToastTimer);
+    feedbackToastTimer = outcome.sticky ? null : window.setTimeout(() => {
+      toast.hidden = true;
+      feedbackToastTimer = null;
+    }, outcome.type === "isSuccess" ? 2200 : 5200);
+  };
+
+  const classifyWriteError = (error) => {
+    const message = String(error?.message || "").trim();
+    if (error?.localSave === true || /sauvegarde locale impossible|quotaexceeded|storage.*full|stockage.*impossible/i.test(message)) {
+      return {
+        type: "isError",
+        title: "Échec de l’enregistrement local",
+        detail: "L’appareil n’a pas confirmé la sauvegarde. Ne ferme pas cette page avant d’avoir contrôlé le diagnostic.",
+        showDiagnostic: true,
+        sticky: true
+      };
+    }
+    if (/invalide|obligatoire|requis|manquant|format incorrect|validation/i.test(message)) {
+      return {
+        type: "isWarning",
+        title: WRITE_FEEDBACK_COPY.uncertainTitle,
+        detail: message || "Vérifie les informations saisies avant de recommencer.",
+        showDiagnostic: false,
+        sticky: true
+      };
+    }
+    if (error?.api_result || error?.serverRefused === true) {
+      return {
+        type: "isError",
+        title: WRITE_FEEDBACK_COPY.uncertainTitle,
+        detail: message ? `Le serveur a refusé cette modification : ${message}` : "Le serveur a refusé cette modification. Vérifie les autorisations.",
+        showDiagnostic: false,
+        sticky: true
+      };
+    }
+    return {
+      type: "isWarning",
+      title: WRITE_FEEDBACK_COPY.uncertainTitle,
+      detail: message
+        ? `${message} Vérifie l’état de l’opération avant de la relancer.`
+        : "Le résultat doit être vérifié avant toute nouvelle tentative.",
+      showDiagnostic: true,
+      sticky: true
+    };
+  };
+
+  const getWriteOutcome = (result, error) => {
+    if (error) return classifyWriteError(error);
+    if (result?.queued) {
+      if (result.server_uncertain) {
+        return {
+          type: "isWarning",
+          title: WRITE_FEEDBACK_COPY.uncertainTitle,
+          detail: "La connexion a été interrompue pendant l’envoi. L’opération est conservée sur cet appareil; vérifie son état avant toute nouvelle tentative.",
+          showDiagnostic: true,
+          sticky: true
+        };
+      }
+      return {
+        type: "isLocal",
+        title: WRITE_FEEDBACK_COPY.localTitle,
+        detail: WRITE_FEEDBACK_COPY.localDetail,
+        showDiagnostic: false,
+        sticky: false
+      };
+    }
+    return {
+      type: "isSuccess",
+      title: WRITE_FEEDBACK_COPY.successTitle,
+      detail: "",
+      showDiagnostic: false,
+      sticky: false
+    };
+  };
+
+  const prepareWriteFeedbackFallback = () => {
+    // Une action bundle inconnue n'est pas un échec métier : le client va
+    // essayer le chemin de compatibilité composé d'upserts idempotents.
+    feedbackGroupOutcome = {
+      type: "isSuccess",
+      title: WRITE_FEEDBACK_COPY.successTitle,
+      detail: "",
+      showDiagnostic: false,
+      sticky: false
+    };
+  };
+
+  const flushWriteFeedbackOutcome = () => {
+    feedbackFinishFrame = null;
+    if (activeFeedbackWrites > 0 || !feedbackGroupOutcome) return;
+
+    const ui = ensureWriteFeedbackUi();
+    if (ui) {
+      ui.overlay.hidden = true;
+      ui.overlay.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("lugdurumWriteIsOpen");
+      if (ui.shell) {
+        ui.shell.inert = feedbackShellState?.inert || false;
+        if (feedbackShellState?.ariaBusy == null) ui.shell.removeAttribute("aria-busy");
+        else ui.shell.setAttribute("aria-busy", feedbackShellState.ariaBusy);
+      }
+      if (feedbackPreviousFocus?.isConnected && typeof feedbackPreviousFocus.focus === "function") {
+        feedbackPreviousFocus.focus({ preventScroll: true });
+      }
+    }
+
+    const outcome = feedbackGroupOutcome;
+    feedbackGroupOutcome = null;
+    renderWriteToast(outcome);
+  };
+
+  const runUserWrite = (operation) => {
+    if (typeof operation !== "function") {
+      return Promise.reject(new TypeError("Une action d’écriture est requise."));
+    }
+
+    if (feedbackFinishFrame !== null) {
+      cancelWriteFeedbackFrame(feedbackFinishFrame);
+      feedbackFinishFrame = null;
+    }
+    if (activeFeedbackWrites === 0 && !feedbackGroupOutcome) showWriteOverlay();
+    activeFeedbackWrites += 1;
+
+    return Promise.resolve()
+      .then(operation)
+      .then((result) => {
+        const next = getWriteOutcome(result, null);
+        const priority = { isSuccess: 0, isLocal: 1, isWarning: 2, isError: 3 };
+        if (!feedbackGroupOutcome || priority[next.type] > priority[feedbackGroupOutcome.type]) {
+          feedbackGroupOutcome = next;
+        }
+        return result;
+      }, (error) => {
+        feedbackGroupOutcome = classifyWriteError(error);
+        throw error;
+      })
+      .finally(() => {
+        activeFeedbackWrites = Math.max(0, activeFeedbackWrites - 1);
+        if (activeFeedbackWrites === 0 && feedbackFinishFrame === null) {
+          feedbackFinishFrame = requestWriteFeedbackFrame(flushWriteFeedbackOutcome);
+        }
+      });
+  };
+
+  const requestQueuedPost = (action, payload = {}) =>
+    runUserWrite(() => requestPost(action, payload, {
+      queueIfUnavailable: true
+    }));
 
   const isUnknownPostActionError = (error, action) => {
     const message = String(error?.message || "");
@@ -2072,6 +2363,7 @@
           error
         );
 
+        prepareWriteFeedbackFallback();
         return saveVenteRapideBundleFallback(payload);
       }
 
@@ -2204,6 +2496,7 @@
           error
         );
 
+        prepareWriteFeedbackFallback();
         return saveJourneeHistoriqueBundleFallback(payload);
       }
 
@@ -2500,6 +2793,7 @@
           error
         );
 
+        prepareWriteFeedbackFallback();
         return saveCuveeProductionBundleFallback(payload);
       }
 
@@ -2531,6 +2825,8 @@
   };
 
   window.LugdurumAPI = {
+    buildWazeUrl,
+
     ping() {
       return requestGet("ping", {}, { flushBeforeRead: false });
     },
@@ -2546,6 +2842,11 @@
     post,
     request,
     call,
+    runUserWrite,
+    showWriteResult(result) {
+      renderWriteToast(getWriteOutcome(result, null));
+      return result;
+    },
     queueAction,
     enqueueAction,
 
