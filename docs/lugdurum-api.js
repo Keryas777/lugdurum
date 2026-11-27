@@ -2857,6 +2857,13 @@
     getCurrentUserId: () => getCurrentUserIdFromRuntime(),
 
     getHomeData,
+    getCollectiveGoal(params = {}, options = {}) {
+      return requestGet(
+        "getCollectiveGoal",
+        { goal_id: params.goal_id || "" },
+        { ...options, flushBeforeRead: false, timeoutMs: options.timeoutMs || 10000 }
+      );
+    },
     getVenteRapideData,
 
     getRecettesData,
