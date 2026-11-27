@@ -29,10 +29,10 @@ test("Toutes les pages HTML utilisent le correctif anti-rebond", () => {
       assert.match(html, /html,\s*body\s*\{\s*overscroll-behavior-y:\s*none;/);
     } else {
       assert.match(html, name === "vente-rapide.html"
-        ? /href="\.\/style\.css\?v=25"/
+        ? /href="\.\/style\.css\?v=26"/
         : name === "index.html"
-          ? /href="\.\/style\.css\?v=26"/
-          : /href="\.\/style\.css\?v=24"/, name);
+          ? /href="\.\/style\.css\?v=29"/
+          : /href="\.\/style\.css\?v=25"/, name);
       shared += 1;
     }
   }

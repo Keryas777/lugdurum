@@ -18,13 +18,8 @@
 
     <title>Lugdurum — Accueil</title>
 
-    <link rel="stylesheet" href="./style.css?v=27" />
+    <link rel="stylesheet" href="./style.css?v=29" />
     <style>
-.page-home .eventSelectorSection { padding:12px 14px; }
-.page-home .daySelectorLabel { display:block; margin:0 0 7px; color:#625b50; font-size:.82rem; font-weight:850; }
-.page-home .daySelectorControls { display:grid; grid-template-columns:minmax(0,1fr); }
-.page-home #homeDaySelect { width:100%; min-width:0; min-height:46px; padding:0 12px; border:1px solid #c7b79e; border-radius:12px; background:#fffaf1; color:#1f1b16; font:inherit; }
-.page-home .eventSelectorHint { margin:7px 0 0; font-size:.76rem; }
 .page-home .heroActions { display:flex; flex-wrap:wrap; }
 .page-home .workflowEmpty { grid-column:1/-1; margin:0; padding:16px; border:1px dashed #c7b79e; border-radius:14px; color:#625b50; background:#fffaf1; }
 .page-home .workflowCard[aria-disabled="true"] { cursor:not-allowed; opacity:.72; }
@@ -32,11 +27,11 @@
 .page-home .planningLinks a { display:flex; align-items:center; min-height:48px; padding:12px; border:1px solid #dfd2bd; border-radius:12px; color:#1f1b16; background:#fffaf1; font-weight:800; text-decoration:none; }
 </style>
 
-    <script src="./lugdurum-api.js?v=24" defer></script>
+    <script src="./lugdurum-api.js?v=26" defer></script>
     <script src="./lugdurum-users.js?v=1" defer></script>
     <script src="./lugdurum-day-context.js?v=3" defer></script>
-    <script src="./home.js?v=31" defer></script>
-    <script src="./pwa.js?v=15" defer></script>
+    <script src="./home.js?v=32" defer></script>
+    <script src="./pwa.js?v=16" defer></script>
   </head>
 
   <body class="page-home">
@@ -76,16 +71,6 @@
       </header>
 
       <main class="mainContent homeLayout">
-        <section class="sectionBlock eventSelectorSection" aria-labelledby="eventSelectorTitle">
-          <label class="daySelectorLabel" for="homeDaySelect" id="eventSelectorTitle">Ma journée de vente</label>
-          <div class="daySelectorControls">
-            <select id="homeDaySelect" aria-label="Choisir une journée de vente" disabled>
-              <option value="">Chargement des journées…</option>
-            </select>
-          </div>
-          <p class="eventSelectorHint" id="eventSelectorHint" aria-live="polite">Chargement de tes journées affectées.</p>
-        </section>
-
         <section class="statusHero" id="statusHero" aria-labelledby="missionTitle">
           <div class="statusTopline">
             <span class="liveDot" id="liveDot" aria-hidden="true"></span>
@@ -93,7 +78,35 @@
           </div>
 
           <h2 id="missionTitle">Chargement…</h2>
-          <p id="missionMeta" class="missionMeta">Chargement des données.</p>
+          <div id="missionMeta" class="marketPracticalInfo" aria-label="Informations pratiques du marché" hidden>
+            <div class="marketPracticalLine" id="homeDayDateRow">
+              <span class="marketPracticalIcon" aria-hidden="true">🗓️</span>
+              <span id="homeDayDate"></span>
+            </div>
+            <a class="marketPracticalLine marketAddressLink" id="homeAddressLink" target="_blank" rel="noopener" hidden>
+              <span class="marketPracticalIcon" aria-hidden="true">📍</span>
+              <span id="homeAddressText"></span>
+              <span class="marketAddressAction">Waze ↗</span>
+            </a>
+            <div class="marketPracticalLine" id="homeAddressMissingRow" hidden>
+              <span class="marketPracticalIcon" aria-hidden="true">📍</span>
+              <span id="homeAddressMissingText">Adresse · Non renseignée</span>
+            </div>
+            <div class="marketPracticalLine">
+              <span class="marketPracticalIcon" aria-hidden="true">🚚</span>
+              <span>Installation · <span id="homeSetupHours"></span></span>
+            </div>
+            <div class="marketPracticalLine">
+              <span class="marketPracticalIcon" aria-hidden="true">🕒</span>
+              <span>Ouverture au public · <span id="homePublicHours"></span></span>
+            </div>
+            <div class="homeDaySelector">
+              <label class="daySelectorLabel" for="homeDaySelect" id="eventSelectorTitle">Changer de journée</label>
+              <select id="homeDaySelect" aria-label="Changer de journée" disabled>
+                <option value="">Chargement des journées…</option>
+              </select>
+            </div>
+          </div>
 
           <div class="heroStats" aria-label="Résumé">
             <article class="statCard">

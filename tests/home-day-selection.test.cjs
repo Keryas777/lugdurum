@@ -125,9 +125,9 @@ test("l’accueil essaie le réseau avant d’utiliser le cache hors ligne", () 
   const cacheFallback = init.indexOf("if (renderFromHomeCacheIfAvailable()) return;");
   assert.ok(networkRead >= 0 && cacheFallback > networkRead);
   assert.match(init, /if \(!data \|\| !isCurrent\(\)\) return;/);
-  assert.match(home, /state\.dataSource = "local";[\s\S]*?Hors ligne · dernière réponse/);
+  assert.match(home, /const renderFromHomeCacheIfAvailable = \(\) => \{[\s\S]*?state\.dataSource = "local";[\s\S]*?setDataState\("local", "Mode hors ligne"\)/);
   assert.match(read("docs/index.html"), /homeDaySelect/);
   assert.doesNotMatch(read("docs/index.html"), /selectHomeDay/);
-  assert.match(home, /window\.addEventListener\("offline"[\s\S]*?données de la dernière lecture réseau/);
+  assert.match(home, /window\.addEventListener\("offline"[\s\S]*?"Mode hors ligne"/);
   assert.match(home, /window\.addEventListener\("online"[\s\S]*?state\.dataSource === "local" \|\| state\.dataSource === "cache"[\s\S]*?refreshHomeFromRemote\(\)/);
 });

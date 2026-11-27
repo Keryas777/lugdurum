@@ -2714,6 +2714,7 @@
       if (!result?.queued) {
         throw new Error("Le ticket n'a pas pu être conservé localement.");
       }
+      api().showWriteResult?.(result);
       // Le bundle est maintenant sauvegardé durablement dans la file locale.
       // Libérer le ticket AVANT les caches secondaires (éventuellement saturés).
       clearPendingSumup();

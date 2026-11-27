@@ -6,7 +6,8 @@
 
     <title>Test API Lugdurum</title>
 
-    <script src="./lugdurum-api.js?v=24" defer></script>
+    <link rel="stylesheet" href="./style.css?v=25" />
+    <script src="./lugdurum-api.js?v=25" defer></script>
 
     <style>
       :root {
@@ -255,7 +256,7 @@
 
         const requireApi = () => {
           if (!window.LugdurumAPI) {
-            throw new Error("window.LugdurumAPI est introuvable. Vérifie que ./lugdurum-api.js?v=24 est bien chargé.");
+            throw new Error("window.LugdurumAPI est introuvable. Vérifie que ./lugdurum-api.js?v=25 est bien chargé.");
           }
 
           return window.LugdurumAPI;
