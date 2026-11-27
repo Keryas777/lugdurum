@@ -41,6 +41,14 @@ async function bootWriteFixture(page, control = { kind: 'success' }) {
       control.entered?.();
       await new Promise((resolve) => setTimeout(resolve, 350));
     }
+    if (control.kind === 'unsupportedBundle' && action === 'saveVenteRapideBundle') {
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+        body: JSON.stringify({ ok: false, error: 'Action POST inconnue : saveVenteRapideBundle' })
+      });
+      return;
+    }
     if (control.kind === 'refused' || control.kind === 'validation') {
       await route.fulfill({
         status: 200,
@@ -203,6 +211,18 @@ test('plusieurs écritures groupées conservent un seul voile jusqu’à la dern
   await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistrement effectué');
 });
 
+test('le fallback d’un ancien Apps Script ne montre pas un faux refus et libère le voile', async ({ page }) => {
+  await bootWriteFixture(page, { kind: 'unsupportedBundle' });
+  await page.evaluate(() => window.LugdurumAPI.saveVenteRapideBundle({
+    transaction: { transaction_id: 'TX_FALLBACK_E2E', lignes: [] },
+    mouvements_stock: []
+  }));
+  await expect(page.locator('.lugdurumWriteOverlay')).toBeHidden();
+  await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistrement effectué');
+  await expect(page.locator('.lugdurumWriteToast')).not.toContainText('refusé');
+  await expect(page.locator('.appShell')).not.toHaveAttribute('aria-busy', 'true');
+});
+
 test('la synchronisation automatique en arrière-plan ne couvre pas l’interface', async ({ page, context }) => {
   const control = { kind: 'hold' };
   control.enteredPromise = new Promise((resolve) => { control.entered = resolve; });
@@ -220,6 +240,20 @@ test('la synchronisation automatique en arrière-plan ne couvre pas l’interfac
   control.release();
   await page.evaluate(() => window.__flushPromise);
   await expect.poll(() => page.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(0);
+});
+
+test('après fermeture et réouverture, la file locale reste intacte sans voile bloqué', async ({ page, context }) => {
+  await bootWriteFixture(page);
+  await context.setOffline(true);
+  await page.evaluate(() => window.LugdurumAPI.batchUpsert([]));
+  await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistré sur cet appareil');
+  await page.close();
+
+  const reopened = await context.newPage();
+  await bootWriteFixture(reopened);
+  await expect(reopened.locator('.lugdurumWriteOverlay')).toBeHidden();
+  await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(1);
+  await context.setOffline(false);
 });
 
 test('une vente SumUp reste sur son chemin local rapide, sans voile réseau', async ({ page, context }) => {

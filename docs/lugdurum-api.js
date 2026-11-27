@@ -1720,14 +1720,16 @@
     if (feedbackToastTimer) window.clearTimeout(feedbackToastTimer);
     feedbackToastTimer = null;
     ui.toast.hidden = true;
-    feedbackPreviousFocus = document.activeElement;
-    if (ui.shell) {
-      feedbackShellState = {
-        inert: Boolean(ui.shell.inert),
-        ariaBusy: ui.shell.getAttribute("aria-busy")
-      };
-      ui.shell.inert = true;
-      ui.shell.setAttribute("aria-busy", "true");
+    if (ui.overlay.hidden) {
+      feedbackPreviousFocus = document.activeElement;
+      if (ui.shell) {
+        feedbackShellState = {
+          inert: Boolean(ui.shell.inert),
+          ariaBusy: ui.shell.getAttribute("aria-busy")
+        };
+        ui.shell.inert = true;
+        ui.shell.setAttribute("aria-busy", "true");
+      }
     }
     ui.overlay.hidden = false;
     ui.overlay.setAttribute("aria-hidden", "false");
@@ -1820,6 +1822,18 @@
       };
     }
     return {
+      type: "isSuccess",
+      title: WRITE_FEEDBACK_COPY.successTitle,
+      detail: "",
+      showDiagnostic: false,
+      sticky: false
+    };
+  };
+
+  const prepareWriteFeedbackFallback = () => {
+    // Une action bundle inconnue n'est pas un échec métier : le client va
+    // essayer le chemin de compatibilité composé d'upserts idempotents.
+    feedbackGroupOutcome = {
       type: "isSuccess",
       title: WRITE_FEEDBACK_COPY.successTitle,
       detail: "",
@@ -2349,6 +2363,7 @@
           error
         );
 
+        prepareWriteFeedbackFallback();
         return saveVenteRapideBundleFallback(payload);
       }
 
@@ -2481,6 +2496,7 @@
           error
         );
 
+        prepareWriteFeedbackFallback();
         return saveJourneeHistoriqueBundleFallback(payload);
       }
 
@@ -2777,6 +2793,7 @@
           error
         );
 
+        prepareWriteFeedbackFallback();
         return saveCuveeProductionBundleFallback(payload);
       }
 
