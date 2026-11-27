@@ -182,8 +182,14 @@ test('Jérôme voit Communay, Genas comme autre journée, et aucun marché d’u
 test('les anciens paramètres URL ne remplacent pas la journée personnelle', async ({ page }) => {
   await page.goto('./index.html?selected_type=mission&selected_id=EVT_CHARLY&journee_id=J_CHARLY&mission_id=EVT_TOUR&stock_mission_id=MST_SHARED');
   await expect(page.locator('#missionTitle')).toContainText('Communay');
-  await expect(page.locator('body')).not.toContainText('Marché de Noël de Charly');
-  await expect(page.locator('body')).not.toContainText('La Tour de Salvagny');
+  const options = await page.locator('#homeDaySelect option').allTextContents();
+  expect(options.join(' ')).not.toContain('Charly');
+  expect(options.join(' ')).not.toContain('Salvagny');
+  for (const personalSurface of ['#statusHero', '.homeWorkflow', '#watchList']) {
+    await expect(page.locator(personalSurface)).not.toContainText('Charly');
+    await expect(page.locator(personalSurface)).not.toContainText('Salvagny');
+  }
+  await expect(page.locator('#generalPlanning')).toBeVisible();
   await expectActionContext(page, page.locator('#primaryAction'), { user: U.j, day: D.c, event: E.c });
 });
 
