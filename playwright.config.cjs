@@ -7,7 +7,11 @@ module.exports = defineConfig({
   fullyParallel: true,
   workers: 3,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
-  use: { baseURL: 'http://127.0.0.1:4173/docs/', trace: 'retain-on-failure' },
+  use: {
+    baseURL: 'http://127.0.0.1:4173/docs/',
+    trace: 'retain-on-failure',
+    serviceWorkers: 'block'
+  },
   projects: [
     { name: 'webkit-iphone', use: { ...devices['iPhone 14'], browserName: 'webkit' } },
     { name: 'chromium-android', use: { ...devices['Pixel 7'], browserName: 'chromium' } },

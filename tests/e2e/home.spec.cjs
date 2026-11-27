@@ -200,7 +200,7 @@ test('la tuile regroupe le sélecteur, l’adresse Waze et les horaires exacts d
   await page.screenshot({ path: test.info().outputPath(`accueil-pratique-${test.info().project.name}.png`), fullPage: true });
 
   await page.locator('#homeDaySelect').selectOption(D.g2);
-  await expect(page.locator('#homeDayDate')).toContainText('dimanche 6 décembre 2026 · J2');
+  await expect(page.locator('#homeDayDate')).toContainText('dimanche 06 décembre 2026 · J2');
   await expect(page.locator('#homeSetupHours')).toHaveText('8h30 - 9h30');
   await expect(page.locator('#homePublicHours')).toHaveText('10h - 17h');
   await expect(page.locator('#homePublicHours')).not.toContainText('samedi');
@@ -298,11 +298,14 @@ test('les identités ne réutilisent pas une journée mémorisée d’un autre p
   await expectActionContext(page, page.locator('#primaryAction'), { user: U.a, day: D.ch, event: E.ch });
   await page.locator('.userPill').click({ force: true });
   await page.getByRole('button', { name: /William/ }).click({ force: true });
+  await expect(page.locator('#missionTitle')).toContainText('Colombier-Saugnieu');
+  await expectActionContext(page, page.locator('#primaryAction'), { user: U.w, day: D.col1, event: E.col, stock: 'MST_COLOMBIER' });
+  await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.col1);
+  await page.locator('#homeDaySelect').selectOption(D.t1);
   await expect(page.locator('#missionTitle')).toContainText('La Tour de Salvagny');
+  await expectActionContext(page, page.locator('#primaryAction'), { user: U.w, day: D.t1, event: E.t });
   await expect(page.locator('.workflowGrid [data-step="vente"]')).toBeVisible();
-  await expect(page.locator('.workflowGrid [data-step="vente"]')).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.locator('.workflowGrid [data-step="missions"]')).toContainText('responsable');
-  await expect(page.locator('#primaryAction')).toBeHidden();
+  await expect(page.locator('.workflowGrid [data-step="vente"]')).not.toHaveAttribute('aria-disabled', 'true');
   await expect.poll(() => page.evaluate(user => localStorage.getItem('lugdurum_home_selected_journee:' + user), U.w)).toBe(D.t1);
   await expect(page.locator('#generalPlanning')).toBeHidden();
   await page.locator('.userPill').click({ force: true });

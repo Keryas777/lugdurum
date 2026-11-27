@@ -20,12 +20,26 @@ async function bootWriteFixture(page, control = { kind: 'success' }) {
     });
   });
 
-  await page.route('**/macros/s/**', async (route) => {
+  control.requestCount = 0;
+  const origin = 'http://127.0.0.1:4173';
+
+  // Les tests d’écriture ne doivent jamais pouvoir joindre Apps Script réel.
+  // La source réelle est chargée, mais son endpoint est redirigé vers un mock local.
+  await page.route('**/*', async (route) => {
+    if (new URL(route.request().url()).origin !== origin) {
+      await route.abort('blockedbyclient');
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(`${origin}/__mock-api`, async (route) => {
     const request = route.request();
     if (request.method() !== 'POST') {
       await route.abort();
       return;
     }
+    control.requestCount += 1;
     let payload = {};
     try { payload = JSON.parse(request.postData() || '{}'); } catch { /* réponse d'erreur ci-dessous */ }
     const action = payload.action || '';
@@ -78,6 +92,17 @@ async function bootWriteFixture(page, control = { kind: 'success' }) {
     });
   });
 
+  await page.route('**/lugdurum-api.js*', async (route) => {
+    const response = await route.fetch();
+    const source = await response.text();
+    const localSource = source.replace(
+      /https:\/\/script\.google\.com\/macros\/s\/[^"']+/,
+      `${origin}/__mock-api`
+    );
+    if (localSource === source) throw new Error('Impossible d’isoler l’endpoint Apps Script réel.');
+    await route.fulfill({ response, body: localSource });
+  });
+
   await page.route((url) => url.href.includes('/docs/index.html'), async (route) => {
     const response = await route.fetch();
     const source = await response.text();
@@ -90,6 +115,7 @@ async function bootWriteFixture(page, control = { kind: 'success' }) {
 
   await page.goto('./index.html');
   await expect(page.locator('#missionTitle')).toContainText('Aucune journée de vente');
+  expect(control.requestCount).toBe(0);
 }
 
 test('une écriture serveur lente affiche le voile puis confirme l’enregistrement', async ({ page }) => {
@@ -106,6 +132,7 @@ test('une écriture serveur lente affiche le voile puis confirme l’enregistrem
   await expect(page.locator('.lugdurumWritePanel')).toContainText('Merci de patienter.');
   await expect(page.locator('.appShell')).toHaveAttribute('aria-busy', 'true');
   expect(await page.locator('.appShell').evaluate((element) => element.inert)).toBe(true);
+  expect(control.requestCount).toBe(1);
   await page.screenshot({ path: test.info().outputPath(`ecriture-en-cours-${test.info().project.name}.png`), fullPage: true });
 
   control.release();
@@ -115,17 +142,21 @@ test('une écriture serveur lente affiche le voile puis confirme l’enregistrem
 });
 
 test('une erreur de validation est distincte d’un refus serveur', async ({ page }) => {
-  await bootWriteFixture(page, { kind: 'validation' });
+  const control = { kind: 'validation' };
+  await bootWriteFixture(page, control);
   await page.evaluate(() => window.LugdurumAPI.batchUpsert([]).catch(() => null));
+  expect(control.requestCount).toBe(1);
   await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistrement non confirmé');
-  await expect(page.locator('.lugdurumWriteToast')).toContainText('champ obligatoire manquant');
+  await expect(page.locator('.lugdurumWriteToast')).toContainText('Champ obligatoire manquant.');
   await expect(page.locator('.lugdurumWriteDiagnostic')).toBeHidden();
   await expect(page.locator('.appShell')).not.toHaveAttribute('aria-busy', 'true');
 });
 
 test('une écriture refusée affiche un retour compréhensible et libère la page', async ({ page }) => {
-  await bootWriteFixture(page, { kind: 'refused' });
+  const control = { kind: 'refused' };
+  await bootWriteFixture(page, control);
   await page.evaluate(() => window.LugdurumAPI.batchUpsert([]).catch(() => null));
+  expect(control.requestCount).toBe(1);
   await expect(page.locator('.lugdurumWriteOverlay')).toBeHidden();
   await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistrement non confirmé');
   await expect(page.locator('.lugdurumWriteToast')).toContainText('Le serveur a refusé');
@@ -150,8 +181,10 @@ test('une exception JavaScript ne laisse pas le voile bloqué', async ({ page })
 });
 
 test('une perte de réseau conserve l’écriture sans annoncer une confirmation serveur', async ({ page }) => {
-  await bootWriteFixture(page, { kind: 'uncertain' });
+  const control = { kind: 'uncertain' };
+  await bootWriteFixture(page, control);
   await page.evaluate(() => window.LugdurumAPI.batchUpsert([]));
+  expect(control.requestCount).toBe(1);
   await expect(page.locator('.lugdurumWriteToast')).toContainText('Enregistrement non confirmé');
   await expect(page.locator('.lugdurumWriteToast')).toContainText('interrompue pendant l’envoi');
   const queued = await page.evaluate(() => JSON.parse(localStorage.getItem('lugdurum_pending_writes') || '[]'));
