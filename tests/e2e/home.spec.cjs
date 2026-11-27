@@ -111,10 +111,14 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       getCoreData() {
         fixtureState.coreDataCalls += 1;
         return { inscriptions: [], missions: fixtureState.events, missionsStock: fixtureState.stockMissions, journees: fixtureState.days, transactions: [], mouvementsStock: [] };
+      },
+      getVenteRapideData() {
+        return { catalogue: [], offresVente: [], tables: { catalogue: [], offresVente: [] } };
       }
     };
     globalThis.__LUGDURUM_HOME_FIXTURE__ = fixtureApi.getHomeData;
     globalThis.__LUGDURUM_HOME_FIXTURE_CORE__ = fixtureApi.getCoreData;
+    globalThis.__LUGDURUM_FIXTURE_VENTE_RAPIDE__ = fixtureApi.getVenteRapideData;
   }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy });
   page.__fixtureExternalRequests = [];
   page.on('request', request => {

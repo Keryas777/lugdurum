@@ -73,5 +73,7 @@ test('les portraits mis en cache par la PWA restent disponibles hors ligne', asy
   await page.getByRole('button', { name: /William/ }).click();
   await expect(page.locator('[data-user-avatar] img')).toHaveAttribute('src', './assets/avatars/william.webp');
   await expect(page.locator('[data-user-avatar] img')).toHaveJSProperty('naturalWidth', 256);
-  await page.screenshot({ path: test.info().outputPath(`profils-hors-ligne-${test.info().project.name}.png`), fullPage: true });
+  // La page d’accueil est longue en format iPhone ; conserver une capture
+  // mobile réellement exploitable sans faire expirer le timeout de capture WebKit.
+  await page.screenshot({ path: test.info().outputPath(`profils-hors-ligne-${test.info().project.name}.png`) });
 });
