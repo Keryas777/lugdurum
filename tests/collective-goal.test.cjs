@@ -86,6 +86,18 @@ test("ne compte qu'une fois un identifiant et retient sa correction la plus réc
   const result = calculate(rows);
   assert.equal(result.amount, 350);
   assert.equal(result.transaction_count, 1);
+
+  const movedOut = calculate([
+    transaction("TX_MOVE", FIRST_DAY, 500, { updated_at: "2026-11-28T10:00:00.000Z" }),
+    transaction("TX_MOVE", "JOURNEE_HORS_OBJECTIF", 0, { updated_at: "2026-11-28T10:05:00.000Z" })
+  ]);
+  assert.equal(movedOut.amount, 0);
+
+  const movedIn = calculate([
+    transaction("TX_MOVE_IN", "JOURNEE_HORS_OBJECTIF", 0, { updated_at: "2026-11-28T10:00:00.000Z" }),
+    transaction("TX_MOVE_IN", FIRST_DAY, 275, { updated_at: "2026-11-28T10:05:00.000Z" })
+  ]);
+  assert.equal(movedIn.amount, 275);
 });
 
 test("refuse un identifiant d'objectif inconnu", () => {

@@ -48,9 +48,8 @@ function getCollectiveGoal_(params) {
   var rows = readSheetRows_("transactions");
   var latestById = {};
   rows.forEach(function (row) {
-    var dayId = String(row && row.journee_id || "").trim();
     var transactionId = String(row && (row.transaction_id || row.id) || "").trim();
-    if (!dayIds[dayId] || !transactionId) return;
+    if (!transactionId) return;
 
     var existing = latestById[transactionId];
     var updatedAt = String(row.updated_at || row.created_at || "");
@@ -58,7 +57,10 @@ function getCollectiveGoal_(params) {
     if (!existing || updatedAt >= existingUpdatedAt) latestById[transactionId] = row;
   });
 
-  var transactions = Object.keys(latestById).map(function (id) { return latestById[id]; });
+  var transactions = Object.keys(latestById).map(function (id) { return latestById[id]; })
+    .filter(function (row) {
+      return Boolean(dayIds[String(row && row.journee_id || "").trim()]);
+    });
   var eligible = transactions.filter(isCollectiveGoalTransactionEligible_);
   var amount = eligible.reduce(function (total, transaction) {
     return total + collectiveGoalToNumber_(
