@@ -42,10 +42,28 @@
     catalogueCache: "lugdurum_catalogue_cache"
   };
 
+  const activeUser = window.LugdurumUsers?.getCurrent() || null;
   const CURRENT_USER = {
-    user_id: "U_JEROME",
-    nom: "Jérôme"
+    user_id: String(activeUser?.user_id || "").trim(),
+    nom: String(activeUser?.nom || "Utilisateur").trim()
   };
+  const routeParams = new URLSearchParams(window.location.search);
+  const routeUserId = String(routeParams.get("user_id") || "").trim();
+  const ROUTE_CONTEXT_MISMATCH = Boolean(routeUserId && routeUserId !== CURRENT_USER.user_id);
+  const ROUTE_CONTEXT_REQUESTED = routeParams.has("journee_id") || routeParams.has("stock_mission_id");
+  const ROUTE_CONTEXT_MISSING_STOCK = ROUTE_CONTEXT_REQUESTED &&
+    !String(routeParams.get("stock_mission_id") || "").trim();
+  const ROUTE_CONTEXT_INVALID = ROUTE_CONTEXT_MISMATCH || ROUTE_CONTEXT_MISSING_STOCK;
+  const ROUTE_CONTEXT = (!routeUserId || routeUserId === CURRENT_USER.user_id) &&
+    routeParams.get("stock_mission_id")
+    ? {
+        mission_id: String(routeParams.get("stock_mission_id") || "").trim(),
+        stock_mission_id: String(routeParams.get("stock_mission_id") || "").trim(),
+        journee_id: String(routeParams.get("journee_id") || "").trim(),
+        event_id: String(routeParams.get("event_id") || routeParams.get("mission_id") || "").trim(),
+        user_id: CURRENT_USER.user_id
+      }
+    : null;
 
   const MOVEMENT_TYPE = {
     PREPARATION: "PREPARATION"
@@ -256,7 +274,7 @@
   const getDayEventId = (journee) =>
     String(journee?.mission_id || journee?.evenement_id || "").trim();
 
-  const getStockMissionId = () =>
+  const getStockMissionId = () => ROUTE_CONTEXT_INVALID ? "" :
     String(
       state.context?.stock_mission_id ||
       state.context?.mission_id ||
@@ -351,9 +369,7 @@
     state.missionJournees = state.journees
       .filter((journee) => {
         const stockMissionId = String(journee.stock_mission_id || "").trim();
-        const legacyMissionId = String(journee.mission_id || "").trim();
-
-        return stockMissionId === missionId || legacyMissionId === missionId;
+        return stockMissionId === missionId || String(journee.mission_stock_id || "").trim() === missionId;
       })
       .filter((journee) => String(journee.statut || "").toLowerCase() !== "annule")
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -362,9 +378,18 @@
   };
 
   const loadContext = () => {
+    if (ROUTE_CONTEXT_INVALID) {
+      state.context = null;
+      state.stockMission = null;
+      state.missionJournees = [];
+      setStatus(ROUTE_CONTEXT_MISMATCH
+        ? "Le profil vendeur a changé. Reviens à l’accueil pour ouvrir sa préparation de stock."
+        : "Aucune mission de stock n’est associée à cette journée. Associe-en une avant de préparer le stock.", "isError");
+      return false;
+    }
     const context = readJson(STORAGE_KEYS.preparationContext, null);
 
-    state.context = context;
+    state.context = ROUTE_CONTEXT || context;
 
     const hasContext = Boolean(
       context?.stock_mission_id ||
@@ -389,6 +414,13 @@
 
     if (!ok) {
       setStatus("Mission de stock introuvable dans les données locales.", "isError");
+      return false;
+    }
+
+    if (ROUTE_CONTEXT?.journee_id && !state.missionJournees.some((day) =>
+      String(day.journee_id || "").trim() === ROUTE_CONTEXT.journee_id &&
+      String(day.stock_mission_id || day.mission_stock_id || "").trim() === ROUTE_CONTEXT.stock_mission_id)) {
+      setStatus("La journée sélectionnée n’est plus rattachée à cette mission de stock.", "isError");
       return false;
     }
 

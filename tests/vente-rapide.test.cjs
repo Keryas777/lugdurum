@@ -20,7 +20,7 @@ const code = source.replace(
   "  window.__test = { state, els, saveTicket, confirmSumupSuccess, " +
     "confirmSumupFailure, reopenSumup, buildTransaction, " +
     "showExternalCbConfirm, closeExternalCbConfirm, confirmExternalCbSale, " +
-    "selectSharedSalesContext, loadContext, computeEventSummaryFromTransactions, " +
+    "selectSharedSalesContext, restoreTodayContextFromCache, loadContext, computeEventSummaryFromTransactions, " +
     "addBottle, offerOneBottle, renderProducts };\n})();"
 );
 
@@ -522,6 +522,37 @@ test("URL explicite d'un événement : prioritaire sur un cache local obsolète"
   assert.equal(phone.api.state.journeeActive.mission_id, "MST_GERZAT");
 });
 
+test("URL de l’accueil vers une journée sans stock ne bascule pas vers une autre journée", () => {
+  const phone = setup(async () => ({ ok: true }));
+  const fixture = gerzatSharedFixture();
+  fixture.journees.push({
+    journee_id: "J_NO_STOCK", mission_id: "EV_NO_STOCK",
+    date: todayIsoLocal(), statut: "prevu"
+  });
+  const result = phone.api.selectSharedSalesContext(
+    fixture.missionsStock, fixture.journees,
+    { journeeId: "J_NO_STOCK", explicitUrl: true }
+  );
+  assert.equal(result, null);
+});
+
+test("le cache hors ligne ne remplace pas une journée explicite par celle du jour", () => {
+  const phone = setup(async () => ({ ok: true }));
+  const fixture = gerzatSharedFixture();
+  fixture.journees.push({
+    journee_id: "J_NO_STOCK", mission_id: "EV_NO_STOCK",
+    date: todayIsoLocal(), statut: "prevu"
+  });
+  phone.api.state.journeeActive.user_id = "U_JEROME";
+  phone.store.set("lugdurum_missions_stock", JSON.stringify(fixture.missionsStock));
+  phone.store.set("lugdurum_journees", JSON.stringify(fixture.journees));
+  const restored = phone.api.restoreTodayContextFromCache({
+    journeeId: "J_NO_STOCK", explicitUrl: true
+  });
+  assert.equal(restored, false);
+  assert.equal(phone.api.state.journeeActive.journee_id, "");
+});
+
 test("Plusieurs journées aujourd'hui : aucune mission sélectionnée au hasard", () => {
   const phone = setup(async () => ({ ok: true }));
   const fixture = gerzatSharedFixture();
@@ -536,14 +567,14 @@ test("Plusieurs journées aujourd'hui : aucune mission sélectionnée au hasard"
   assert.equal(result, null);
 });
 
-test("Une journée annulée ou un stock annulé ne peut être choisi", () => {
+test("Une journée annulée ou un stock annulé ne bascule pas vers un autre contexte", () => {
   const phone = setup(async () => ({ ok: true }));
   const fixture = gerzatSharedFixture();
   const forbidden = phone.api.selectSharedSalesContext(
     fixture.missionsStock, fixture.journees,
     { stockMissionId: "MST_OLD", journeeId: "J_OLD", explicitUrl: true }
   );
-  assert.equal(forbidden.mission.mission_id, "MST_GERZAT");
+  assert.equal(forbidden, null);
 });
 
 test("vendeur absent : impossible d'enregistrer un ticket par erreur sous Jérôme", async () => {

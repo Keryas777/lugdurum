@@ -72,32 +72,19 @@ for (const [file, suffix] of [
 
 const frontend = read("docs/home.js");
 
-test("accueil : la vraie ligne Sheets prime sur active.journee périmée", () => {
-  assert.match(frontend, /journees: uniqueBy\(\[\.\.\.extraJournees, \.\.\.journees\], getDayId\)/);
-  assert.match(frontend, /const journee = mission \? getFirstOpenDay\(mission, data\.journees\) : null;/);
-  assert.match(frontend, /homeState\.runtimeDayMatches/);
-  assert.match(frontend, /if \(!homeState\.runtimeDayMatches\) return fallback;/);
-  assert.match(frontend, /const serverWatch = \(homeState\.runtimeDayMatches \?/);
-  assert.match(frontend, /url\.searchParams\.set\("journee_id", getDayId\(homeState\.journee\)\)/);
+test("accueil : la journée affectée prime sur le contexte runtime historique", () => {
+  assert.ok(frontend.includes('journees: uniqueBy([...extraJournees, ...journees], getDayId)'));
+  assert.match(frontend, /const resolved = dayContext\?\.resolveWorkContext\(/);
+  assert.match(frontend, /const runtimeContextMatches = Boolean\(journee && serverDayId === dayId/);
+  assert.match(frontend, /if \(expected\?\.day && !responseMatches\)/);
+  assert.doesNotMatch(frontend, /const findFallbackActiveStockMission/);
 });
 
-test("accueil : même sélection J2 que le serveur et sans CA J1 réutilisé", () => {
-  const from = frontend.indexOf("  const getFirstOpenDay = (");
-  const to = frontend.indexOf("  const findFallbackActiveStockMission =", from);
-  assert.ok(from >= 0 && to > from, "Sélecteur de journée de l'accueil manquant");
-  const choose = new Function(
-    "getMissionJournees", "isClosedStatus", "isCancelledStatus",
-    "normalizeStatus", "todayIso",
-    frontend.slice(from, to) + "\nreturn getFirstOpenDay;"
-  )(
-    () => [day1, day2],
-    (day) => ["cloture", "cloturee"].includes(day.statut),
-    (day) => day.statut === "annule",
-    (value) => String(value || ""),
-    () => "2026-10-11"
-  );
-  assert.equal(choose(stockMission, [day1, day2]).journee_id, day2.journee_id);
-  assert.match(frontend, /const summaryReliable = runtimeDayMatches \|\| state\.apiMode !== "getHomeData";/);
+test("accueil : les indicateurs runtime ne sont utilisés que pour le même work_context", () => {
+  assert.ok(frontend.includes('String(runtimeWorkContext.journee_id || "").trim() === context.journee_id'));
+  assert.ok(frontend.includes('const summaryReliable = serverHasDayRevenue || fullClientTransactions'));
+  assert.match(frontend, /work_context: true/);
+  assert.match(frontend, /ignore_legacy_context: true/);
 });
 
 test("accueil : CA événement J1 + J2, sans mélanger une autre foire sur le même stock", () => {
@@ -130,5 +117,5 @@ test("accueil : CA événement J1 + J2, sans mélanger une autre foire sur le m�
 test("accueil : le cumul est affiché séparément du CA du jour", () => {
   const html = read("docs/index.html");
   assert.match(html, /id="homeEventRevenueTotal"/);
-  assert.match(frontend, /ca_evenement_ttc: eventRevenue/);
+  assert.match(frontend, /ca_evenement_ttc: runtimeContextMatches/);
 });

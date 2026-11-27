@@ -8,6 +8,11 @@ on:
       - "docs/home.js"
       - "docs/index.html"
       - "tests/home-j2.test.cjs"
+      - "tests/home-day-selection.test.cjs"
+      - "tests/home-work-context.test.cjs"
+      - "tests/cloture-profile.test.cjs"
+      - "docs/lugdurum-day-context.js"
+      - "docs/lugdurum-users.js"
       - "docs/cloture.html"
       - "tests/cloture-write.test.cjs"
       - ".github/workflows/apps-script-check.yml"
@@ -41,6 +46,7 @@ jobs:
       - name: Tester la clôture en simulation (sans écrire dans Sheets)
         run: |
           node --check docs/cloture.js
-          node --test tests/cloture-write.test.cjs
           node --check docs/home.js
-          node --test tests/home-j2.test.cjs
+          node --check docs/lugdurum-day-context.js
+          node --check docs/lugdurum-users.js
+          node --test tests/cloture-profile.test.cjs tests/cloture-write.test.cjs tests/home-j2.test.cjs tests/day-context.test.cjs tests/home-day-selection.test.cjs tests/home-work-context.test.cjs

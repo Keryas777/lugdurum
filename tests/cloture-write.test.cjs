@@ -127,7 +127,7 @@ test("clôture écrite avec ses colonnes Google Sheets exactes", () => {
   assert.equal(row.stock_mission_id, "MST_GERZAT");
   assert.equal(row.total_reel, "175.95");
   assert.equal(row.ca_total_ttc, "175.95");
-  assert.equal(row.cloture_id, undefined); // champ absent du Sheet V1
+  assert.equal(row.cloture_id, "CLOT_J_GERZAT_J1"); // colonne présente dans l’onglet réel
 });
 
 test("la vraie configuration Apps Script utilise salon_id, et accepte idKey", () => {

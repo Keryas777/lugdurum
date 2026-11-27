@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Vente rapide V21 :
+    Vente rapide V22 :
     - Catalogue + offres chargés en une seule lecture réseau quand possible :
       LugdurumAPI.getVenteRapideData() si disponible,
       sinon LugdurumAPI.getCoreData(["catalogue", "offresVente"]),
@@ -3041,7 +3041,9 @@
     // Un lien explicite depuis l'accueil l'emporte sur l'ancien cache.
     if (explicitUrl && requestedDay) {
       const matched = selectionPool.find((choice) => choice.journee.journee_id === requestedDay);
-      if (matched) return matched;
+      // Si la journée demandée n’a pas de stock associé, rester bloqué sur ce
+      // contexte. Ne jamais basculer silencieusement vers une autre journée du jour.
+      return matched || null;
     }
 
     if (requestedStock) {
@@ -3092,6 +3094,12 @@
         stockMissionId, journeeId, explicitUrl,
         userId: state.journeeActive.user_id
       });
+      if (explicitUrl && journeeId &&
+          String(choice?.journee?.date || "").slice(0, 10) !== today) {
+        // Un contexte explicite absent, futur ou périmé reste bloqué. Le cache
+        // ne doit jamais le remplacer par une autre journée du jour.
+        continue;
+      }
       // Un lien conservé vers J1 ne doit pas imposer J1 le lendemain.
       if (String(choice?.journee?.date || "").slice(0, 10) !== today) {
         choice = selectSharedSalesContext(source.missionsStock, source.journees, {

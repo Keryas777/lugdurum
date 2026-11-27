@@ -16,10 +16,27 @@
     - Corrige l’identifiant des mouvements : mouvement_stock_id.
   */
 
-  const CURRENT_USER = {
+  const LEGACY_CURRENT_USER = {
     user_id: "U_JEROME",
-    nom: "Jérôme"
+    nom: "Jérôme",
+    capabilities: ["physical_stock_count"]
   };
+
+  const getCurrentUser = () => window.LugdurumUsers
+    ? window.LugdurumUsers.getCurrent?.() || null
+    : LEGACY_CURRENT_USER;
+  const canCountPhysicalStock = () =>
+    getCurrentUser()?.capabilities?.includes("physical_stock_count") === true;
+  const routeParams = new URLSearchParams(window.location?.search || "");
+  const routeUserId = String(routeParams.get("user_id") || "").trim();
+  const ROUTE_CONTEXT_MISMATCH = Boolean(routeUserId && routeUserId !== String(getCurrentUser()?.user_id || "").trim());
+  const ROUTE_CONTEXT = !ROUTE_CONTEXT_MISMATCH && routeParams.get("journee_id")
+    ? {
+        journee_id: String(routeParams.get("journee_id") || "").trim(),
+        mission_id: String(routeParams.get("mission_id") || routeParams.get("event_id") || "").trim(),
+        stock_mission_id: String(routeParams.get("stock_mission_id") || "").trim()
+      }
+    : null;
 
   const STORAGE_KEYS = {
     events: "lugdurum_evenements",
@@ -374,8 +391,9 @@
   };
 
   const getActiveIds = () => {
+    if (ROUTE_CONTEXT_MISMATCH) return { missionId: "", journeeId: "" };
     const context = getObject(STORAGE_KEYS.preparationContext);
-    const journeeId = safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
+    const journeeId = ROUTE_CONTEXT?.journee_id || safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
       context.journee_id || "";
     const linkedDay = state.journees.find((day) =>
       String(day.journee_id || "") === String(journeeId));
@@ -389,8 +407,9 @@
     const legacyStockId = state.stockMissions.some((mission) =>
       String(mission.mission_id || "") === legacyId) ? legacyId : "";
     return {
-      missionId: safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
-        context.stock_mission_id || linkedStockId || legacyStockId,
+      missionId: ROUTE_CONTEXT
+        ? String(ROUTE_CONTEXT.stock_mission_id || linkedStockId || "").trim()
+        : safeLocalGet(STORAGE_KEYS.activeStockMissionId) || context.stock_mission_id || linkedStockId || legacyStockId,
       journeeId
     };
   };
@@ -400,9 +419,9 @@
 
   const getDayEventId = (journee) =>
     String(
+      journee?.mission_id ||
       journee?.evenement_id ||
       journee?.mission_vente_id ||
-      journee?.mission_id ||
       ""
     ).trim();
 
@@ -430,10 +449,7 @@
         const explicitStockId = String(
           journee.stock_mission_id || journee.mission_stock_id || ""
         ).trim();
-        // mission_id est l'évènement d'origine, pas la mission de stock.
-        return explicitStockId
-          ? explicitStockId === missionId
-          : String(journee.mission_id || "").trim() === missionId;
+        return explicitStockId === missionId;
       })
       .filter((journee) => !isCancelledStatus(journee))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -983,7 +999,7 @@
 
     setPanelHidden(els.noContextPanel, hasContext);
     setPanelHidden(els.salesPanel, !hasContext);
-    setPanelHidden(els.stockPanel, !hasContext);
+    setPanelHidden(els.stockPanel, !hasContext || !canCountPhysicalStock());
     setPanelHidden(els.feesPanel, !hasContext);
     setPanelHidden(els.finalPanel, !hasContext);
 
@@ -1231,8 +1247,8 @@
       evenement_id: getDayEventId(state.journee),
       date: String(state.journee.date || "").slice(0, 10),
 
-      user_id: CURRENT_USER.user_id,
-      user_nom: CURRENT_USER.nom,
+      user_id: getCurrentUser()?.user_id || "",
+      user_nom: getCurrentUser()?.nom || "",
       statut: status,
 
       date_cloture: now,
@@ -1251,10 +1267,10 @@
       stock_initial_total: totals.initial,
       stock_vendu_total: totals.sold,
       stock_theorique_total: totals.theory,
-      stock_compte_total: totals.hasCounted > 0 ? totals.counted : "",
-      stock_ecart_total: totals.hasCounted > 0 ? totals.gap : "",
+      stock_compte_total: canCountPhysicalStock() && totals.hasCounted > 0 ? totals.counted : "",
+      stock_ecart_total: canCountPhysicalStock() && totals.hasCounted > 0 ? totals.gap : "",
 
-      stock_lignes: state.stockRows.map((row) => {
+      stock_lignes: canCountPhysicalStock() ? state.stockRows.map((row) => {
         const counted = getCountedValue(row.sku_id);
         const hasCount = counted !== "";
         const stockCompte = hasCount ? Number(counted) : "";
@@ -1271,7 +1287,7 @@
           stock_compte: stockCompte,
           ecart: hasCount ? stockCompte - row.stock_theorique : ""
         };
-      }),
+      }) : [],
 
       note: els.closeNoteInput.value.trim(),
       created_at: state.existingClosure?.created_at || now,
@@ -1280,6 +1296,7 @@
   };
 
   const buildClosureMovements = (closure) => {
+    if (!canCountPhysicalStock()) return [];
     if (!closure || !Array.isArray(closure.stock_lignes)) return [];
 
     return closure.stock_lignes
@@ -1301,7 +1318,7 @@
         ecart: line.ecart,
         statut: "valide",
         note: closure.note,
-        user_id: CURRENT_USER.user_id,
+        user_id: getCurrentUser()?.user_id || "",
         created_at: closure.created_at,
         updated_at: closure.updated_at
       }));
@@ -1338,6 +1355,7 @@
   };
 
   const validateCountsBeforeClose = () => {
+    if (!canCountPhysicalStock()) return true;
     if (state.stockRows.length === 0) return true;
 
     const missing = state.stockRows.filter((row) => !state.counts.has(row.sku_id));
@@ -1369,7 +1387,7 @@
     });
 
     const allClosed =
-      linkedAfterClose.length > 0 &&
+      canCountPhysicalStock() && linkedAfterClose.length > 0 &&
       linkedAfterClose.every((journee) => {
         return normalizeStatus(journee.statut) === "cloture" || isCancelledStatus(journee);
       });
@@ -1384,7 +1402,9 @@
 
     const updatedMission = {
       ...state.mission,
-      statut: allClosed ? "cloture" : "en_cours",
+      statut: canCountPhysicalStock()
+        ? allClosed ? "cloture" : "en_cours"
+        : state.mission.statut,
       ca_total_ttc:
         toNumber(state.mission.ca_total_ttc, 0) -
         previousRevenue +
@@ -1393,11 +1413,13 @@
         toNumber(state.mission.total_frais_ttc, 0) -
         previousFrais +
         toNumber(closure.total_frais_ttc, 0),
-      stock_initial_total: closure.stock_initial_total,
-      stock_vendu_total: closure.stock_vendu_total,
-      stock_theorique_total: closure.stock_theorique_total,
-      stock_compte_total: closure.stock_compte_total,
-      stock_ecart_total: closure.stock_ecart_total,
+      ...(canCountPhysicalStock() ? {
+        stock_initial_total: closure.stock_initial_total,
+        stock_vendu_total: closure.stock_vendu_total,
+        stock_theorique_total: closure.stock_theorique_total,
+        stock_compte_total: closure.stock_compte_total,
+        stock_ecart_total: closure.stock_ecart_total
+      } : {}),
       updated_at: now,
       closed_at: allClosed ? now : state.mission.closed_at || ""
     };
@@ -1627,6 +1649,10 @@
 
   const saveClosure = async (status) => {
     if (!state.mission || !state.journee || state.isSaving) return null;
+    if (window.LugdurumUsers && !getCurrentUser()) {
+      setStatus("Clôture bloquée : sélectionne un vendeur actif pour cette journée.", "isError");
+      return null;
+    }
 
     if (status === "cloturee") {
       hideLegacyRecovery();
@@ -1746,7 +1772,7 @@
       quantite: line.stock_initial,
       statut: "valide",
       note: "Report de stock depuis clôture",
-      user_id: CURRENT_USER.user_id,
+      user_id: getCurrentUser()?.user_id || "",
       created_at: carryover.created_at,
       updated_at: carryover.updated_at
     }));
@@ -2059,7 +2085,7 @@
       String(mission.mission_id || "") === stockMissionId) ||
         !payload.journees.some((day) =>
           String(day.journee_id || "") === journeeId &&
-          String(day.stock_mission_id || day.mission_stock_id || day.mission_id || "") === stockMissionId)) {
+          String(day.stock_mission_id || day.mission_stock_id || "") === stockMissionId)) {
       throw new Error("Réponse getClotureData incohérente : mission ou journée absente.");
     }
     if (payload.transactions.some((tx) =>
@@ -2249,9 +2275,7 @@
           const explicitStockId = String(
             day.stock_mission_id || day.mission_stock_id || ""
           ).trim();
-          return explicitStockId
-            ? explicitStockId === stockId
-            : String(day.mission_id || "").trim() === stockId;
+          return explicitStockId === stockId;
         })) {
       throw new Error("Lecture Google Sheets incohérente : journée ou mission de stock absente.");
     }
@@ -2298,6 +2322,14 @@
     state.journee =
       state.journees.find((journee) => String(journee.journee_id || "") === journeeId) ||
       null;
+
+    if (ROUTE_CONTEXT && state.journee && (
+      (ROUTE_CONTEXT.mission_id && ROUTE_CONTEXT.mission_id !== getDayEventId(state.journee)) ||
+      (ROUTE_CONTEXT.stock_mission_id && ROUTE_CONTEXT.stock_mission_id !== String(state.journee.stock_mission_id || state.journee.mission_stock_id || "").trim())
+    )) {
+      state.mission = null;
+      state.journee = null;
+    }
 
     if (!state.mission || !state.journee) {
       state.mission = null;

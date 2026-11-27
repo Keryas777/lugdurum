@@ -18,9 +18,10 @@
     - Supporte missions.html?event_id=...&auto_prepare=1 pour créer directement la mission de stock.
   */
 
+  const activeUser = window.LugdurumUsers?.getCurrent() || null;
   const CURRENT_USER = {
-    user_id: "U_JEROME",
-    nom: "Jérôme"
+    user_id: String(activeUser?.user_id || "").trim(),
+    nom: String(activeUser?.nom || "Utilisateur").trim()
   };
 
   const STORAGE_KEYS = {
@@ -57,6 +58,8 @@
 
   const urlParams = new URLSearchParams(window.location.search);
   const ROUTE_EVENT_ID = String(urlParams.get("event_id") || "").trim();
+  const ROUTE_DAY_ID = String(urlParams.get("journee_id") || "").trim();
+  const ROUTE_USER_ID = String(urlParams.get("user_id") || "").trim();
   const ROUTE_AUTO_SELECT = urlParams.get("auto_select") === "1";
   const ROUTE_AUTO_PREPARE = urlParams.get("auto_prepare") === "1";
 
@@ -648,7 +651,7 @@
     }
   };
 
-  const selectEventDays = (eventId) => {
+  const selectEventDays = (eventId, preferredDayId = "") => {
     const eventItem = getEventById(eventId);
 
     if (!eventItem) {
@@ -657,13 +660,17 @@
     }
 
     const availableDays = getEventJournees(eventId).filter(isDaySelectableForStock);
+    const routeDay = String(preferredDayId || "").trim();
+    const selectableDays = routeDay
+      ? availableDays.filter((day) => String(day.journee_id || "").trim() === routeDay)
+      : availableDays;
 
-    if (availableDays.length === 0) {
+    if (selectableDays.length === 0) {
       setStockStatus("Aucune journée disponible pour cet évènement.", "isError");
       return;
     }
 
-    availableDays.forEach((journee) => {
+    selectableDays.forEach((journee) => {
       state.selectedDayIds.add(journee.journee_id);
     });
 
@@ -986,6 +993,11 @@
 
     state.routeHandled = true;
 
+    if (ROUTE_USER_ID && ROUTE_USER_ID !== CURRENT_USER.user_id) {
+      setStockStatus("Le profil vendeur a changé. Reviens à l’accueil et sélectionne le bon profil.", "isError");
+      return;
+    }
+
     const eventItem = getEventById(ROUTE_EVENT_ID);
 
     if (!eventItem) {
@@ -1002,7 +1014,7 @@
     }
 
     if (ROUTE_AUTO_SELECT) {
-      selectEventDays(ROUTE_EVENT_ID);
+      selectEventDays(ROUTE_EVENT_ID, ROUTE_DAY_ID);
     }
   };
 

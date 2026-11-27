@@ -76,7 +76,7 @@ function writeAssertQuickSaleContext_(transaction, movements) {
   }
 
   var status = String(day.statut || "").toLowerCase();
-  if (status.indexOf("clotur") >= 0 || status.indexOf("annul") >= 0) {
+  if (String(day.closed_at || "").trim() || status.indexOf("clotur") >= 0 || status.indexOf("annul") >= 0) {
     throw new Error("Vente refusée : la journée est clôturée ou annulée.");
   }
 

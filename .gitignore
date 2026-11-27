@@ -8,3 +8,6 @@ credentials.json
 # Secrets locaux
 .env
 .env.*
+node_modules/
+test-results/
+playwright-report/

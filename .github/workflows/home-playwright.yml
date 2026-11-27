@@ -1,0 +1,41 @@
+name: Validation navigateur accueil vendeur
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "tests/e2e/**"
+      - "playwright.config.cjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/home-playwright.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Installer les navigateurs
+        run: npx playwright install --with-deps chromium webkit
+      - name: Tester WebKit mobile, Chromium mobile et desktop
+        run: npm run test:e2e:home
+      - name: Publier les captures et traces Playwright
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accueil-playwright-${{ github.run_number }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: warn
+          retention-days: 14

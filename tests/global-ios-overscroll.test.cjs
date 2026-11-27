@@ -24,13 +24,15 @@ test("Toutes les pages HTML utilisent le correctif anti-rebond", () => {
     // Les fichiers de fragments HTML ne sont pas des pages de l’application.
     if (!/<!doctype html/i.test(html)) continue;
     if (name === "diagnostic-sync.html") {
-      assert.match(html, /href="\.\/diagnostic-sync\.css\?v=2"/);
+      assert.match(html, /href="\.\/diagnostic-sync\.css\?v=3"/);
     } else if (name === "api-test.html") {
       assert.match(html, /html,\s*body\s*\{\s*overscroll-behavior-y:\s*none;/);
     } else {
       assert.match(html, name === "vente-rapide.html"
         ? /href="\.\/style\.css\?v=25"/
-        : /href="\.\/style\.css\?v=24"/, name);
+        : name === "index.html"
+          ? /href="\.\/style\.css\?v=26"/
+          : /href="\.\/style\.css\?v=24"/, name);
       shared += 1;
     }
   }

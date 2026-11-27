@@ -8,10 +8,21 @@
   // Repli initial fidèle à l'onglet utilisateurs, vérifié le 10/10/2026.
   // Dès que l'API serveur sait lire cet onglet, sa liste prévaut.
   const SEED = [
-    { user_id: "U_JEROME", nom: "Jérôme", role: "admin", actif: true },
-    { user_id: "U_ANTHONY", nom: "Anthony", role: "vendeur", actif: true },
-    { user_id: "U_WILL", nom: "William", role: "vendeur", actif: true }
+    { user_id: "U_JEROME", nom: "Jérôme", role: "admin", actif: true,
+      capabilities: ["manage_inscriptions", "manage_missions", "prepare_stock", "physical_stock_count", "sell", "close_day"] },
+    { user_id: "U_ANTHONY", nom: "Anthony", role: "vendeur", actif: true,
+      capabilities: ["manage_inscriptions", "manage_missions", "prepare_stock", "physical_stock_count", "sell", "close_day"] },
+    { user_id: "U_WILL", nom: "William", role: "vendeur", actif: true,
+      capabilities: ["sell", "manage_expenses", "close_day"] }
   ];
+  // Capacités de profil configurées côté application : le Sheet utilisateurs
+  // ne porte aujourd’hui qu’un rôle général (admin/vendeur), pas les tâches terrain.
+  const DEFAULT_SELLER_CAPABILITIES = ["sell", "manage_expenses", "close_day"];
+  const DEFAULT_MANAGER_CAPABILITIES = [
+    "manage_inscriptions", "manage_missions", "prepare_stock",
+    "physical_stock_count", "sell", "close_day"
+  ];
+  const PROFILE_CAPABILITIES = new Map(SEED.map((user) => [user.user_id, user.capabilities]));
 
   const mounts = [];
   const validUsers = (rows) => (Array.isArray(rows) ? rows : [])
@@ -20,6 +31,11 @@
       user_id: String(u.user_id || "").trim(),
       nom: String(u.nom || "").trim(),
       role: String(u.role || "").trim(),
+      capabilities: Array.isArray(u.capabilities) && u.capabilities.length
+        ? u.capabilities.map((value) => String(value || "").trim()).filter(Boolean)
+        : (PROFILE_CAPABILITIES.get(String(u.user_id || "").trim()) ||
+          (String(u.role || "").trim().toLowerCase() === "admin"
+            ? DEFAULT_MANAGER_CAPABILITIES : DEFAULT_SELLER_CAPABILITIES)),
       actif: !["false", "0", "non", "inactif"].includes(String(u.actif ?? true).trim().toLowerCase())
     }))
     .filter((u) => u.user_id && u.nom && u.actif);

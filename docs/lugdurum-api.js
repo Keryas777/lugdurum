@@ -2,7 +2,7 @@
   "use strict";
 
   /*
-    Lugdurum API V20 — SYNC RETRY ROBUSTE + VENTE RAPIDE SINGLE ACTION + JSONP GET
+    Lugdurum API V21 — SYNC ROBUSTE + VENTE RAPIDE SINGLE ACTION + CONTEXTE JOURNÉE
 
     - Connexion Apps Script / Google Sheets.
     - Lectures GET via JSONP pour éviter les blocages fetch/CORS Apps Script côté PWA.
@@ -1737,10 +1737,11 @@
   const buildHomeDataParams = (params = {}) => {
     const context = readJson(STORAGE_KEYS.preparationContext, {});
     const urlSelected = getSelectedContextFromUrl();
+    const ignoreLegacyContext = params.ignore_legacy_context === true || params.work_context === true;
 
     const userId = getCurrentUserIdFromRuntime(params);
 
-    const selectedId =
+    const selectedId = ignoreLegacyContext ? "" : (
       params.selected_id ||
       params.selectedId ||
       params.item_id ||
@@ -1751,37 +1752,41 @@
       params.mission_vente_id ||
       params.inscription_id ||
       urlSelected.selected_id ||
-      "";
+      ""
+    );
 
-    const selectedType =
+    const selectedType = ignoreLegacyContext ? "" : (
       params.selected_type ||
       params.selectedType ||
       params.item_type ||
       params.itemType ||
       urlSelected.selected_type ||
       (params.inscription_id ? "inscription" : "") ||
-      inferSelectedTypeFromId(selectedId);
+      inferSelectedTypeFromId(selectedId));
 
     const activeStockMissionId =
       params.activeStockMissionId ||
       params.stockMissionId ||
       params.stock_mission_id ||
+      (ignoreLegacyContext ? "" : (
       getUrlParam("stock_mission_id") ||
       getUrlParam("mission_stock_id") ||
       safeLocalGet(STORAGE_KEYS.activeStockMissionId) ||
       context.stock_mission_id ||
       context.mission_stock_id ||
       context.mission_id ||
-      safeLocalGet(STORAGE_KEYS.activeMissionId) ||
+      safeLocalGet(STORAGE_KEYS.activeMissionId))) ||
       "";
 
     const activeJourneeId =
       params.activeJourneeId ||
       params.journeeId ||
       params.journee_id ||
+      params.selected_day_id ||
+      (ignoreLegacyContext ? "" : (
       getUrlParam("journee_id") ||
       safeLocalGet(STORAGE_KEYS.activeJourneeId) ||
-      context.journee_id ||
+      context.journee_id)) ||
       "";
 
     return {
@@ -1799,7 +1804,14 @@
 
       activeJourneeId,
       journeeId: activeJourneeId,
-      journee_id: activeJourneeId
+      journee_id: activeJourneeId,
+      selected_day_id: activeJourneeId,
+      work_context: ignoreLegacyContext,
+      ignore_legacy_context: ignoreLegacyContext,
+      manual_day_selection: params.manual_day_selection === true ||
+        ["true", "1", "oui"].includes(String(params.manual_day_selection || "").trim().toLowerCase()),
+      preferred_day_selection: params.preferred_day_selection === true ||
+        ["true", "1", "oui"].includes(String(params.preferred_day_selection || "").trim().toLowerCase())
     };
   };
 
