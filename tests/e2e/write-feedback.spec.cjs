@@ -47,6 +47,10 @@ async function bootWriteFixture(page, control = { kind: 'success' }) {
     if (control.kind === 'hold') {
       control.entered?.();
       await new Promise((resolve) => { control.release = resolve; });
+      if (control.abortAfterHold) {
+        try { await route.abort('failed'); } catch { /* la page peut avoir fermé la requête entre-temps */ }
+        return;
+      }
     } else if (control.kind === 'holdAll') {
       control.started = (control.started || 0) + 1;
       control.entered?.(control.started);
@@ -293,6 +297,24 @@ test('après fermeture et réouverture, la file locale reste intacte sans voile 
   await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(1);
   control.release();
   await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(0);
+});
+
+test('fermer la PWA pendant une écriture ne laisse pas de voile ni ne rejoue le résultat incertain', async ({ page, context }) => {
+  const control = { kind: 'hold', abortAfterHold: true };
+  control.enteredPromise = new Promise((resolve) => { control.entered = resolve; });
+  await bootWriteFixture(page, control);
+  await page.evaluate(() => { window.__writePromise = window.LugdurumAPI.batchUpsert([]); });
+  await control.enteredPromise;
+  await expect(page.locator('.lugdurumWriteOverlay')).toBeVisible();
+  expect(control.requestCount).toBe(1);
+
+  await page.close();
+  control.release();
+  const reopened = await context.newPage();
+  await bootWriteFixture(reopened, { kind: 'success' });
+  await expect(reopened.locator('.lugdurumWriteOverlay')).toBeHidden();
+  await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(0);
+  expect(control.requestCount).toBe(1);
 });
 
 test('une vente SumUp reste sur son chemin local rapide, sans voile réseau', async ({ page, context }) => {
