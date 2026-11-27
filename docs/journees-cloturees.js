@@ -984,6 +984,7 @@
       callArray("getCatalogue")
     ]);
 
+    void window.LugdurumSalesCacheCleanup?.run();
     state.transactions = transactions;
     state.lignes = lignes;
     state.frais = frais;
@@ -995,8 +996,6 @@
 
     // Préserver les réponses réseau même lorsque le cache local est plein.
     const caches = [
-      [CACHE_KEYS.transactions, transactions],
-      [CACHE_KEYS.ventesLignes, lignes],
       [CACHE_KEYS.frais, frais],
       [CACHE_KEYS.journees, journees],
       [CACHE_KEYS.missionsStock, missionsStock],
@@ -1010,14 +1009,21 @@
   };
 
   const loadLocalFallback = () => {
-    state.transactions = readFirstArray(LEGACY_KEYS.transactions);
-    state.lignes = readFirstArray(LEGACY_KEYS.ventesLignes);
+    const partialSalesCache = window.LugdurumSalesCacheCleanup?.isPartial() === true;
+    state.transactions = partialSalesCache ? [] : readFirstArray(LEGACY_KEYS.transactions);
+    state.lignes = partialSalesCache ? [] : readFirstArray(LEGACY_KEYS.ventesLignes);
     state.frais = readFirstArray(LEGACY_KEYS.frais);
     state.journees = readFirstArray(LEGACY_KEYS.journees);
     state.missionsStock = readFirstArray(LEGACY_KEYS.missionsStock);
     state.missions = readFirstArray(LEGACY_KEYS.missions);
     state.catalogue = readFirstArray(LEGACY_KEYS.catalogue);
     state.source = "local";
+    if (partialSalesCache) {
+      state.frais = [];
+      state.journees = [];
+      state.missionsStock = [];
+      state.missions = [];
+    }
   };
 
   const bindEvents = () => {
@@ -1064,7 +1070,9 @@
     } catch (error) {
       loadLocalFallback();
       render();
-      setStatus(`Lecture API impossible. Données locales affichées : ${error.message}`, "isError");
+      setStatus(window.LugdurumSalesCacheCleanup?.isPartial() === true
+        ? "Historique complet indisponible hors ligne : le cache des ventes est partiel."
+        : `Lecture API impossible. Données locales affichées : ${error.message}`, "isError");
       return;
     }
 

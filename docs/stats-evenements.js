@@ -1000,6 +1000,7 @@
       callArray("getMissions")
     ]);
 
+    void window.LugdurumSalesCacheCleanup?.run();
     state.transactions = transactions;
     state.frais = frais;
     state.journees = journees;
@@ -1008,7 +1009,6 @@
     state.source = "api";
     state.loadError = "";
 
-    writeJson(CACHE_KEYS.transactions, transactions);
     writeJson(CACHE_KEYS.frais, frais);
     writeJson(CACHE_KEYS.journees, journees);
     writeJson(CACHE_KEYS.missionsStock, missionsStock);
@@ -1016,13 +1016,22 @@
   };
 
   const loadLocalFallback = (error) => {
-    state.transactions = readFirstArray(LEGACY_KEYS.transactions);
+    const partialSalesCache = window.LugdurumSalesCacheCleanup?.isPartial() === true;
+    state.transactions = partialSalesCache ? [] : readFirstArray(LEGACY_KEYS.transactions);
     state.frais = readFirstArray(LEGACY_KEYS.frais);
     state.journees = readFirstArray(LEGACY_KEYS.journees);
     state.missionsStock = readFirstArray(LEGACY_KEYS.missionsStock);
     state.missions = readFirstArray(LEGACY_KEYS.missions);
     state.source = "local";
-    state.loadError = error?.message || "Lecture données impossible.";
+    if (partialSalesCache) {
+      state.frais = [];
+      state.journees = [];
+      state.missionsStock = [];
+      state.missions = [];
+    }
+    state.loadError = partialSalesCache
+      ? "Historique complet indisponible hors ligne : le cache des ventes est partiel."
+      : error?.message || "Lecture données impossible.";
   };
 
   const bindEvents = () => {
