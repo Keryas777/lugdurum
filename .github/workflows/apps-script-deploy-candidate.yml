@@ -178,7 +178,7 @@ jobs:
           node -e '
             const fs=require("node:fs"), lines=fs.readFileSync(process.argv[1],"utf8").split(/\\r?\\n/);
             const line=lines.find(value=>value.includes(process.argv[2]));
-            const match=line && line.match(/@\\s*(\\d+)\\b/);
+            const match=line && line.match(/@\s*(\d+)\b/);
             if(!match || Number(match[1])<=Number(process.argv[3])) throw new Error("La nouvelle version publiée n’a pas été confirmée.");
             console.log("Version Apps Script: "+process.argv[3]+" → "+match[1]);
           ' "$RUNNER_TEMP/deployments-after.txt" "$DEPLOYMENT_ID" "$EXPECTED_VERSION"
@@ -196,7 +196,7 @@ jobs:
             const response=await fetch(url,{redirect:'follow'});
             if(!response.ok) throw new Error(action+' HTTP '+response.status);
             const body=await response.text();
-            const match=body.match(/^\\s*codexSmoke\\(([\\s\\S]*)\\)\\s*;?\\s*$/);
+            const match=body.match(/^\s*codexSmoke\(([\s\S]*)\)\s*;?\s*$/);
             if(!match) throw new Error(action+' réponse JSONP illisible');
             return JSON.parse(match[1]);
           }
