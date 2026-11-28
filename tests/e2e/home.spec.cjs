@@ -314,8 +314,8 @@ test('les portraits suivent les profils, persistent au rechargement et dans la v
 });
 
 test('un portrait indisponible retombe sur les initiales', async ({ page }) => {
-  await page.goto('./index.html');
   await page.route('**/assets/avatars/anthony.webp', route => route.abort());
+  await page.goto('./index.html');
   await page.locator('.userPill').click();
   await page.getByRole('button', { name: /Anthony/ }).click();
   const avatar = page.locator('[data-user-avatar]');
