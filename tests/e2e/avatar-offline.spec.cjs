@@ -40,8 +40,8 @@ test('les portraits mis en cache par la PWA restent disponibles hors ligne', asy
   await page.route((url) => url.href.includes('/docs/index.html'), async (route) => {
     const response = await route.fetch();
     const source = await response.text();
-    const apiTag = '<script src="./lugdurum-api.js?v=26" defer></script>';
-    if (!source.includes(apiTag)) throw new Error('Balise API absente de la page réelle.');
+    const apiTag = source.match(/<script src="\.\/lugdurum-api\.js\?v=\d+" defer><\/script>/)?.[0];
+    if (!apiTag) throw new Error('Balise API absente de la page réelle.');
     await route.fulfill({
       response,
       body: source.replace(apiTag, `${apiTag}\n    <script src="../tests/e2e/api-bootstrap.js" defer></script>`)

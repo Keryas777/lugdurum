@@ -785,8 +785,6 @@
     state.source = "api";
     state.loadError = "";
 
-    writeJson(CACHE_KEYS.transactions, state.transactions);
-    writeJson(CACHE_KEYS.ventesLignes, state.ventesLignes);
     writeJson(CACHE_KEYS.frais, state.frais);
     writeJson(CACHE_KEYS.stockMissions, state.stockMissions);
     writeJson(CACHE_KEYS.mouvementsStock, state.mouvementsStock);
@@ -820,15 +818,24 @@
   };
 
   const loadLocalFallback = (error) => {
-    state.transactions = readFirstArray(LEGACY_KEYS.transactions);
-    state.ventesLignes = readFirstArray(LEGACY_KEYS.ventesLignes);
+    const partialSalesCache = window.LugdurumSalesCacheCleanup?.isPartial() === true;
+    state.transactions = partialSalesCache ? [] : readFirstArray(LEGACY_KEYS.transactions);
+    state.ventesLignes = partialSalesCache ? [] : readFirstArray(LEGACY_KEYS.ventesLignes);
     state.frais = readFirstArray(LEGACY_KEYS.frais);
     state.stockMissions = readFirstArray(LEGACY_KEYS.stockMissions);
     state.mouvementsStock = readFirstArray(LEGACY_KEYS.mouvementsStock);
     state.journees = readFirstArray(LEGACY_KEYS.journees);
     state.source = "local";
     state.apiMode = "cache";
-    state.loadError = error?.message || "Lecture données impossible.";
+    if (partialSalesCache) {
+      state.frais = [];
+      state.stockMissions = [];
+      state.mouvementsStock = [];
+      state.journees = [];
+    }
+    state.loadError = partialSalesCache
+      ? "Historique complet indisponible hors ligne : le cache des ventes est partiel."
+      : error?.message || "Lecture données impossible.";
   };
 
   const init = async () => {
@@ -855,7 +862,7 @@
     } catch (error) {
       loadLocalFallback(error);
       render();
-      setStatus(`Données locales affichées : ${error.message}`, "isError");
+      setStatus(`Données locales affichées : ${state.loadError}`, "isError");
     }
   };
 

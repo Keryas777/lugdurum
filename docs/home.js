@@ -1383,6 +1383,8 @@
     }
 
     if (!isCurrent() || !data) return null;
+    void window.LugdurumSalesCacheCleanup?.run();
+    if (!isCurrent()) return null;
     const rawCounts = data.__rawCounts || {};
 
     if (state.lastHomePayload) {
@@ -2253,6 +2255,8 @@
 
   const renderHome = () => {
     refreshPendingCounts();
+    const goalCached = readCollectiveGoalCache();
+    if (goalCached) renderCollectiveGoal(goalCached, { cached: !navigator.onLine });
     const homeState = buildHomeState();
     const uiState = getUiState(homeState);
     renderDaySelector(homeState);
@@ -2313,7 +2317,166 @@
     }
   };
 
+  const COLLECTIVE_GOAL = {
+    id: "noel-2026",
+    target: 14000,
+    cacheKey: "lugdurum_collective_goal_cache_v1"
+  };
+  let collectiveGoalRequest = null;
+  let collectiveGoalTimer = null;
+  let lastCollectiveGoalAmount = null;
+  let highestCollectiveGoalMilestone = 0;
+
+  const readCollectiveGoalCache = () => {
+    try {
+      const raw = localStorage.getItem(COLLECTIVE_GOAL.cacheKey);
+      const value = raw ? JSON.parse(raw) : null;
+      if (!value || !Number.isFinite(Number(value.amount))) return null;
+      highestCollectiveGoalMilestone = Math.max(0, Number(value.milestone) || 0);
+      lastCollectiveGoalAmount = Number(value.amount);
+      return value;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveCollectiveGoalCache = (amount, updatedAt, milestone) => {
+    try {
+      localStorage.setItem(COLLECTIVE_GOAL.cacheKey, JSON.stringify({
+        amount: Number(amount) || 0,
+        updated_at: updatedAt || "",
+        milestone: Math.max(highestCollectiveGoalMilestone, milestone || 0)
+      }));
+    } catch {
+      // Le total reste affichable en mémoire si le cache compact ne peut pas être écrit.
+    }
+  };
+
+  const renderCollectiveGoal = (payload, { cached = false, animate = false } = {}) => {
+    const amountNode = qs("#collectiveGoalAmount");
+    const fill = qs("#collectiveGoalFill");
+    const progress = qs("#collectiveGoalProgress");
+    const percentNode = qs("#collectiveGoalPercent");
+    const remainingNode = qs("#collectiveGoalRemaining");
+    const syncNode = qs("#collectiveGoalSyncState");
+    const panel = qs("#collectiveGoal");
+    if (!amountNode || !fill || !progress || !percentNode || !remainingNode || !panel) return;
+
+    const amount = Number(payload?.amount);
+    if (!Number.isFinite(amount)) {
+      amountNode.textContent = "—";
+      percentNode.textContent = "—";
+      remainingNode.textContent = "Total indisponible";
+      progress.setAttribute("aria-valuenow", "0");
+      syncNode.textContent = cached ? "Dernier total connu" : "Serveur indisponible";
+      panel.classList.remove("is-pulse", "is-double-shine", "is-halo", "is-complete");
+      return;
+    }
+
+    const safeAmount = Math.max(0, amount);
+    const ratio = safeAmount / COLLECTIVE_GOAL.target;
+    const percent = Math.floor(ratio * 100);
+    const visiblePercent = Math.min(100, percent);
+    const amountText = formatEuro.format(safeAmount);
+    amountNode.textContent = amountText;
+    percentNode.textContent = `${percent} %`;
+    progress.setAttribute("aria-valuenow", String(visiblePercent));
+    progress.setAttribute("aria-valuetext", `${percent} % atteint`);
+    fill.style.width = `${visiblePercent}%`;
+    remainingNode.textContent = safeAmount >= COLLECTIVE_GOAL.target
+      ? "Objectif atteint · merci à tous !"
+      : `${formatEuro.format(COLLECTIVE_GOAL.target - safeAmount)} restants`;
+    syncNode.textContent = getPendingWritesCount() > 0
+      ? cached ? "Total précédent · ventes à synchroniser" : "Ventes en attente de synchronisation"
+      : cached ? "Dernier total connu" : "";
+
+    panel.classList.toggle("is-complete", safeAmount >= COLLECTIVE_GOAL.target);
+    panel.classList.remove("is-pulse", "is-double-shine", "is-halo");
+
+    let milestone = 0;
+    if (ratio >= 1) milestone = 100;
+    else if (ratio >= 0.75) milestone = 75;
+    else if (ratio >= 0.5) milestone = 50;
+    else if (ratio >= 0.25) milestone = 25;
+
+    const crossedMilestone = milestone > highestCollectiveGoalMilestone;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (animate && lastCollectiveGoalAmount !== null && safeAmount > lastCollectiveGoalAmount &&
+        crossedMilestone && !reducedMotion) {
+      if (milestone === 25) panel.classList.add("is-pulse");
+      if (milestone === 50) panel.classList.add("is-double-shine");
+      if (milestone === 75) panel.classList.add("is-halo");
+      if (milestone === 100) {
+        panel.classList.add("is-complete");
+        const confetti = qs("#collectiveGoalConfetti");
+        if (confetti) {
+          confetti.replaceChildren();
+          for (let index = 0; index < 12; index += 1) {
+            const piece = document.createElement("span");
+            piece.setAttribute("aria-hidden", "true");
+            piece.style.cssText = "position:absolute;left:" + (5 + Math.random() * 90) +
+              "%;top:-3px;width:5px;height:7px;background:hsl(" + Math.floor(Math.random() * 360) +
+              " 85% 65%);transform:rotate(" + Math.floor(Math.random() * 180) +
+              "deg);animation:collectiveGoalConfetti 1.4s ease-out forwards;";
+            confetti.appendChild(piece);
+          }
+          window.setTimeout(() => confetti.replaceChildren(), 1600);
+        }
+      }
+    }
+    highestCollectiveGoalMilestone = Math.max(highestCollectiveGoalMilestone, milestone);
+
+    lastCollectiveGoalAmount = safeAmount;
+    saveCollectiveGoalCache(safeAmount, payload.updated_at || "", highestCollectiveGoalMilestone);
+  };
+
+  const refreshCollectiveGoal = async ({ force = false } = {}) => {
+    if (document.visibilityState === "hidden" || !navigator.onLine) return;
+    if (collectiveGoalRequest) return collectiveGoalRequest;
+    if (typeof api()?.getCollectiveGoal !== "function") {
+      renderCollectiveGoal(null);
+      return;
+    }
+
+    collectiveGoalRequest = api().getCollectiveGoal({ goal_id: COLLECTIVE_GOAL.id })
+      .then((payload) => {
+        const normalized = payload?.goal || payload?.data || payload;
+        if (!normalized || normalized.available === false || !Number.isFinite(Number(normalized.amount))) {
+          throw new Error("Total collectif invalide.");
+        }
+        const previous = lastCollectiveGoalAmount;
+        renderCollectiveGoal(normalized, {
+          animate: previous !== null && Number(normalized.amount) > previous,
+          cached: false
+        });
+      })
+      .catch(() => {
+        const cached = readCollectiveGoalCache();
+        if (cached) renderCollectiveGoal(cached, { cached: true });
+        else renderCollectiveGoal(null);
+      })
+      .finally(() => { collectiveGoalRequest = null; });
+
+    return collectiveGoalRequest;
+  };
+
+  const startCollectiveGoalRefresh = () => {
+    if (collectiveGoalTimer !== null) window.clearInterval(collectiveGoalTimer);
+    collectiveGoalTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshCollectiveGoal();
+    }, 30000);
+  };
+
+  const initCollectiveGoal = () => {
+    const cached = readCollectiveGoalCache();
+    if (cached) renderCollectiveGoal(cached, { cached: true });
+    else if (!navigator.onLine) renderCollectiveGoal(null);
+    refreshCollectiveGoal({ force: true });
+    startCollectiveGoalRefresh();
+  };
+
   const initHome = async () => {
+    initCollectiveGoal();
     const requestId = ++state.homeRequestId;
     const isCurrent = () => requestId === state.homeRequestId;
     const params = getUrlParams();
@@ -2371,7 +2534,15 @@
     if (state.dataSource !== "loading") {
       renderHome();
     }
+    if (detail.status === "synced" && (detail.synced_count > 0 || detail.last_synced_action)) {
+      refreshCollectiveGoal({ force: true });
+    }
   });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshCollectiveGoal({ force: true });
+  });
+  window.addEventListener("pageshow", () => refreshCollectiveGoal({ force: true }));
 
   window.addEventListener("popstate", () => {
     if (state.dataSource !== "loading") {
@@ -2394,6 +2565,7 @@
   });
 
   window.addEventListener("online", () => {
+    refreshCollectiveGoal({ force: true });
     if (state.dataSource === "local" || state.dataSource === "cache") refreshHomeFromRemote();
   });
 
@@ -2435,3 +2607,4 @@
     initHome();
   }
 })();
+
