@@ -58,7 +58,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
         { mission_id: 'MST_COLOMBIER', nom: 'Stock Colombier', statut: 'preparee', stock_prepare: true },
         { mission_id: 'MST_UNPREPARED', nom: 'Stock à préparer', statut: 'a_preparer', stock_prepare: false }
       ],
-      calls: [], coreDataCalls: 0
+      calls: [], coreDataCalls: 0, collectiveGoalAmount: 0, collectiveGoalUnavailable: false, collectiveGoalCalls: 0, collectiveGoalRequestsInFlight: 0
     };
     globalThis.__LUGDURUM_FIXTURE_STATE__ = fixtureState;
     globalThis.__LUGDURUM_FIXTURE_CONTROL__ = {
@@ -108,6 +108,21 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
           ? new Promise(resolve => setTimeout(() => resolve(respond()), 1200))
           : Promise.resolve(respond());
       },
+      getCollectiveGoal() {
+        fixtureState.collectiveGoalCalls += 1;
+        fixtureState.collectiveGoalRequestsInFlight += 1;
+        return Promise.resolve().then(() => {
+          if (fixtureState.collectiveGoalUnavailable) throw new Error('Serveur collectif indisponible');
+          return {
+          available: true,
+          goal_id: 'noel-2026',
+          target: 14000,
+          amount: fixtureState.collectiveGoalAmount,
+          eligible_day_count: 21,
+          updated_at: new NativeDate(fixedNow).toISOString()
+          };
+        }).finally(() => { fixtureState.collectiveGoalRequestsInFlight -= 1; });
+      },
       getCoreData() {
         fixtureState.coreDataCalls += 1;
         return { inscriptions: [], missions: fixtureState.events, missionsStock: fixtureState.stockMissions, journees: fixtureState.days, transactions: [], mouvementsStock: [] };
@@ -119,10 +134,33 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     globalThis.__LUGDURUM_HOME_FIXTURE__ = fixtureApi.getHomeData;
     globalThis.__LUGDURUM_HOME_FIXTURE_CORE__ = fixtureApi.getCoreData;
     globalThis.__LUGDURUM_FIXTURE_VENTE_RAPIDE__ = fixtureApi.getVenteRapideData;
+    globalThis.__LUGDURUM_FIXTURE_COLLECTIVE_GOAL__ = fixtureApi.getCollectiveGoal;
   }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy });
   page.__fixtureExternalRequests = [];
   page.on('request', request => {
-    if (new URL(request.url()).origin !== 'http://127.0.0.1:4173') page.__fixtureExternalRequests.push(request.url());
+    const requestUrl = new URL(request.url());
+    if (requestUrl.origin !== 'http://127.0.0.1:4173') {
+      page.__fixtureExternalRequests.push(request.url());
+      const safeParams = {};
+      for (const key of ['action', 'goal_id', 'view', 'mode']) {
+        if (requestUrl.searchParams.has(key)) safeParams[key] = requestUrl.searchParams.get(key);
+      }
+      const details = {
+        method: request.method(),
+        action: safeParams.action || '(absent)',
+        params: safeParams,
+        at: new Date().toISOString(),
+        context: request.frame()?.url() || page.url()
+      };
+      page.evaluate(() => ({
+        online: navigator.onLine,
+        pendingWrites: (() => {
+          try { return JSON.parse(localStorage.getItem('lugdurum_pending_writes') || '[]').length; }
+          catch { return 'unreadable'; }
+        })()
+      })).then(state => console.log('[E2E external API request]', JSON.stringify({ ...details, ...state })))
+        .catch(() => console.log('[E2E external API request]', JSON.stringify({ ...details, online: 'page-unavailable' })));
+    }
   });
   await page.route('**/*', async route => {
     if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4173') {
@@ -298,8 +336,8 @@ test('les portraits suivent les profils, persistent au rechargement et dans la v
 });
 
 test('un portrait indisponible retombe sur les initiales', async ({ page }) => {
-  await page.goto('./index.html');
   await page.route('**/assets/avatars/anthony.webp', route => route.abort());
+  await page.goto('./index.html');
   await page.locator('.userPill').click();
   await page.getByRole('button', { name: /Anthony/ }).click();
   const avatar = page.locator('[data-user-avatar]');
@@ -569,4 +607,73 @@ test('une réponse réseau retardée ne rétablit pas une journée précédente'
   await expect(page.locator('#missionTitle')).toContainText('Communay');
   await page.waitForTimeout(1400);
   await expect(page.locator('#missionTitle')).toContainText('Communay');
+});
+
+
+test('la progression collective reste commune, compacte, non cliquable et anime les jalons sans rejouer', async ({ page }) => {
+  await page.goto('./index.html');
+  await page.waitForFunction(() => window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalCalls > 0 && window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalRequestsInFlight === 0);
+  await expect(page.locator('#collectiveGoalAmount')).toContainText('0');
+  await expect(page.locator('#collectiveGoalRemaining')).toContainText('14 000');
+  await expect(page.locator('#collectiveGoal')).toHaveCount(1);
+  await expect(page.locator('#collectiveGoal').locator('a, button')).toHaveCount(0);
+  await expect(page.locator('#collectiveGoal')).toHaveCSS('pointer-events', 'none');
+
+  for (const [amount, percent, milestone] of [
+    [3500, '25 %', 'is-pulse'],
+    [7000, '50 %', 'is-double-shine'],
+    [10500, '75 %', 'is-halo'],
+    [14000, '100 %', 'is-complete'],
+    [15750, '112 %', 'is-complete']
+  ]) {
+    await page.evaluate(value => {
+      const state = window.__LUGDURUM_FIXTURE_STATE__;
+      state.collectiveGoalAmount = value;
+      window.dispatchEvent(new CustomEvent('lugdurum:sync-status', {
+        detail: { status: 'synced', synced_count: 1, pending_count: 0 }
+      }));
+    }, amount);
+    await expect(page.locator('#collectiveGoalPercent')).toHaveText(percent);
+    await page.waitForFunction(() => window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalRequestsInFlight === 0);
+    await expect(page.locator('#collectiveGoal')).toHaveClass(new RegExp(milestone));
+  }
+
+  await expect(page.locator('#collectiveGoalRemaining')).toContainText('Objectif atteint');
+  await expect(page.locator('#collectiveGoalProgress')).toHaveAttribute('aria-valuenow', '100');
+  await page.reload();
+  await expect(page.locator('#collectiveGoalPercent')).toHaveText('0 %');
+  await expect(page.locator('#collectiveGoal')).not.toHaveClass(/is-pulse|is-double-shine|is-halo/);
+});
+
+test('conserve le dernier agrégat hors ligne et signale les ventes en attente de synchronisation', async ({ page, context }) => {
+  await page.goto('./index.html');
+  await expect(page.locator('#collectiveGoalAmount')).toContainText('0');
+  await page.evaluate(() => {
+    window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalUnavailable = true;
+    window.localStorage.setItem('lugdurum_pending_writes', JSON.stringify([{ id: 'Q_TEST' }]));
+    window.dispatchEvent(new CustomEvent('lugdurum:sync-status', {
+      detail: { status: 'pending', pending_count: 1 }
+    }));
+  });
+  await expect(page.locator('#collectiveGoalAmount')).toContainText('0');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('lugdurum:sync-status', {
+    detail: { status: 'synced', synced_count: 1, pending_count: 1 }
+  })));
+  await expect(page.locator('#collectiveGoalSyncState')).toContainText('ventes à synchroniser');
+  await context.setOffline(true);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.locator('#collectiveGoalSyncState')).toContainText('ventes à synchroniser');
+});
+
+
+test('signale une donnée indisponible quand aucun total connu ne peut être conservé', async ({ page }) => {
+  await page.goto('./index.html');
+  await page.evaluate(() => {
+    window.localStorage.removeItem('lugdurum_collective_goal_cache_v1');
+    window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalUnavailable = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.locator('#collectiveGoalAmount')).toHaveText('—');
+  await expect(page.locator('#collectiveGoalRemaining')).toHaveText('Total indisponible');
+  await expect(page.locator('#collectiveGoalSyncState')).toHaveText('Serveur indisponible');
 });
