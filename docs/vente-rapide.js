@@ -1347,6 +1347,11 @@
   };
 
   const renderModes = () => {
+    const boxMode = isBoxMode();
+    const catalogTitle = document.getElementById("catalogTitle");
+    const catalogKicker = document.getElementById("catalogKicker");
+    if (catalogTitle) catalogTitle.textContent = boxMode ? "Composez votre coffret" : "Ajouter un parfum";
+    if (catalogKicker) catalogKicker.hidden = boxMode;
     document.querySelectorAll(".saleModeBtn").forEach((button) => {
       const isActive = button.dataset.saleMode === state.selectedMode;
       button.classList.toggle("isActive", isActive);
