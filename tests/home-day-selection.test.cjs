@@ -100,7 +100,9 @@ test("l’accueil dérive tous ses blocs du contexte journée et transmet les qu
   const users = read("docs/lugdurum-users.js");
   assert.match(home, /hasCapability\("manage_inscriptions"\)/);
   assert.match(home, /hasCapability\("prepare_stock"\)/);
-  assert.doesNotMatch(home, /U_WILL|William/);
+  assert.match(home, /U_WILL: \{ name:"William", avatar:"\.\/assets\/avatars\/william\.webp" \}/);
+  const sellerModal = home.slice(home.indexOf("  const initCollectiveGoalSellerModal ="), home.indexOf("  const initCollectiveGoal ="));
+  assert.doesNotMatch(sellerModal, /setCurrentUserId|setCurrent\(|applySelectedHomeDay|activeJourneeId|activeMissionId/);
   assert.match(users, /capabilities: \["sell", "manage_expenses", "close_day"\]/);
   assert.match(home, /const context = homeState\?\.workContext/);
   assert.match(home, /url\.searchParams\.set\("journee_id", context\.journee_id\)/);

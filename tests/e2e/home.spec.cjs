@@ -58,7 +58,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
         { mission_id: 'MST_COLOMBIER', nom: 'Stock Colombier', statut: 'preparee', stock_prepare: true },
         { mission_id: 'MST_UNPREPARED', nom: 'Stock à préparer', statut: 'a_preparer', stock_prepare: false }
       ],
-      calls: [], coreDataCalls: 0, collectiveGoalAmount: 0, collectiveGoalUnavailable: false, collectiveGoalCalls: 0, collectiveGoalRequestsInFlight: 0
+      calls: [], coreDataCalls: 0, collectiveGoalAmount: 0, collectiveGoalUnavailable: false, collectiveGoalCalls: 0, collectiveGoalRequestsInFlight: 0, sellerDetailsCalls: []
     };
     globalThis.__LUGDURUM_FIXTURE_STATE__ = fixtureState;
     globalThis.__LUGDURUM_FIXTURE_CONTROL__ = {
@@ -118,10 +118,20 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
           goal_id: 'noel-2026',
           target: 14000,
           amount: fixtureState.collectiveGoalAmount,
+          contributions: { U_ANTHONY: 463.86, U_JEROME: 125.96, U_WILL: 999.72 },
+          daily_contributions: { U_ANTHONY: 46.12, U_JEROME: 0, U_WILL: 91.5 },
+          daily_date: '2026-11-28',
           eligible_day_count: 21,
           updated_at: new NativeDate(fixedNow).toISOString()
           };
         }).finally(() => { fixtureState.collectiveGoalRequestsInFlight -= 1; });
+      },
+      getCollectiveGoalSellerDetails({ seller_id }) {
+        fixtureState.sellerDetailsCalls.push(seller_id);
+        return Promise.resolve({ available:true, seller_id, daily_date:'2026-11-28', periods:{
+          total:{revenue:463.86,card:300,cash:150,other:13.86,bottles:{'50':2,'20':3},products:[{format_cl:50,code:'VB',name:'Vanille Bleue',quantity:2},{format_cl:20,code:'AT',name:'Abricot Tonka',quantity:3}]},
+          daily:{revenue:46.12,card:40,cash:6.12,other:0,bottles:{'50':1,'20':0},products:[{format_cl:50,code:'VB',name:'Vanille Bleue',quantity:1}]}
+        }});
       },
       getCoreData() {
         fixtureState.coreDataCalls += 1;
@@ -135,6 +145,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     globalThis.__LUGDURUM_HOME_FIXTURE_CORE__ = fixtureApi.getCoreData;
     globalThis.__LUGDURUM_FIXTURE_VENTE_RAPIDE__ = fixtureApi.getVenteRapideData;
     globalThis.__LUGDURUM_FIXTURE_COLLECTIVE_GOAL__ = fixtureApi.getCollectiveGoal;
+    globalThis.__LUGDURUM_FIXTURE_SELLER_DETAILS__ = fixtureApi.getCollectiveGoalSellerDetails;
   }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy });
   page.__fixtureExternalRequests = [];
   page.on('request', request => {
@@ -610,14 +621,17 @@ test('une réponse réseau retardée ne rétablit pas une journée précédente'
 });
 
 
-test('la progression collective reste commune, compacte, non cliquable et anime les jalons sans rejouer', async ({ page }) => {
+test('la progression collective reste commune, compacte et anime les jalons sans rejouer', async ({ page }) => {
   await page.goto('./index.html');
   await page.waitForFunction(() => window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalCalls > 0 && window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalRequestsInFlight === 0);
   await expect(page.locator('#collectiveGoalAmount')).toContainText('0');
   await expect(page.locator('#collectiveGoalRemaining')).toContainText('14 000');
   await expect(page.locator('#collectiveGoal')).toHaveCount(1);
-  await expect(page.locator('#collectiveGoal').locator('a, button')).toHaveCount(0);
-  await expect(page.locator('#collectiveGoal')).toHaveCSS('pointer-events', 'none');
+  await expect(page.locator('#collectiveGoalToggle')).toBeVisible();
+  await page.locator('#collectiveGoalToggle').click();
+  await expect(page.locator('#collectiveGoalDaily_U_ANTHONY')).toContainText('46,12');
+  await expect(page.locator('#collectiveGoalDaily_U_JEROME')).toContainText('0,00');
+  await page.locator('#collectiveGoalToggle').click();
 
   for (const [amount, percent, milestone] of [
     [3500, '25 %', 'is-pulse'],
@@ -643,6 +657,42 @@ test('la progression collective reste commune, compacte, non cliquable et anime 
   await page.reload();
   await expect(page.locator('#collectiveGoalPercent')).toHaveText('0 %');
   await expect(page.locator('#collectiveGoal')).not.toHaveClass(/is-pulse|is-double-shine|is-halo/);
+});
+
+test('la modale vendeur reste en lecture seule et bascule entre total et journée', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('./index.html');
+  await page.locator('#collectiveGoalToggle').click();
+  await page.locator('[data-seller-id="U_ANTHONY"]').click();
+  await expect(page.locator('#sellerGoalOverlay')).toBeVisible();
+  await expect(page.locator('#sellerGoalName')).toHaveText('Anthony');
+  await expect(page.locator('#sellerGoalContent')).toContainText('463,86');
+  await expect(page.locator('#sellerGoalContent')).toContainText('Vanille Bleue');
+  await page.locator('[data-period="daily"]').click();
+  await expect(page.locator('[data-period="daily"]')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#sellerGoalContent')).toContainText('Journée du');
+  await expect(page.locator('#sellerGoalContent')).toContainText('46,12');
+  await page.clock.fastForward(30000);
+  await expect(page.locator('[data-period="daily"]')).toHaveAttribute('aria-pressed','true');
+  await expect.poll(() => page.evaluate(() => window.__LUGDURUM_FIXTURE_STATE__.sellerDetailsCalls.length)).toBe(2);
+  await page.locator('#sellerGoalClose').click();
+  await expect(page.locator('#sellerGoalOverlay')).toBeHidden();
+  await page.clock.fastForward(60000);
+  expect(await page.evaluate(() => window.__LUGDURUM_FIXTURE_STATE__.sellerDetailsCalls.length)).toBe(2);
+  await page.locator('#collectiveGoalToggle').click();
+  await page.locator('[data-seller-id="U_JEROME"]').click();
+  await expect(page.locator('#sellerGoalName')).toHaveText('Jérôme');
+  await expect(page.locator('[data-period="total"]')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#sellerGoalAvatar')).toHaveAttribute('src', /jerome\.webp$/);
+  await page.locator('#sellerGoalClose').click();
+  await page.locator('#collectiveGoalToggle').click();
+  await page.locator('[data-seller-id="U_WILL"]').click();
+  await expect(page.locator('#sellerGoalName')).toHaveText('William');
+  await expect(page.locator('#sellerGoalAvatar')).toHaveAttribute('src', /william\.webp$/);
+  await page.locator('#sellerGoalClose').click();
+  await expect(page.locator('#collectiveGoal')).toHaveAttribute('aria-labelledby','collectiveGoalTitle');
+  await expect(page.locator('#homeDaySelect')).not.toHaveValue('');
+  expect(await page.evaluate(() => window.__LUGDURUM_FIXTURE_STATE__.sellerDetailsCalls)).toEqual(['U_ANTHONY','U_ANTHONY','U_JEROME','U_WILL']);
 });
 
 test('conserve le dernier agrégat hors ligne et signale les ventes en attente de synchronisation', async ({ page, context }) => {

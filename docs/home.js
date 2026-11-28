@@ -2347,11 +2347,13 @@
     if (!value || !collectiveGoalSellerIds.every(id => typeof value[id] === "number" && Number.isFinite(value[id]))) return null;
     return Object.fromEntries(collectiveGoalSellerIds.map(id => [id, value[id]]));
   };
-  const saveCollectiveGoalCache = (amount, updatedAt, milestone, contributions) => {
+  const saveCollectiveGoalCache = (amount, updatedAt, milestone, contributions, dailyContributions, dailyDate) => {
     try {
       localStorage.setItem(COLLECTIVE_GOAL.cacheKey, JSON.stringify({
         amount: Number(amount) || 0,
         contributions: normalizeCollectiveGoalContributions(contributions),
+        daily_contributions: normalizeCollectiveGoalContributions(dailyContributions),
+        daily_date: /^\d{4}-\d{2}-\d{2}$/.test(String(dailyDate || "")) ? dailyDate : "",
         updated_at: updatedAt || "",
         milestone: Math.max(highestCollectiveGoalMilestone, milestone || 0)
       }));
@@ -2371,9 +2373,15 @@
     if (!amountNode || !fill || !progress || !percentNode || !remainingNode || !panel) return;
 
     const contributions = normalizeCollectiveGoalContributions(payload?.contributions);
+    const daily = normalizeCollectiveGoalContributions(payload?.daily_contributions);
+    const dateParts = new Intl.DateTimeFormat("fr-CA", { timeZone:"Europe/Paris", year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(new Date());
+    const today = ["year","month","day"].map(type=>dateParts.find(part=>part.type===type)?.value||"").join("-");
     collectiveGoalSellerIds.forEach(id => {
       const node = qs("#collectiveGoalSeller_" + id);
       if (node) node.textContent = contributions ? collectiveGoalSellerFormat.format(contributions[id]) : "—";
+      const dailyNode = qs("#collectiveGoalDaily_" + id);
+      if (dailyNode) dailyNode.textContent = daily && payload.daily_date === today
+        ? "(" + collectiveGoalSellerFormat.format(daily[id]) + ")" : "(—)";
     });
     const amount = Number(payload?.amount);
     if (!Number.isFinite(amount)) {
@@ -2440,7 +2448,8 @@
     highestCollectiveGoalMilestone = Math.max(highestCollectiveGoalMilestone, milestone);
 
     lastCollectiveGoalAmount = safeAmount;
-    saveCollectiveGoalCache(safeAmount, payload.updated_at || "", highestCollectiveGoalMilestone, contributions);
+    saveCollectiveGoalCache(safeAmount, payload.updated_at || "", highestCollectiveGoalMilestone,
+      contributions, payload.daily_contributions, payload.daily_date);
   };
 
   const refreshCollectiveGoal = async ({ force = false } = {}) => {
@@ -2489,6 +2498,79 @@
     }, 30000);
   };
 
+  const initCollectiveGoalSellerModal = () => {
+    const overlay = qs("#sellerGoalOverlay"), content = qs("#sellerGoalContent");
+    if (!overlay || !content) return;
+    const sellers = {
+      U_ANTHONY: { name:"Anthony", avatar:"./assets/avatars/anthony.webp" },
+      U_JEROME: { name:"Jérôme", avatar:"./assets/avatars/jerome.webp" },
+      U_WILL: { name:"William", avatar:"./assets/avatars/william.webp" }
+    };
+    let sellerId = "", periodKey = "total", payload = null, requestSeq = 0, timer = null, opener = null;
+    let loading = false, refreshQueued = false;
+    const money = value => collectiveGoalSellerFormat.format(Number(value) || 0);
+    const escape = value => String(value ?? "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const render = () => {
+      const model = payload?.periods?.[periodKey];
+      if (!model) { content.innerHTML = '<p class="saleDetailsNotice">Données détaillées indisponibles. Réessayez lorsque la connexion sera rétablie.</p>'; return; }
+      const amount = Number(model.revenue) || 0;
+      const parts = [50,20].map(format => {
+        const products = (model.products || []).filter(p => Number(p.format_cl) === format)
+          .sort((a,b) => Number(b.quantity)-Number(a.quantity) || String(a.name).localeCompare(String(b.name),"fr"));
+        const rows = products.map(p => '<li class="saleDetailsProductRow"><span class="saleDetailsProductName"><span class="saleDetailsProductCode">'+escape(p.code)+'</span><span>'+escape(p.name)+'</span></span><strong>×'+(Number(p.quantity)||0)+'</strong></li>').join("");
+        return '<section class="sellerGoalFormat '+(format===20?'is20':'')+'"><h3>'+format+' cL — '+(Number(model.bottles?.[String(format)])||0)+' bouteilles</h3>'+(rows?'<ul class="saleDetailsList saleDetailsProductList">'+rows+'</ul>':'<p>Aucune bouteille vendue sur cette période.</p>')+'</section>';
+      }).join("");
+      const periodLabel = periodKey === "daily"
+        ? "Journée du " + new Intl.DateTimeFormat("fr-FR", { timeZone:"Europe/Paris", day:"numeric", month:"long", year:"numeric" }).format(new Date(payload.daily_date + "T12:00:00"))
+        : "Toutes les journées de l’objectif";
+      content.innerHTML = '<p class="saleDetailsSubtitleDate">'+escape(periodLabel)+'</p><p class="sellerGoalRevenueLabel">Chiffre d’affaires encaissé</p><div class="sellerGoalRevenue">'+money(amount)+'</div><div class="sellerGoalPayGrid"><div class="sellerGoalPayCard">Carte bancaire<strong>'+money(model.card)+'</strong></div><div class="sellerGoalPayCard">Espèces<strong>'+money(model.cash)+'</strong></div></div>'+(Number(model.other)>0?'<p>Autres moyens de paiement : '+money(model.other)+'</p>':'')+(amount===0?'<p class="saleDetailsNotice">Aucune vente enregistrée pour cette période.</p>':'')+parts;
+    };
+    const load = async () => {
+      if (!navigator.onLine || !sellerId) { if (!payload) render(); return; }
+      if (loading) { refreshQueued = true; return; }
+      loading = true;
+      const seq = ++requestSeq;
+      try {
+        const result = await api().getCollectiveGoalSellerDetails({goal_id:COLLECTIVE_GOAL.id,seller_id:sellerId});
+        const data = result?.data || result?.goal || result;
+        if (seq !== requestSeq || overlay.hidden || data.seller_id !== sellerId) return;
+        payload = data; render();
+      } catch { if (seq === requestSeq) { payload = null; render(); } }
+      finally {
+        loading = false;
+        if (refreshQueued) {
+          refreshQueued = false;
+          if (!overlay.hidden && navigator.onLine) load();
+        }
+      }
+    };
+    const close = () => { if (overlay.hidden) return; requestSeq++; overlay.hidden=true; document.body.classList.remove("saleDetailsOpen"); if(timer) clearInterval(timer); timer=null; opener?.focus({preventScroll:true}); };
+    document.querySelectorAll(".collectiveGoalSellerBtn").forEach(button => button.addEventListener("click", () => {
+      sellerId=button.dataset.sellerId; const seller=sellers[sellerId]; if(!seller) return;
+      opener=button; periodKey="total"; payload=null; qs("#sellerGoalName").textContent=seller.name; qs("#sellerGoalAvatar").src=seller.avatar;
+      overlay.hidden=false; document.body.classList.add("saleDetailsOpen");
+      overlay.querySelectorAll("[data-period]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.period===periodKey)));
+      content.innerHTML='<p>Chargement des ventes…</p>'; qs("#sellerGoalClose").focus({preventScroll:true}); load();
+      if(timer) clearInterval(timer); timer=setInterval(()=>{if(!overlay.hidden&&document.visibilityState==="visible"&&navigator.onLine) load();},30000);
+    }));
+    overlay.querySelector("#sellerGoalClose")?.addEventListener("click",close);
+    overlay.addEventListener("click",event=>{if(event.target===overlay)close();});
+    overlay.querySelectorAll("[data-period]").forEach(button=>button.addEventListener("click",()=>{
+      periodKey=button.dataset.period; overlay.querySelectorAll("[data-period]").forEach(b=>b.setAttribute("aria-pressed",String(b===button))); render();
+    }));
+    document.addEventListener("keydown",event=>{
+      if(overlay.hidden)return;
+      if(event.key==="Escape"){event.preventDefault();close();return;}
+      if(event.key==="Tab"){
+        const focusable=[...overlay.querySelectorAll('button:not([disabled]),[href],input:not([disabled]),[tabindex]:not([tabindex="-1"])')];
+        if(!focusable.length)return;
+        if(event.shiftKey&&document.activeElement===focusable[0]){event.preventDefault();focusable[focusable.length-1].focus();}
+        else if(!event.shiftKey&&document.activeElement===focusable[focusable.length-1]){event.preventDefault();focusable[0].focus();}
+      }
+    });
+    window.addEventListener("online",()=>{if(!overlay.hidden)load();});
+  };
+
   const initCollectiveGoal = () => {
     const toggle = qs("#collectiveGoalToggle");
     const details = qs("#collectiveGoalDetails");
@@ -2498,6 +2580,7 @@
       const chevron = qs("#collectiveGoalChevron");
       if (chevron) chevron.textContent = details.hidden ? "⌄" : "⌃";
     });
+    initCollectiveGoalSellerModal();
     const cached = readCollectiveGoalCache();
     if (cached) renderCollectiveGoal(cached, { cached: true });
     else if (!navigator.onLine) renderCollectiveGoal(null);

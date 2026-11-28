@@ -2872,6 +2872,16 @@
         { ...options, flushBeforeRead: false, schedulePendingFlush: false, timeoutMs: options.timeoutMs || 10000 }
       );
     },
+    getCollectiveGoalSellerDetails(params = {}, options = {}) {
+      return requestGet(
+        "getCollectiveGoalSellerDetails",
+        {
+          goal_id: params.goal_id || "",
+          seller_id: params.seller_id || ""
+        },
+        { ...options, flushBeforeRead: false, schedulePendingFlush: false, timeoutMs: options.timeoutMs || 15000 }
+      );
+    },
     getVenteRapideData,
 
     getRecettesData,
