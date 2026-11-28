@@ -2512,18 +2512,19 @@
     const escape = value => String(value ?? "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
     const render = () => {
       const model = payload?.periods?.[periodKey];
-      if (!model) { content.innerHTML = '<p class="saleDetailsNotice">Données détaillées indisponibles. Réessayez lorsque la connexion sera rétablie.</p>'; return; }
+      if (!model) { content.innerHTML = '<p class="sellerGoalNotice">Données détaillées indisponibles. Réessayez lorsque la connexion sera rétablie.</p>'; return; }
       const amount = Number(model.revenue) || 0;
       const parts = [50,20].map(format => {
         const products = (model.products || []).filter(p => Number(p.format_cl) === format)
           .sort((a,b) => Number(b.quantity)-Number(a.quantity) || String(a.name).localeCompare(String(b.name),"fr"));
-        const rows = products.map(p => '<li class="saleDetailsProductRow"><span class="saleDetailsProductName"><span class="saleDetailsProductCode">'+escape(p.code)+'</span><span>'+escape(p.name)+'</span></span><strong>×'+(Number(p.quantity)||0)+'</strong></li>').join("");
-        return '<section class="sellerGoalFormat '+(format===20?'is20':'')+'"><h3>'+format+' cL — '+(Number(model.bottles?.[String(format)])||0)+' bouteilles</h3>'+(rows?'<ul class="saleDetailsList saleDetailsProductList">'+rows+'</ul>':'<p>Aucune bouteille vendue sur cette période.</p>')+'</section>';
+        const rows = products.map(p => '<li class="sellerGoalProductRow"><span class="sellerGoalProductCode">'+escape(p.code)+'</span><span class="sellerGoalProductName">'+escape(p.name)+'</span><strong class="sellerGoalProductQuantity">×'+(Number(p.quantity)||0)+'</strong></li>').join("");
+        const total = (Number(model.bottles?.[String(format)])||0)+' bouteille'+((Number(model.bottles?.[String(format)])||0)>1?'s':'');
+        return '<section class="sellerGoalFormat '+(format===20?'is20':'')+'"><h3 class="sellerGoalFormatHeading"><span>'+format+' cL</span><span>'+total+'</span></h3>'+(rows?'<ul class="sellerGoalProductList">'+rows+'</ul>':'<p class="sellerGoalEmpty">Aucune bouteille vendue sur cette période.</p>')+'</section>';
       }).join("");
       const periodLabel = periodKey === "daily"
         ? "Journée du " + new Intl.DateTimeFormat("fr-FR", { timeZone:"Europe/Paris", day:"numeric", month:"long", year:"numeric" }).format(new Date(payload.daily_date + "T12:00:00"))
         : "Toutes les journées de l’objectif";
-      content.innerHTML = '<p class="saleDetailsSubtitleDate">'+escape(periodLabel)+'</p><p class="sellerGoalRevenueLabel">Chiffre d’affaires encaissé</p><div class="sellerGoalRevenue">'+money(amount)+'</div><div class="sellerGoalPayGrid"><div class="sellerGoalPayCard">Carte bancaire<strong>'+money(model.card)+'</strong></div><div class="sellerGoalPayCard">Espèces<strong>'+money(model.cash)+'</strong></div></div>'+(Number(model.other)>0?'<p>Autres moyens de paiement : '+money(model.other)+'</p>':'')+(amount===0?'<p class="saleDetailsNotice">Aucune vente enregistrée pour cette période.</p>':'')+parts;
+      content.innerHTML = '<p class="sellerGoalNotice">'+escape(periodLabel)+'</p><p class="sellerGoalRevenueLabel">Chiffre d’affaires encaissé</p><div class="sellerGoalRevenue">'+money(amount)+'</div><div class="sellerGoalPayGrid"><div class="sellerGoalPayCard"><span>Carte bancaire</span><strong>'+money(model.card)+'</strong></div><div class="sellerGoalPayCard"><span>Espèces</span><strong>'+money(model.cash)+'</strong></div></div>'+(Number(model.other)>0?'<p class="sellerGoalNotice">Autres moyens de paiement : '+money(model.other)+'</p>':'')+(amount===0?'<p class="sellerGoalNotice">Aucune vente enregistrée pour cette période.</p>':'')+'<div class="sellerGoalFormats">'+parts+'</div>';
     };
     const load = async () => {
       if (!navigator.onLine || !sellerId) { if (!payload) render(); return; }
