@@ -20,6 +20,13 @@
 
     <link rel="stylesheet" href="./style.css?v=29" />
     <style>
+      .page-home .homeDayTitleRow:has(.homeDayLoadingProgress:not([hidden])) { display:flex; align-items:center; gap:12px; }
+      .page-home .homeDayTitleRow:has(.homeDayLoadingProgress:not([hidden])) h2 { flex:0 0 auto; margin-right:0; }
+      .page-home .homeDayLoadingProgress { flex:1; min-width:24px; height:8px; border-radius:999px; overflow:hidden; background:rgba(168,143,104,.2); }
+      .page-home .homeDayLoadingProgress[hidden] { display:none; }
+      .page-home .homeDayLoadingProgress span { display:block; height:100%; border-radius:inherit; background:#a88f68; transform-origin:left center; animation:homeDayProgress 5s linear forwards; }
+      @keyframes homeDayProgress { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+      @media (prefers-reduced-motion:reduce) { .page-home .homeDayLoadingProgress span { animation:none; transform:scaleX(.5); } }
 .page-home .heroActions { display:flex; flex-wrap:wrap; }
 .page-home .workflowEmpty { grid-column:1/-1; margin:0; padding:16px; border:1px dashed #c7b79e; border-radius:14px; color:#625b50; background:#fffaf1; }
 .page-home .workflowCard[aria-disabled="true"] { cursor:not-allowed; opacity:.72; }
@@ -30,7 +37,7 @@
     <script src="./lugdurum-api.js?v=26" defer></script>
     <script src="./lugdurum-users.js?v=3" defer></script>
     <script src="./lugdurum-day-context.js?v=3" defer></script>
-    <script src="./home.js?v=32" defer></script>
+    <script src="./home.js?v=33" defer></script>
     <script src="./pwa.js?v=16" defer></script>
   </head>
 
@@ -74,10 +81,13 @@
         <section class="statusHero" id="statusHero" aria-labelledby="missionTitle">
           <div class="statusTopline">
             <span class="liveDot" id="liveDot" aria-hidden="true"></span>
-            <span id="activeStatusLabel">Chargement</span>
+            <span id="activeStatusLabel">Journée en cours</span>
           </div>
 
-          <h2 id="missionTitle">Chargement…</h2>
+          <div class="homeDayTitleRow">
+            <h2 id="missionTitle">Chargement</h2>
+            <div id="homeDayLoadingProgress" class="homeDayLoadingProgress" role="progressbar" aria-label="Chargement de la journée"><span></span></div>
+          </div>
           <div id="missionMeta" class="marketPracticalInfo" aria-label="Informations pratiques du marché" hidden>
             <div class="marketPracticalLine" id="homeDayDateRow">
               <span class="marketPracticalIcon" aria-hidden="true">🗓️</span>
