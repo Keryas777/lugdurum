@@ -58,7 +58,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
         { mission_id: 'MST_COLOMBIER', nom: 'Stock Colombier', statut: 'preparee', stock_prepare: true },
         { mission_id: 'MST_UNPREPARED', nom: 'Stock à préparer', statut: 'a_preparer', stock_prepare: false }
       ],
-      calls: [], coreDataCalls: 0, collectiveGoalAmount: 0, collectiveGoalUnavailable: false, collectiveGoalCalls: 0
+      calls: [], coreDataCalls: 0, collectiveGoalAmount: 0, collectiveGoalUnavailable: false, collectiveGoalCalls: 0, collectiveGoalRequestsInFlight: 0
     };
     globalThis.__LUGDURUM_FIXTURE_STATE__ = fixtureState;
     globalThis.__LUGDURUM_FIXTURE_CONTROL__ = {
@@ -110,15 +110,18 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       },
       getCollectiveGoal() {
         fixtureState.collectiveGoalCalls += 1;
-        if (fixtureState.collectiveGoalUnavailable) return Promise.reject(new Error('Serveur collectif indisponible'));
-        return Promise.resolve({
+        fixtureState.collectiveGoalRequestsInFlight += 1;
+        return Promise.resolve().then(() => {
+          if (fixtureState.collectiveGoalUnavailable) throw new Error('Serveur collectif indisponible');
+          return {
           available: true,
           goal_id: 'noel-2026',
           target: 14000,
           amount: fixtureState.collectiveGoalAmount,
           eligible_day_count: 21,
           updated_at: new NativeDate(fixedNow).toISOString()
-        });
+          };
+        }).finally(() => { fixtureState.collectiveGoalRequestsInFlight -= 1; });
       },
       getCoreData() {
         fixtureState.coreDataCalls += 1;
@@ -587,6 +590,7 @@ test('une réponse réseau retardée ne rétablit pas une journée précédente'
 
 test('la progression collective reste commune, compacte, non cliquable et anime les jalons sans rejouer', async ({ page }) => {
   await page.goto('./index.html');
+  await page.waitForFunction(() => window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalCalls > 0 && window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalRequestsInFlight === 0);
   await expect(page.locator('#collectiveGoalAmount')).toContainText('0');
   await expect(page.locator('#collectiveGoalRemaining')).toContainText('14 000');
   await expect(page.locator('#collectiveGoal')).toHaveCount(1);
