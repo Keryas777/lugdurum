@@ -663,6 +663,7 @@ test('la progression collective reste commune, compacte et anime les jalons sans
 test('la modale vendeur reste en lecture seule et bascule entre total et journée', async ({ page }) => {
   await page.clock.install();
   await page.goto('./index.html');
+  const selectedDayBeforeConsultation = await page.locator('#homeDaySelect').inputValue();
   await page.locator('#collectiveGoalToggle').click();
   await page.locator('[data-seller-id="U_ANTHONY"]').click();
   await expect(page.locator('#sellerGoalOverlay')).toBeVisible();
@@ -691,7 +692,7 @@ test('la modale vendeur reste en lecture seule et bascule entre total et journé
   await expect(page.locator('#sellerGoalAvatar')).toHaveAttribute('src', /william\.webp$/);
   await page.locator('#sellerGoalClose').click();
   await expect(page.locator('#collectiveGoal')).toHaveAttribute('aria-labelledby','collectiveGoalTitle');
-  await expect(page.locator('#homeDaySelect')).not.toHaveValue('');
+  await expect(page.locator('#homeDaySelect')).toHaveValue(selectedDayBeforeConsultation);
   expect(await page.evaluate(() => window.__LUGDURUM_FIXTURE_STATE__.sellerDetailsCalls)).toEqual(['U_ANTHONY','U_ANTHONY','U_JEROME','U_WILL']);
 });
 
