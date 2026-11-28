@@ -1,0 +1,207 @@
+name: Deploiement Apps Script - candidat verifie
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "SHA complet du candidat Apps Script"
+        required: true
+        type: string
+      pr_number:
+        description: "PR ouverte portant exactement ce SHA"
+        required: true
+        type: string
+      expected_production_version:
+        description: "Version Apps Script de production avant changement"
+        required: true
+        default: "26"
+        type: string
+      action:
+        description: "Préflight sans écriture ou déploiement contrôlé"
+        required: true
+        default: preflight
+        type: choice
+        options: [preflight, deploy]
+      confirmation:
+        description: "Saisir DEPLOYER_LUGDURUM:<SHA complet>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: lugdurum-apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la demande immuable
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          EXPECTED_VERSION: ${{ inputs.expected_production_version }}
+          ACTION_MODE: ${{ inputs.action }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_VERSION" =~ ^[0-9]+$ ]]
+          [[ "$CONFIRMATION" == "DEPLOYER_LUGDURUM:$CANDIDATE_SHA" ]]
+          [[ "$ACTION_MODE" == "preflight" || "$ACTION_MODE" == "deploy" ]]
+          PR_JSON=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+          [[ "$(jq -r '.state' <<<"$PR_JSON")" == "open" ]]
+          [[ "$(jq -r '.head.sha' <<<"$PR_JSON")" == "$CANDIDATE_SHA" ]]
+          [[ "$(jq -r '.base.ref' <<<"$PR_JSON")" == "main" ]]
+          echo "SHA immuable confirmé sur la PR indiquée."
+
+      - name: Récupérer la référence main du workflow
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: control
+          persist-credentials: false
+
+      - name: Récupérer le candidat exact
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Contrôler les sources Apps Script du candidat
+        working-directory: candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.candidate_sha }}"
+          for file in apps-script/*.js; do node --check "$file"; done
+          node -e 'JSON.parse(require("node:fs").readFileSync("apps-script/appsscript.json", "utf8"))'
+          node --test tests/collective-goal.test.cjs
+
+      - name: Installer clasp et configurer les secrets sans les afficher
+        env:
+          CLASP_CREDENTIALS_JSON: ${{ secrets.CLASP_CREDENTIALS_JSON }}
+          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+        run: |
+          test -n "$CLASP_CREDENTIALS_JSON"
+          test -n "$APPS_SCRIPT_ID"
+          npm install --global @google/clasp@3.4.1
+          printf '%s' "$CLASP_CREDENTIALS_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          printf '%s' "$APPS_SCRIPT_ID" > "$RUNNER_TEMP/apps-script-id"
+          unset CLASP_CREDENTIALS_JSON APPS_SCRIPT_ID
+
+      - name: Vérifier l'URL API, le déploiement et les sources distantes avant toute écriture
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_production_version }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const candidate = fs.readFileSync('candidate/docs/lugdurum-api.js', 'utf8');
+          const control = fs.readFileSync('control/docs/lugdurum-api.js', 'utf8');
+          const pattern = /https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec/;
+          const candidateMatch = candidate.match(pattern), controlMatch = control.match(pattern);
+          if (!candidateMatch || !controlMatch || candidateMatch[0] !== controlMatch[0]) {
+            throw new Error('URL de production absente ou modifiée dans le candidat.');
+          }
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/production-api-url', candidateMatch[0]);
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/production-deployment-id', candidateMatch[1]);
+          NODE
+          SCRIPT_ID=$(cat "$RUNNER_TEMP/apps-script-id")
+          export SCRIPT_ID
+          DEPLOYMENT_ID=$(cat "$RUNNER_TEMP/production-deployment-id")
+          REMOTE_CURRENT="$RUNNER_TEMP/apps-script-current"
+          REMOTE_VERSION="$RUNNER_TEMP/apps-script-version"
+          mkdir -p "$REMOTE_CURRENT" "$REMOTE_VERSION"
+          for dir in "$REMOTE_CURRENT" "$REMOTE_VERSION"; do
+            node -e 'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({scriptId:process.env.SCRIPT_ID,rootDir:"."}))' "$dir/.clasp.json"
+          done
+          (cd "$REMOTE_CURRENT" && clasp list-deployments > "$RUNNER_TEMP/deployments.txt")
+          node -e '
+            const fs=require("node:fs");
+            const lines=fs.readFileSync(process.argv[1],"utf8").split(/\r?\n/);
+            const id=process.argv[2], version=process.argv[3];
+            if (!lines.some(line=>line.includes(id) && new RegExp("@\\s*"+version+"\\b").test(line))) {
+              throw new Error("Le déploiement API ou sa version de production ne correspond pas à la référence attendue.");
+            }
+          ' "$RUNNER_TEMP/deployments.txt" "$DEPLOYMENT_ID" "$EXPECTED_VERSION"
+          (cd "$REMOTE_CURRENT" && clasp pull)
+          (cd "$REMOTE_VERSION" && clasp pull --versionNumber "$EXPECTED_VERSION")
+          node <<'NODE'
+          const fs=require('node:fs'), path=require('node:path'), crypto=require('node:crypto');
+          function files(root, base=root, out={}) {
+            for (const entry of fs.readdirSync(root,{withFileTypes:true})) {
+              if (entry.name === '.clasp.json') continue;
+              const full=path.join(root,entry.name);
+              if (entry.isDirectory()) files(full,base,out);
+              else out[path.relative(base,full)] = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
+            }
+            return out;
+          }
+          const current=files(process.env.RUNNER_TEMP+'/apps-script-current');
+          const deployed=files(process.env.RUNNER_TEMP+'/apps-script-version');
+          const paths=[...new Set([...Object.keys(current),...Object.keys(deployed)])].sort();
+          const divergence=paths.filter(p=>current[p]!==deployed[p]);
+          if (divergence.length) throw new Error('Les sources distantes ne correspondent plus à la version de production attendue: '+divergence.join(', '));
+          console.log('Sources distantes identiques à la version Apps Script attendue.');
+          const candidate=files('candidate/apps-script');
+          const candidatePaths=[...new Set([...Object.keys(deployed),...Object.keys(candidate)])].sort();
+          const changed=candidatePaths.filter(p=>deployed[p]!==candidate[p]).sort();
+          const expected=['01_http_router.js','11_collective_goals.js'];
+          if (JSON.stringify(changed)!==JSON.stringify(expected)) throw new Error('Diff Apps Script inattendu: '+changed.join(', '));
+          console.log('Diff candidat limité au routage collectif et au nouveau module.');
+          NODE
+
+      - name: Écrire et publier sur le déploiement existant
+        id: publish
+        if: inputs.action == 'deploy'
+        working-directory: candidate/apps-script
+        run: |
+          echo "write_started=true" >> "$GITHUB_OUTPUT"
+          DEPLOYMENT_ID=$(cat "$RUNNER_TEMP/production-deployment-id")
+          clasp push --force
+          clasp create-deployment --deploymentId "$DEPLOYMENT_ID" --description "GitHub ${{ inputs.candidate_sha }}"
+
+      - name: Vérifier les lectures de production sans écriture de données
+        if: inputs.action == 'deploy'
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          async function read(action, extra) {
+            const url=new URL(fs.readFileSync(process.env.RUNNER_TEMP+'/production-api-url','utf8'));
+            url.searchParams.set('action',action);
+            url.searchParams.set('callback','codexSmoke');
+            for(const [key,value] of Object.entries(extra)) url.searchParams.set(key,value);
+            const response=await fetch(url,{redirect:'follow'});
+            if(!response.ok) throw new Error(action+' HTTP '+response.status);
+            const body=await response.text();
+            const match=body.match(/^\\s*codexSmoke\\(([\\s\\S]*)\\)\\s*;?\\s*$/);
+            if(!match) throw new Error(action+' réponse JSONP illisible');
+            return JSON.parse(match[1]);
+          }
+          (async()=>{
+            const payload=await read('getCollectiveGoal',{goal_id:'noel-2026'});
+            const data=payload.goal||payload.data||payload.result||payload;
+            if(data.available===false || !Number.isFinite(Number(data.amount)) ||
+              Number(data.target)!==14000 || Number(data.eligible_day_count)!==21) throw new Error('Agrégat collectif invalide.');
+            console.log('getCollectiveGoal OK; montant réel: '+Number(data.amount)+' EUR; cible: 14000 EUR.');
+            const home=await read('getHomeData',{user_id:'U_JEROME'});
+            if(home.success===false || home.error) throw new Error('getHomeData en échec après publication.');
+            console.log('getHomeData reste opérationnel en lecture seule.');
+          })().catch(error=>{console.error(error.message);process.exitCode=1;});
+          NODE
+
+      - name: Restaurer les sources de la version précédente si la publication échoue
+        if: failure() && steps.publish.outputs.write_started == 'true'
+        working-directory: ${{ runner.temp }}/apps-script-version
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_production_version }}
+        run: |
+          DEPLOYMENT_ID=$(cat "$RUNNER_TEMP/production-deployment-id")
+          clasp push --force
+          clasp create-deployment --deploymentId "$DEPLOYMENT_ID" --description "Rollback sources version $EXPECTED_VERSION"
+          echo "Sources précédentes restaurées sur le même identifiant de déploiement."
