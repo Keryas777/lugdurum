@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 const API_TAG = /<script src="\.\/lugdurum-api\.js\?v=\d+" defer><\/script>/;
 
-async function bootWriteFixture(page, control = { kind: 'success' }) {
+async function bootWriteFixture(page, control = { kind: 'success' }, { allowStartupSync = false } = {}) {
   await page.addInitScript(() => {
     const users = [
       { user_id: 'U_JEROME', nom: 'Jérôme', role: 'admin', actif: true },
@@ -120,7 +120,7 @@ async function bootWriteFixture(page, control = { kind: 'success' }) {
 
   await page.goto('./index.html');
   await expect(page.locator('#missionTitle')).toContainText('Aucune journée de vente');
-  expect(control.requestCount).toBe(0);
+  if (!allowStartupSync) expect(control.requestCount).toBe(0);
 }
 
 test('une écriture serveur lente affiche le voile puis confirme l’enregistrement', async ({ page }) => {
@@ -291,8 +291,9 @@ test('après fermeture et réouverture, la file locale reste intacte sans voile 
 
   await context.setOffline(false);
   const reopened = await context.newPage();
-  await bootWriteFixture(reopened, control);
+  await bootWriteFixture(reopened, control, { allowStartupSync: true });
   await control.enteredPromise;
+  expect(control.requestCount).toBe(1);
   await expect(reopened.locator('.lugdurumWriteOverlay')).toBeHidden();
   await expect(reopened.locator('.appShell')).not.toHaveAttribute('aria-busy', 'true');
   await expect.poll(() => reopened.evaluate(() => window.LugdurumAPI.getPendingWritesCount())).toBe(1);
