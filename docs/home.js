@@ -1814,7 +1814,7 @@
     }
     return {
       code: "selling", step: "vente",
-      label: normalizeStatus(day.statut) === "en_cours" ? "Journée en cours" : "Journée prête",
+      label: "Journée en cours",
       title: eventName, meta,
       primaryText: "Ouvrir les ventes", primaryHref: "./vente-rapide.html",
       secondaryText: "Clôturer la journée", secondaryHref: "./cloture.html"
@@ -1860,8 +1860,18 @@
     const eventRevenuePanel = qs("#homeEventRevenue");
     if (eventRevenuePanel) eventRevenuePanel.hidden = true;
     setText("#currentUserName", CURRENT_USER.nom);
-    setText("#activeStatusLabel", "Chargement");
-    setText("#missionTitle", "Chargement…");
+    setText("#activeStatusLabel", "Journée en cours");
+    setText("#missionTitle", "Chargement");
+    const progress = qs("#homeDayLoadingProgress");
+    if (progress) {
+      progress.hidden = false;
+      const fill = progress.firstElementChild;
+      if (fill) {
+        fill.style.animation = "none";
+        void fill.offsetWidth;
+        fill.style.animation = "";
+      }
+    }
     const practicalInfo = qs("#missionMeta");
     if (practicalInfo) practicalInfo.hidden = true;
     setText("#statOneLabel", "CA jour");
@@ -1937,6 +1947,8 @@
     );
     setText("#activeStatusLabel", uiState.label);
     setText("#missionTitle", uiState.title);
+    const progress = qs("#homeDayLoadingProgress");
+    if (progress) progress.hidden = true;
     renderPracticalInfo(homeState);
 
     renderStats(homeState);
@@ -2338,6 +2350,8 @@
       setDataState("local", "Synchronisation à vérifier");
       setText("#activeStatusLabel", "Connexion indisponible");
       setText("#missionTitle", "Connexion indisponible");
+      const progress = qs("#homeDayLoadingProgress");
+      if (progress) progress.hidden = true;
       const practicalInfo = qs("#missionMeta");
       if (practicalInfo) practicalInfo.hidden = true;
     }
