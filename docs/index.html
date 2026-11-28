@@ -34,7 +34,12 @@
 .page-home .planningLinks a { display:flex; align-items:center; min-height:48px; padding:12px; border:1px solid #dfd2bd; border-radius:12px; color:#1f1b16; background:#fffaf1; font-weight:800; text-decoration:none; }
 
 .page-home .appShell > main.homeLayout { padding-top: calc(var(--topbar-space) - 16px); }
-.page-home .collectiveGoal { position:relative; grid-column:1 / -1; margin:0; padding:9px 12px; border:1px solid #d9c9af; border-radius:16px; background:linear-gradient(145deg,#fffdf8,#f3eadb); box-shadow:0 4px 12px rgba(65,48,26,.08); pointer-events:none; user-select:none; }
+.page-home .collectiveGoal { position:relative; grid-column:1 / -1; margin:0; padding:9px 12px; border:1px solid #d9c9af; border-radius:16px; background:linear-gradient(145deg,#fffdf8,#f3eadb); box-shadow:0 4px 12px rgba(65,48,26,.08); user-select:none; }
+.page-home .collectiveGoalToggle { display:block; width:100%; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.page-home .collectiveGoalDetails { margin-top:10px; border-top:1px solid #d9c9af; padding-top:6px; }
+.page-home .collectiveGoalSeller { display:flex; align-items:center; gap:10px; padding:5px 0; color:#1f1b16; }
+.page-home .collectiveGoalSeller img { width:36px; height:36px; border-radius:50%; object-fit:cover; }
+.page-home .collectiveGoalSeller strong { margin-left:auto; font-variant-numeric:tabular-nums; }
 .page-home .collectiveGoalHeading,.page-home .collectiveGoalFooter { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .page-home .collectiveGoalHeading h2 { margin:0 0 6px; font-size:1rem; color:#30271c; }
 .page-home .collectiveGoalPercent { margin-bottom:6px; font-size:.82rem; font-weight:800; color:#514330; }
@@ -62,7 +67,7 @@
     <script src="./sales-cache-cleanup.js?v=1" defer></script>
     <script src="./lugdurum-users.js?v=3" defer></script>
     <script src="./lugdurum-day-context.js?v=3" defer></script>
-    <script src="./home.js?v=33" defer></script>
+    <script src="./home.js?v=34" defer></script>
     <script src="./pwa.js?v=16" defer></script>
   </head>
 
@@ -104,24 +109,31 @@
 
       <main class="mainContent homeLayout">
         <section class="collectiveGoal" id="collectiveGoal" aria-labelledby="collectiveGoalTitle">
-          <div class="collectiveGoalHeading">
-            <h2 id="collectiveGoalTitle">🎄 Objectif Noël 2026</h2>
-            <span class="collectiveGoalPercent" id="collectiveGoalPercent">—</span>
-          </div>
-          <div class="collectiveGoalTrack" role="progressbar" id="collectiveGoalProgress"
+          <button type="button" class="collectiveGoalToggle" id="collectiveGoalToggle" aria-expanded="false" aria-controls="collectiveGoalDetails">
+          <span class="collectiveGoalHeading">
+            <span id="collectiveGoalTitle" style="font-weight:700;margin-bottom:6px">🎄 Objectif Noël 2026</span>
+            <span class="collectiveGoalPercent" id="collectiveGoalPercent">—</span><span aria-hidden="true" id="collectiveGoalChevron">⌄</span>
+          </span>
+          <span style="display:block" class="collectiveGoalTrack" role="progressbar" id="collectiveGoalProgress"
             aria-label="Progression collective de l’objectif Noël 2026" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div class="collectiveGoalFill" id="collectiveGoalFill">
+            <span class="collectiveGoalFill" id="collectiveGoalFill">
               <span class="collectiveGoalShine" aria-hidden="true"></span>
-            </div>
+            </span>
             <span class="collectiveGoalAmounts">
               <strong id="collectiveGoalAmount">—</strong>
               <span> / <span id="collectiveGoalTarget">14 000 €</span></span>
             </span>
             <span class="collectiveGoalConfetti" id="collectiveGoalConfetti" aria-hidden="true"></span>
-          </div>
+          </span>
+          </button>
           <div class="collectiveGoalFooter">
             <span id="collectiveGoalRemaining">Chargement du total…</span>
             <span id="collectiveGoalSyncState" aria-live="polite"></span>
+          </div>
+          <div class="collectiveGoalDetails" id="collectiveGoalDetails" hidden>
+            <div class="collectiveGoalSeller"><img src="./assets/avatars/anthony.webp" alt="" width="36" height="36"><span>Anthony</span><strong id="collectiveGoalSeller_U_ANTHONY">—</strong></div>
+            <div class="collectiveGoalSeller"><img src="./assets/avatars/jerome.webp" alt="" width="36" height="36"><span>Jérôme</span><strong id="collectiveGoalSeller_U_JEROME">—</strong></div>
+            <div class="collectiveGoalSeller"><img src="./assets/avatars/william.webp" alt="" width="36" height="36"><span>William</span><strong id="collectiveGoalSeller_U_WILL">—</strong></div>
           </div>
         </section>
 
