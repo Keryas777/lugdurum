@@ -79,7 +79,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ inputs.candidate_sha }}"
           for file in apps-script/*.js; do node --check "$file"; done
           node -e 'JSON.parse(require("node:fs").readFileSync("apps-script/appsscript.json", "utf8"))'
-          node --test tests/collective-goal.test.cjs
+          node --test tests/collective-goal.test.cjs tests/apps-script-preflight.test.cjs
 
       - name: Installer clasp et configurer les secrets sans les afficher
         env:
@@ -132,30 +132,10 @@ jobs:
           ' "$RUNNER_TEMP/deployments.txt" "$DEPLOYMENT_ID" "$EXPECTED_VERSION"
           (cd "$REMOTE_CURRENT" && clasp pull)
           (cd "$REMOTE_VERSION" && clasp pull --versionNumber "$EXPECTED_VERSION")
-          node <<'NODE'
-          const fs=require('node:fs'), path=require('node:path'), crypto=require('node:crypto');
-          function files(root, base=root, out={}) {
-            for (const entry of fs.readdirSync(root,{withFileTypes:true})) {
-              if (entry.name === '.clasp.json') continue;
-              const full=path.join(root,entry.name);
-              if (entry.isDirectory()) files(full,base,out);
-              else out[path.relative(base,full)] = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
-            }
-            return out;
-          }
-          const current=files(process.env.RUNNER_TEMP+'/apps-script-current');
-          const deployed=files(process.env.RUNNER_TEMP+'/apps-script-version');
-          const paths=[...new Set([...Object.keys(current),...Object.keys(deployed)])].sort();
-          const divergence=paths.filter(p=>current[p]!==deployed[p]);
-          if (divergence.length) throw new Error('Les sources distantes ne correspondent plus à la version de production attendue: '+divergence.join(', '));
-          console.log('Sources distantes identiques à la version Apps Script attendue.');
-          const candidate=files('candidate/apps-script');
-          const candidatePaths=[...new Set([...Object.keys(deployed),...Object.keys(candidate)])].sort();
-          const changed=candidatePaths.filter(p=>deployed[p]!==candidate[p]).sort();
-          const expected=['01_http_router.js','11_collective_goals.js'];
-          if (JSON.stringify(changed)!==JSON.stringify(expected)) throw new Error('Diff Apps Script inattendu: '+changed.join(', '));
-          console.log('Diff candidat limité au routage collectif et au nouveau module.');
-          NODE
+          node candidate/ops/apps-script-preflight.cjs \
+            --current "$REMOTE_CURRENT" \
+            --production "$REMOTE_VERSION" \
+            --candidate candidate/apps-script
 
       - name: Écrire et publier sur le déploiement existant
         id: publish

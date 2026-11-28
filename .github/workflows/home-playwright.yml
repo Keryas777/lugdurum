@@ -27,6 +27,14 @@ jobs:
       - run: npm ci
       - name: Installer les navigateurs
         run: npx playwright install --with-deps chromium webkit
+      - name: Répéter cinq fois le scénario hors ligne sur WebKit iPhone
+        run: >-
+          npx playwright test tests/e2e/home.spec.cjs
+          --grep 'conserve le dernier agrégat hors ligne'
+          --repeat-each=5
+          --project=webkit-iphone
+          --workers=1
+          --reporter=line
       - name: Tester WebKit mobile, Chromium mobile et desktop
         run: npm run test:e2e:home
       - name: Publier les captures et traces Playwright
