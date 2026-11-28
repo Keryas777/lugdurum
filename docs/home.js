@@ -2321,6 +2321,7 @@
     cacheKey: "lugdurum_collective_goal_cache_v1"
   };
   let collectiveGoalRequest = null;
+  let collectiveGoalRefreshPending = false;
   let collectiveGoalTimer = null;
   let lastCollectiveGoalAmount = null;
   let highestCollectiveGoalMilestone = 0;
@@ -2430,7 +2431,10 @@
 
   const refreshCollectiveGoal = async ({ force = false } = {}) => {
     if (document.visibilityState === "hidden" || !navigator.onLine) return;
-    if (collectiveGoalRequest) return collectiveGoalRequest;
+    if (collectiveGoalRequest) {
+      if (force) collectiveGoalRefreshPending = true;
+      return collectiveGoalRequest;
+    }
     if (typeof api()?.getCollectiveGoal !== "function") {
       renderCollectiveGoal(null);
       return;
@@ -2453,7 +2457,13 @@
         if (cached) renderCollectiveGoal(cached, { cached: true });
         else renderCollectiveGoal(null);
       })
-      .finally(() => { collectiveGoalRequest = null; });
+      .finally(() => {
+        collectiveGoalRequest = null;
+        if (collectiveGoalRefreshPending && document.visibilityState !== "hidden" && navigator.onLine) {
+          collectiveGoalRefreshPending = false;
+          refreshCollectiveGoal({ force: true });
+        }
+      });
 
     return collectiveGoalRequest;
   };
