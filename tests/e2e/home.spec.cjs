@@ -677,15 +677,14 @@ test('la modale vendeur reste en lecture seule et bascule entre total et journé
   await expect.poll(() => page.evaluate(() => window.__LUGDURUM_FIXTURE_STATE__.sellerDetailsCalls.length)).toBe(2);
   await page.locator('#sellerGoalClose').click();
   await expect(page.locator('#sellerGoalOverlay')).toBeHidden();
+  await expect(page.locator('#collectiveGoalDetails')).toBeVisible();
   await page.clock.fastForward(60000);
   expect(await page.evaluate(() => window.__LUGDURUM_FIXTURE_STATE__.sellerDetailsCalls.length)).toBe(2);
-  await page.locator('#collectiveGoalToggle').click();
   await page.locator('[data-seller-id="U_JEROME"]').click();
   await expect(page.locator('#sellerGoalName')).toHaveText('Jérôme');
   await expect(page.locator('[data-period="total"]')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#sellerGoalAvatar')).toHaveAttribute('src', /jerome\.webp$/);
   await page.locator('#sellerGoalClose').click();
-  await page.locator('#collectiveGoalToggle').click();
   await page.locator('[data-seller-id="U_WILL"]').click();
   await expect(page.locator('#sellerGoalName')).toHaveText('William');
   await expect(page.locator('#sellerGoalAvatar')).toHaveAttribute('src', /william\.webp$/);
