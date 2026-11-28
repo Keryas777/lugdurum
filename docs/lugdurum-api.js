@@ -1564,7 +1564,13 @@
         }
       }
 
-      if (!flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
+      if (
+        !flushBeforeRead &&
+        options.schedulePendingFlush !== false &&
+        getPendingWritesCount() > 0 &&
+        isOnline() &&
+        !isFlushing
+      ) {
         scheduleFlush(250);
       }
 
@@ -2857,6 +2863,13 @@
     getCurrentUserId: () => getCurrentUserIdFromRuntime(),
 
     getHomeData,
+    getCollectiveGoal(params = {}, options = {}) {
+      return requestGet(
+        "getCollectiveGoal",
+        { goal_id: params.goal_id || "" },
+        { ...options, flushBeforeRead: false, schedulePendingFlush: false, timeoutMs: options.timeoutMs || 10000 }
+      );
+    },
     getVenteRapideData,
 
     getRecettesData,

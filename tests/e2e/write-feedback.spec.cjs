@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const API_TAG = '<script src="./lugdurum-api.js?v=26" defer></script>';
+const API_TAG = /<script src="\.\/lugdurum-api\.js\?v=\d+" defer><\/script>/;
 
 async function bootWriteFixture(page, control = { kind: 'success' }) {
   await page.addInitScript(() => {
@@ -110,10 +110,11 @@ async function bootWriteFixture(page, control = { kind: 'success' }) {
   await page.route((url) => url.href.includes('/docs/index.html'), async (route) => {
     const response = await route.fetch();
     const source = await response.text();
-    if (!source.includes(API_TAG)) throw new Error('La page d’accueil réelle ne référence pas LugdurumAPI.');
+    const apiTag = source.match(API_TAG)?.[0];
+    if (!apiTag) throw new Error('La page d’accueil réelle ne référence pas LugdurumAPI.');
     await route.fulfill({
       response,
-      body: source.replace(API_TAG, `${API_TAG}\n    <script src="../tests/e2e/api-bootstrap.js" defer></script>`)
+      body: source.replace(API_TAG, `${apiTag}\n    <script src="../tests/e2e/api-bootstrap.js" defer></script>`)
     });
   });
 
