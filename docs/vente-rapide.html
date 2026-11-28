@@ -24,7 +24,7 @@
     <script src="./lugdurum-api.js?v=25" defer></script>
     <script src="./lugdurum-users.js?v=3" defer></script>
     <script src="./lugdurum-day-context.js?v=3" defer></script>
-    <script src="./vente-rapide.js?v=45" defer></script>
+    <script src="./vente-rapide.js?v=46" defer></script>
     <script src="./pwa.js?v=7" defer></script>
   </head>
 
@@ -145,6 +145,17 @@
           </div>
         </section>
 
+        <section class="salePanel" aria-labelledby="catalogTitle">
+          <div class="sectionHeader compact">
+            <div>
+              <p class="sectionKicker" id="catalogKicker">Catalogue</p>
+              <h2 id="catalogTitle">Ajouter un parfum</h2>
+            </div>
+          </div>
+
+          <div class="productGrid" id="productGrid" aria-live="polite"></div>
+        </section>
+
         <section
           class="salePanel packComposer"
           id="packComposer"
@@ -177,17 +188,6 @@
           <button class="btn btnPrimary addPackBtn" type="button" id="addPackBtn" disabled>
             Ajouter le coffret au ticket
           </button>
-        </section>
-
-        <section class="salePanel" aria-labelledby="catalogTitle">
-          <div class="sectionHeader compact">
-            <div>
-              <p class="sectionKicker">Catalogue</p>
-              <h2 id="catalogTitle">Ajouter un parfum</h2>
-            </div>
-          </div>
-
-          <div class="productGrid" id="productGrid" aria-live="polite"></div>
         </section>
 
         <section class="salePanel ticketPanel" aria-labelledby="ticketTitle">
