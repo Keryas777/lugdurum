@@ -698,6 +698,7 @@ test('la modale vendeur reste en lecture seule et bascule entre total et journé
 test('conserve le dernier agrégat hors ligne et signale les ventes en attente de synchronisation', async ({ page, context }) => {
   await page.goto('./index.html');
   await expect(page.locator('#collectiveGoalAmount')).toContainText('0');
+  await context.setOffline(true);
   await page.evaluate(() => {
     window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalUnavailable = true;
     window.localStorage.setItem('lugdurum_pending_writes', JSON.stringify([{ id: 'Q_TEST' }]));
@@ -710,7 +711,6 @@ test('conserve le dernier agrégat hors ligne et signale les ventes en attente d
     detail: { status: 'synced', synced_count: 1, pending_count: 1 }
   })));
   await expect(page.locator('#collectiveGoalSyncState')).toContainText('ventes à synchroniser');
-  await context.setOffline(true);
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(page.locator('#collectiveGoalSyncState')).toContainText('ventes à synchroniser');
 });
