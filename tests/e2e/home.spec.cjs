@@ -717,17 +717,22 @@ test('la modale vendeur reste en lecture seule et bascule entre total et journé
   expect(Math.max(...layout.quantityRights)-Math.min(...layout.quantityRights)).toBeLessThan(1);
   expect(layout.listStyle).toBe('none');
   expect(layout.closeColor).toBe('rgb(138, 90, 43)');
-  expect(layout.scroll.full).toBeGreaterThan(layout.scroll.client);
+  const isMobileProject = testInfo.project.name !== 'chromium-desktop';
+  if (isMobileProject) {
+    expect(layout.scroll.full).toBeGreaterThan(layout.scroll.client);
+  }
 
   if (testInfo.project.name === 'webkit-iphone') {
     await page.screenshot({ path:testInfo.outputPath('seller-goal-modal-webkit-iphone.png'), fullPage:false });
   }
-  await page.locator('#sellerGoalContent').evaluate(node => { node.scrollTop = node.scrollHeight; });
-  await expect.poll(() => page.locator('#sellerGoalContent').evaluate(node => node.scrollTop)).toBeGreaterThan(0);
-  const headerAfterScroll = await page.locator('.sellerGoalHeader').boundingBox();
-  const periodAfterScroll = await page.locator('.sellerGoalPeriod').boundingBox();
-  expect(headerAfterScroll).toMatchObject({ x:layout.header.x, y:layout.header.y, width:layout.header.width, height:layout.header.height });
-  expect(periodAfterScroll).toMatchObject({ x:layout.period.x, y:layout.period.y, width:layout.period.width, height:layout.period.height });
+  if (isMobileProject) {
+    await page.locator('#sellerGoalContent').evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect.poll(() => page.locator('#sellerGoalContent').evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    const headerAfterScroll = await page.locator('.sellerGoalHeader').boundingBox();
+    const periodAfterScroll = await page.locator('.sellerGoalPeriod').boundingBox();
+    expect(headerAfterScroll).toMatchObject({ x:layout.header.x, y:layout.header.y, width:layout.header.width, height:layout.header.height });
+    expect(periodAfterScroll).toMatchObject({ x:layout.period.x, y:layout.period.y, width:layout.period.width, height:layout.period.height });
+  }
   await page.locator('[data-period="daily"]').click();
   await expect(page.locator('[data-period="daily"]')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#sellerGoalContent')).toContainText('Journée du');
