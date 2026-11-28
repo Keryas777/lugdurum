@@ -167,6 +167,22 @@ jobs:
           clasp push --force
           clasp create-deployment --deploymentId "$DEPLOYMENT_ID" --description "GitHub ${{ inputs.candidate_sha }}"
 
+      - name: Enregistrer la version Apps Script publiée
+        if: inputs.action == 'deploy'
+        working-directory: ${{ runner.temp }}/apps-script-current
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_production_version }}
+        run: |
+          DEPLOYMENT_ID=$(cat "$RUNNER_TEMP/production-deployment-id")
+          clasp list-deployments > "$RUNNER_TEMP/deployments-after.txt"
+          node -e '
+            const fs=require("node:fs"), lines=fs.readFileSync(process.argv[1],"utf8").split(/\\r?\\n/);
+            const line=lines.find(value=>value.includes(process.argv[2]));
+            const match=line && line.match(/@\\s*(\\d+)\\b/);
+            if(!match || Number(match[1])<=Number(process.argv[3])) throw new Error("La nouvelle version publiée n’a pas été confirmée.");
+            console.log("Version Apps Script: "+process.argv[3]+" → "+match[1]);
+          ' "$RUNNER_TEMP/deployments-after.txt" "$DEPLOYMENT_ID" "$EXPECTED_VERSION"
+
       - name: Vérifier les lectures de production sans écriture de données
         if: inputs.action == 'deploy'
         run: |
