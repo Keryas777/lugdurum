@@ -612,6 +612,7 @@ test('la progression collective reste commune, compacte, non cliquable et anime 
       }));
     }, amount);
     await expect(page.locator('#collectiveGoalPercent')).toHaveText(percent);
+    await page.waitForFunction(() => window.__LUGDURUM_FIXTURE_STATE__.collectiveGoalRequestsInFlight === 0);
     await expect(page.locator('#collectiveGoal')).toHaveClass(new RegExp(milestone));
   }
 
