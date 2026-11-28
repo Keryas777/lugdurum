@@ -45,7 +45,7 @@ const makeHarness = ({
     getPendingWritesCount() { return pendingWrites; },
     getLegacyPendingTransactions() { return []; }
   };
-  const window = { LugdurumAPI: api };
+  const window = { LugdurumAPI: api, setTimeout: (callback, delay) => setTimeout(callback, delay) };
   vm.runInNewContext(source, {
     window,
     localStorage: storage,
@@ -148,6 +148,7 @@ const day = (journee_id, mission_id, stock_mission_id = "MST-1") => ({ journee_i
     const first = h.cleanup.run();
     const concurrent = h.cleanup.run();
     assert.equal(first, concurrent, "les appels concurrents partagent le même nettoyage");
+    assert.equal(h.apiCalls, 0, "le nettoyage est différé hors du chemin de rendu");
     await Promise.all([first, concurrent]);
     assert.equal(h.apiCalls, 4, "un seul lot de lectures de vérification est lancé");
   }
@@ -182,6 +183,12 @@ const day = (journee_id, mission_id, stock_mission_id = "MST-1") => ({ journee_i
     assert.doesNotMatch(page, /LugdurumSalesCacheCleanup\?\.run\(\)/, `${file} must not trigger redundant maintenance reads`);
     assert.doesNotMatch(page, /writeJson\(CACHE_KEYS\.(transactions|ventesLignes),/, `${file} must not refill the operational caches`);
   }
+  const closureSource = fs.readFileSync(path.join(__dirname, "../docs/cloture.js"), "utf8");
+  const coreCacheWriter = closureSource.match(/const cacheCoreData = \(\) => \{([\s\S]*?)\n  \};/)?.[1] || "";
+  assert.doesNotMatch(coreCacheWriter, /STORAGE_KEYS\.ventesLignes/, "la consultation de clôture ne doit pas réintroduire les lignes historiques dans le cache opérationnel");
+  assert.match(closureSource, /status === "cloturee" && patch\?\.allClosed === true[\s\S]*?LugdurumSalesCacheCleanup\?\.run\(\)/, "le nettoyage reste déclenché après confirmation de clôture de mission");
+  const homeSource = fs.readFileSync(path.join(__dirname, "../docs/home.js"), "utf8");
+  assert.match(homeSource, /LugdurumSalesCacheCleanup\?\.run\(\)/, "l'accueil lance automatiquement la maintenance après récupération réussie");
   for (const file of ["dashboard.js", "stats-annee.js", "stats-evenements.js", "stats-produits.js", "journees-cloturees.js"]) {
     const page = fs.readFileSync(path.join(__dirname, `../docs/${file}`), "utf8");
     assert.match(page, /LugdurumSalesCacheCleanup\?\.isPartial\(\)/, `${file} must not treat partial cache as full history`);

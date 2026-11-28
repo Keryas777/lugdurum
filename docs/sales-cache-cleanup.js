@@ -228,7 +228,14 @@
   let inFlight = null;
   const run = () => {
     if (inFlight) return inFlight;
-    inFlight = clean().finally(() => { inFlight = null; });
+    inFlight = new Promise((resolve) => {
+      const start = () => { clean().then(resolve); };
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(start, { timeout: 1500 });
+      } else {
+        window.setTimeout(start, 0);
+      }
+    }).finally(() => { inFlight = null; });
     return inFlight;
   };
 

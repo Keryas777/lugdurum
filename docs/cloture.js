@@ -1970,7 +1970,6 @@
     writeJson(STORAGE_KEYS.events, state.events);
     writeJson(STORAGE_KEYS.stockMissions, state.stockMissions);
     writeJson(STORAGE_KEYS.journees, state.journees);
-    writeJson(STORAGE_KEYS.ventesLignes, state.ventesLignes);
     writeJson(STORAGE_KEYS.frais, state.frais);
     writeJson(STORAGE_KEYS.mouvementsStock, state.mouvementsStock);
     writeJson(STORAGE_KEYS.clotures, state.clotures);
