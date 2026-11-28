@@ -196,6 +196,9 @@ function invokeGetAction_(action, params) {
   if (action === "getCollectiveGoal") {
     return callRequiredFunction_("getCollectiveGoal_", params);
   }
+  if (action === "getCollectiveGoalSellerDetails") {
+    return callRequiredFunction_("getCollectiveGoalSellerDetails_", params);
+  }
 
   if (action === "getRecettesData") {
     const view = String(params.view || params.vue || "dashboard").trim();

@@ -40,6 +40,15 @@
 .page-home .collectiveGoalSeller { display:flex; align-items:center; gap:10px; padding:5px 0; color:#1f1b16; }
 .page-home .collectiveGoalSeller img { width:36px; height:36px; border-radius:50%; object-fit:cover; }
 .page-home .collectiveGoalSeller strong { margin-left:auto; font-variant-numeric:tabular-nums; }
+.page-home .collectiveGoalSellerBtn { display:flex; align-items:center; width:100%; gap:10px; padding:5px 0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.page-home .collectiveGoalSellerAmounts { display:flex; flex-direction:column; align-items:flex-end; margin-left:auto; font-variant-numeric:tabular-nums; }
+.page-home .collectiveGoalSellerDaily { color:#8a5a2b; font-size:.82em; font-style:italic; }
+.sellerGoalOverlay[hidden] { display:none; }.sellerGoalOverlay { position:fixed; z-index:1000; inset:0; display:grid; place-items:end center; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); background:rgba(20,17,13,.58); }
+.sellerGoalDialog { display:flex; flex-direction:column; width:min(100%,620px); max-height:min(88vh,900px); max-height:min(88dvh,900px); overflow:hidden; border-radius:22px 22px 0 0; background:#f6f1e8; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+.page-home.saleDetailsOpen { overflow:hidden; }
+.sellerGoalHeader { display:flex; align-items:center; gap:12px; padding:16px; border-bottom:1px solid #dfd2bd; }.sellerGoalHeader img { width:48px;height:48px;border-radius:50%;object-fit:cover; }.sellerGoalHeaderCopy{flex:1}.sellerGoalHeaderCopy p,.sellerGoalHeaderCopy h2{margin:0}.sellerGoalClose{min-width:40px;min-height:40px;border:0;border-radius:50%;background:#e8dcc8;font-size:1.25rem}
+.sellerGoalPeriod{display:flex;gap:8px;padding:12px 16px}.sellerGoalPeriod button{flex:1;min-height:42px;border:1px solid #a88f68;border-radius:999px;background:#fffaf1;color:#1f1b16;font-weight:700}.sellerGoalPeriod button[aria-pressed=true]{background:#a88f68;color:#fff}
+.sellerGoalContent{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 16px 24px}.sellerGoalRevenueLabel{text-align:center;margin:2px 0 0;color:#625744;font-size:.82rem}.sellerGoalRevenue{text-align:center;font-size:1.7rem;font-weight:800}.sellerGoalPayGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.sellerGoalPayCard,.sellerGoalFormat{padding:12px;border-radius:14px;background:#eadbc3}.sellerGoalFormat.is20{background:#e0eadf}
 .page-home .collectiveGoalHeading,.page-home .collectiveGoalFooter { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .page-home .collectiveGoalHeading h2 { margin:0 0 6px; font-size:1rem; color:#30271c; }
 .page-home .collectiveGoalPercent { margin-bottom:6px; font-size:.82rem; font-weight:800; color:#514330; }
@@ -63,11 +72,11 @@
 @media (prefers-reduced-motion: reduce) { .page-home .collectiveGoal *, .page-home .collectiveGoal *::before { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
 </style>
 
-    <script src="./lugdurum-api.js?v=27" defer></script>
+    <script src="./lugdurum-api.js?v=28" defer></script>
     <script src="./sales-cache-cleanup.js?v=1" defer></script>
     <script src="./lugdurum-users.js?v=3" defer></script>
     <script src="./lugdurum-day-context.js?v=3" defer></script>
-    <script src="./home.js?v=34" defer></script>
+    <script src="./home.js?v=35" defer></script>
     <script src="./pwa.js?v=16" defer></script>
   </head>
 
@@ -131,12 +140,13 @@
             <span id="collectiveGoalSyncState" aria-live="polite"></span>
           </div>
           <div class="collectiveGoalDetails" id="collectiveGoalDetails" hidden>
-            <div class="collectiveGoalSeller"><img src="./assets/avatars/anthony.webp" alt="" width="36" height="36"><span>Anthony</span><strong id="collectiveGoalSeller_U_ANTHONY">—</strong></div>
-            <div class="collectiveGoalSeller"><img src="./assets/avatars/jerome.webp" alt="" width="36" height="36"><span>Jérôme</span><strong id="collectiveGoalSeller_U_JEROME">—</strong></div>
-            <div class="collectiveGoalSeller"><img src="./assets/avatars/william.webp" alt="" width="36" height="36"><span>William</span><strong id="collectiveGoalSeller_U_WILL">—</strong></div>
+            <div class="collectiveGoalSeller"><button class="collectiveGoalSellerBtn" data-seller-id="U_ANTHONY" type="button"><img src="./assets/avatars/anthony.webp" alt="" width="36" height="36"><span>Anthony</span><span class="collectiveGoalSellerAmounts"><strong id="collectiveGoalSeller_U_ANTHONY">—</strong><small class="collectiveGoalSellerDaily" id="collectiveGoalDaily_U_ANTHONY">(—)</small></span><span aria-hidden="true">›</span></button></div>
+            <div class="collectiveGoalSeller"><button class="collectiveGoalSellerBtn" data-seller-id="U_JEROME" type="button"><img src="./assets/avatars/jerome.webp" alt="" width="36" height="36"><span>Jérôme</span><span class="collectiveGoalSellerAmounts"><strong id="collectiveGoalSeller_U_JEROME">—</strong><small class="collectiveGoalSellerDaily" id="collectiveGoalDaily_U_JEROME">(—)</small></span><span aria-hidden="true">›</span></button></div>
+            <div class="collectiveGoalSeller"><button class="collectiveGoalSellerBtn" data-seller-id="U_WILL" type="button"><img src="./assets/avatars/william.webp" alt="" width="36" height="36"><span>William</span><span class="collectiveGoalSellerAmounts"><strong id="collectiveGoalSeller_U_WILL">—</strong><small class="collectiveGoalSellerDaily" id="collectiveGoalDaily_U_WILL">(—)</small></span><span aria-hidden="true">›</span></button></div>
           </div>
         </section>
 
+        <section class="sellerGoalOverlay" id="sellerGoalOverlay" role="dialog" aria-modal="true" aria-labelledby="sellerGoalName" hidden><div class="sellerGoalDialog"><header class="sellerGoalHeader"><img id="sellerGoalAvatar" alt=""><div class="sellerGoalHeaderCopy"><p>Objectif Noël 2026</p><h2 id="sellerGoalName"></h2></div><button class="sellerGoalClose" id="sellerGoalClose" type="button" aria-label="Fermer">×</button></header><div class="sellerGoalPeriod" role="group" aria-label="Période consultée"><button data-period="total" aria-pressed="true" type="button">Total</button><button data-period="daily" aria-pressed="false" type="button">Journée en cours</button></div><div class="sellerGoalContent" id="sellerGoalContent" aria-live="polite"><p>Chargement des ventes…</p></div></div></section>
         <section class="statusHero" id="statusHero" aria-labelledby="missionTitle">
           <div class="statusTopline">
             <span class="liveDot" id="liveDot" aria-hidden="true"></span>
