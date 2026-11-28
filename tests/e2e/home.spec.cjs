@@ -129,7 +129,23 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
       getCollectiveGoalSellerDetails({ seller_id }) {
         fixtureState.sellerDetailsCalls.push(seller_id);
         return Promise.resolve({ available:true, seller_id, daily_date:'2026-11-28', periods:{
-          total:{revenue:463.86,card:300,cash:150,other:13.86,bottles:{'50':2,'20':3},products:[{format_cl:50,code:'VB',name:'Vanille Bleue',quantity:2},{format_cl:20,code:'AT',name:'Abricot Tonka',quantity:3}]},
+          total:{revenue:12345.67,card:11234.56,cash:1111.11,other:0,bottles:{'50':10,'20':8},products:[
+            {format_cl:50,code:'VB',name:'Vanille Bleue',quantity:1},
+            {format_cl:50,code:'MV',name:'Mirabelle Vanille',quantity:1},
+            {format_cl:50,code:'VT',name:'Vanille Tonka',quantity:1},
+            {format_cl:50,code:'CG',name:'Citron Gingembre',quantity:1},
+            {format_cl:50,code:'AT',name:'Abricot Tonka',quantity:1},
+            {format_cl:50,code:'PR',name:'Pomelo Romarin',quantity:1},
+            {format_cl:50,code:'LP',name:'Litchi Poivre de Sichuan',quantity:1},
+            {format_cl:50,code:'FP',name:'Framboise Passion',quantity:1},
+            {format_cl:50,code:'PE',name:'Pain d’Épices',quantity:1},
+            {format_cl:50,code:'OC',name:'Orange Cannelle',quantity:1},
+            {format_cl:20,code:'FP',name:'Framboise Passion',quantity:3},
+            {format_cl:20,code:'LP',name:'Litchi Poivre de Sichuan',quantity:2},
+            {format_cl:20,code:'PR',name:'Pomelo Romarin',quantity:1},
+            {format_cl:20,code:'OC',name:'Orange Cannelle',quantity:1},
+            {format_cl:20,code:'VB',name:'Vanille Bleue',quantity:1}
+          ]},
           daily:{revenue:46.12,card:40,cash:6.12,other:0,bottles:{'50':1,'20':0},products:[{format_cl:50,code:'VB',name:'Vanille Bleue',quantity:1}]}
         }});
       },
@@ -660,7 +676,7 @@ test('la progression collective reste commune, compacte et anime les jalons sans
   await expect(page.locator('#collectiveGoal')).not.toHaveClass(/is-pulse|is-double-shine|is-halo/);
 });
 
-test('la modale vendeur reste en lecture seule et bascule entre total et journée', async ({ page }) => {
+test('la modale vendeur reste en lecture seule et bascule entre total et journée', async ({ page }, testInfo) => {
   await page.clock.install();
   await page.goto('./index.html');
   const selectedDayBeforeConsultation = await page.locator('#homeDaySelect').inputValue();
@@ -668,8 +684,55 @@ test('la modale vendeur reste en lecture seule et bascule entre total et journé
   await page.locator('[data-seller-id="U_ANTHONY"]').click();
   await expect(page.locator('#sellerGoalOverlay')).toBeVisible();
   await expect(page.locator('#sellerGoalName')).toHaveText('Anthony');
-  await expect(page.locator('#sellerGoalContent')).toContainText('463,86');
+  await expect(page.locator('#sellerGoalContent')).toContainText('12\u202f345,67');
   await expect(page.locator('#sellerGoalContent')).toContainText('Vanille Bleue');
+
+  const layout = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('.sellerGoalPayCard')];
+    const rows = [...document.querySelectorAll('.sellerGoalProductRow')];
+    const list = document.querySelector('.sellerGoalProductList');
+    const close = document.querySelector('.sellerGoalClose');
+    const box = element => { const r = element.getBoundingClientRect(); return { x:r.x, y:r.y, right:r.right, bottom:r.bottom, width:r.width, height:r.height }; };
+    return {
+      columns: cards.map(box),
+      cardDirection: cards.map(node => getComputedStyle(node).flexDirection),
+      labelAndAmount: cards.map(node => [box(node.querySelector('span')), box(node.querySelector('strong'))]),
+      amountOverflow: cards.map(node => node.querySelector('strong').scrollWidth > node.querySelector('strong').clientWidth),
+      rowColumns: rows.map(node => getComputedStyle(node).gridTemplateColumns.split(' ').length),
+      codeWidths: [...document.querySelectorAll('.sellerGoalProductCode')].map(node => box(node).width),
+      quantityRights: [...document.querySelectorAll('.sellerGoalProductQuantity')].map(node => box(node).right),
+      listStyle: getComputedStyle(list).listStyleType,
+      closeColor: getComputedStyle(close).color,
+      scroll: { client: document.querySelector('#sellerGoalContent').clientHeight, full: document.querySelector('#sellerGoalContent').scrollHeight },
+      header: box(document.querySelector('.sellerGoalHeader')),
+      period: box(document.querySelector('.sellerGoalPeriod'))
+    };
+  });
+  expect(layout.cardDirection).toEqual(['column','column']);
+  expect(layout.columns[0].right).toBeLessThanOrEqual(layout.columns[1].x + 1);
+  expect(layout.labelAndAmount.every(([label, amount]) => amount.y >= label.bottom + 4)).toBe(true);
+  expect(layout.amountOverflow).toEqual([false,false]);
+  expect(layout.rowColumns.every(columns => columns === 3)).toBe(true);
+  expect(new Set(layout.codeWidths).size).toBe(1);
+  expect(Math.max(...layout.quantityRights)-Math.min(...layout.quantityRights)).toBeLessThan(1);
+  expect(layout.listStyle).toBe('none');
+  expect(layout.closeColor).toBe('rgb(138, 90, 43)');
+  const isMobileProject = testInfo.project.name !== 'chromium-desktop';
+  if (isMobileProject) {
+    expect(layout.scroll.full).toBeGreaterThan(layout.scroll.client);
+  }
+
+  if (testInfo.project.name === 'webkit-iphone') {
+    await page.screenshot({ path:testInfo.outputPath('seller-goal-modal-webkit-iphone.png'), fullPage:false });
+  }
+  if (isMobileProject) {
+    await page.locator('#sellerGoalContent').evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect.poll(() => page.locator('#sellerGoalContent').evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    const headerAfterScroll = await page.locator('.sellerGoalHeader').boundingBox();
+    const periodAfterScroll = await page.locator('.sellerGoalPeriod').boundingBox();
+    expect(headerAfterScroll).toMatchObject({ x:layout.header.x, y:layout.header.y, width:layout.header.width, height:layout.header.height });
+    expect(periodAfterScroll).toMatchObject({ x:layout.period.x, y:layout.period.y, width:layout.period.width, height:layout.period.height });
+  }
   await page.locator('[data-period="daily"]').click();
   await expect(page.locator('[data-period="daily"]')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#sellerGoalContent')).toContainText('Journée du');

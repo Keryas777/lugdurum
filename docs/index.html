@@ -43,12 +43,64 @@
 .page-home .collectiveGoalSellerBtn { display:flex; align-items:center; width:100%; gap:10px; padding:5px 0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
 .page-home .collectiveGoalSellerAmounts { display:flex; flex-direction:column; align-items:flex-end; margin-left:auto; font-variant-numeric:tabular-nums; }
 .page-home .collectiveGoalSellerDaily { color:#8a5a2b; font-size:.82em; font-style:italic; }
-.sellerGoalOverlay[hidden] { display:none; }.sellerGoalOverlay { position:fixed; z-index:1000; inset:0; display:grid; place-items:end center; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); background:rgba(20,17,13,.58); }
-.sellerGoalDialog { display:flex; flex-direction:column; width:min(100%,620px); max-height:min(88vh,900px); max-height:min(88dvh,900px); overflow:hidden; border-radius:22px 22px 0 0; background:#f6f1e8; box-shadow:0 12px 40px rgba(0,0,0,.25); }
-.page-home.saleDetailsOpen { overflow:hidden; }
-.sellerGoalHeader { display:flex; align-items:center; gap:12px; padding:16px; border-bottom:1px solid #dfd2bd; }.sellerGoalHeader img { width:48px;height:48px;border-radius:50%;object-fit:cover; }.sellerGoalHeaderCopy{flex:1}.sellerGoalHeaderCopy p,.sellerGoalHeaderCopy h2{margin:0}.sellerGoalClose{min-width:40px;min-height:40px;border:0;border-radius:50%;background:#e8dcc8;font-size:1.25rem}
-.sellerGoalPeriod{display:flex;gap:8px;padding:12px 16px}.sellerGoalPeriod button{flex:1;min-height:42px;border:1px solid #a88f68;border-radius:999px;background:#fffaf1;color:#1f1b16;font-weight:700}.sellerGoalPeriod button[aria-pressed=true]{background:#a88f68;color:#fff}
-.sellerGoalContent{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 16px 24px}.sellerGoalRevenueLabel{text-align:center;margin:2px 0 0;color:#625744;font-size:.82rem}.sellerGoalRevenue{text-align:center;font-size:1.7rem;font-weight:800}.sellerGoalPayGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.sellerGoalPayCard,.sellerGoalFormat{padding:12px;border-radius:14px;background:#eadbc3}.sellerGoalFormat.is20{background:#e0eadf}
+.sellerGoalOverlay[hidden] { display:none; }
+.sellerGoalOverlay {
+  position:fixed;
+  z-index:10050;
+  inset:0;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  box-sizing:border-box;
+  padding:max(12px,env(safe-area-inset-top)) max(0px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(0px,env(safe-area-inset-left));
+  background:rgba(20,17,13,.58);
+  overscroll-behavior:contain;
+}
+.sellerGoalDialog {
+  display:flex;
+  flex-direction:column;
+  width:min(100%,620px);
+  max-height:calc(100vh - 24px);
+  max-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)));
+  overflow:hidden;
+  border-radius:22px 22px 0 0;
+  background:#f6f1e8;
+  box-shadow:0 12px 40px rgba(0,0,0,.25);
+}
+.page-home.saleDetailsOpen { overflow:hidden; overscroll-behavior:none; }
+.sellerGoalHeader { display:flex; flex:0 0 auto; align-items:center; gap:12px; padding:16px; border-bottom:1px solid #dfd2bd; }
+.sellerGoalHeader img { width:48px; height:48px; flex:0 0 48px; border-radius:50%; object-fit:cover; }
+.sellerGoalHeaderCopy { flex:1; min-width:0; }
+.sellerGoalHeaderCopy p,.sellerGoalHeaderCopy h2 { margin:0; }
+.sellerGoalClose { display:grid; flex:0 0 40px; place-items:center; width:40px; min-width:40px; min-height:40px; padding:0; border:0; border-radius:50%; background:#e8dcc8; color:#8a5a2b; font:700 1.5rem/1 system-ui,sans-serif; cursor:pointer; }
+.sellerGoalClose:focus-visible { outline:3px solid #8a5a2b; outline-offset:2px; }
+.sellerGoalPeriod { display:flex; flex:0 0 auto; gap:8px; padding:12px 16px; }
+.sellerGoalPeriod button { flex:1; min-width:0; min-height:42px; padding:8px 10px; border:1px solid #a88f68; border-radius:999px; background:#fffaf1; color:#1f1b16; font-weight:700; }
+.sellerGoalPeriod button[aria-pressed=true] { background:#a88f68; color:#fff; }
+.sellerGoalContent { min-height:0; flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:0 16px 20px; }
+.sellerGoalRevenueLabel { margin:2px 0 3px; color:#625744; font-size:.82rem; text-align:center; }
+.sellerGoalRevenue { margin-bottom:10px; font-size:1.7rem; font-weight:800; line-height:1.2; text-align:center; font-variant-numeric:tabular-nums; }
+.sellerGoalPayGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.sellerGoalPayCard { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:7px; padding:11px 12px; border-radius:14px; background:#eadbc3; color:#514330; font-size:.84rem; line-height:1.25; }
+.sellerGoalPayCard strong { display:block; max-width:100%; color:#1f1b16; font-size:clamp(.82rem,4.2vw,1.05rem); font-weight:800; line-height:1.2; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sellerGoalFormats { display:grid; gap:10px; margin-top:12px; }
+.sellerGoalFormat { min-width:0; padding:10px 12px; border-radius:14px; background:#eadbc3; }
+.sellerGoalFormat.is20 { background:#e0eadf; }
+.sellerGoalFormatHeading { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:0 0 5px; color:#30271c; font-size:.9rem; line-height:1.25; }
+.sellerGoalFormatHeading span:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+.sellerGoalProductList { margin:0; padding:0; list-style:none; }
+.sellerGoalProductRow { display:grid; grid-template-columns:34px minmax(0,1fr) auto; align-items:center; gap:8px; min-height:32px; padding:4px 0; border-top:1px solid rgba(94,76,48,.16); }
+.sellerGoalProductCode { display:inline-flex; width:34px; min-height:22px; align-items:center; justify-content:center; border-radius:7px; background:#fffaf1; color:#514330; font-size:.68rem; font-weight:800; line-height:1; }
+.sellerGoalProductName { min-width:0; color:#1f1b16; font-size:.84rem; line-height:1.25; overflow-wrap:anywhere; }
+.sellerGoalProductQuantity { min-width:2.5em; color:#8a5a2b; font-size:.9rem; font-weight:800; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sellerGoalEmpty { margin:5px 0 0; color:#625b50; font-size:.8rem; }
+.sellerGoalNotice { margin:8px 0; color:#625b50; font-size:.84rem; }
+@media (max-width:360px) {
+  .sellerGoalHeader,.sellerGoalPeriod { padding-right:12px; padding-left:12px; }
+  .sellerGoalContent { padding-right:12px; padding-left:12px; }
+  .sellerGoalPayGrid { gap:8px; }
+  .sellerGoalPayCard { padding:10px; }
+}
 .page-home .collectiveGoalHeading,.page-home .collectiveGoalFooter { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .page-home .collectiveGoalHeading h2 { margin:0 0 6px; font-size:1rem; color:#30271c; }
 .page-home .collectiveGoalPercent { margin-bottom:6px; font-size:.82rem; font-weight:800; color:#514330; }
@@ -76,7 +128,7 @@
     <script src="./sales-cache-cleanup.js?v=1" defer></script>
     <script src="./lugdurum-users.js?v=3" defer></script>
     <script src="./lugdurum-day-context.js?v=3" defer></script>
-    <script src="./home.js?v=35" defer></script>
+    <script src="./home.js?v=36" defer></script>
     <script src="./pwa.js?v=16" defer></script>
   </head>
 
