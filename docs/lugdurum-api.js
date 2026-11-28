@@ -1552,8 +1552,9 @@
   const requestGet = async (action, params = {}, options = {}) => {
     const startedAt = Date.now();
     const flushBeforeRead = options.flushBeforeRead !== false;
+    const maintenance = options.maintenance === true;
 
-    markDataRefreshing(action);
+    if (!maintenance) markDataRefreshing(action);
 
     try {
       if (flushBeforeRead && getPendingWritesCount() > 0 && isOnline() && !isFlushing) {
@@ -1565,6 +1566,7 @@
       }
 
       if (
+        !maintenance &&
         !flushBeforeRead &&
         options.schedulePendingFlush !== false &&
         getPendingWritesCount() > 0 &&
@@ -1580,11 +1582,11 @@
         options.timeoutMs || 15000
       );
 
-      markDataOnline(action, Date.now() - startedAt);
+      if (!maintenance) markDataOnline(action, Date.now() - startedAt);
 
       return data;
     } catch (error) {
-      markDataLocalAfterReadError(action, error);
+      if (!maintenance) markDataLocalAfterReadError(action, error);
       throw error;
     }
   };
@@ -2943,15 +2945,15 @@
 
     saveMission,
 
-    getMissionsStock() {
-      return requestGet("getMissionsStock");
+    getMissionsStock(options = {}) {
+      return requestGet("getMissionsStock", {}, options.maintenance ? { ...options, flushBeforeRead: false } : options);
     },
 
     saveMissionStock,
     saveMissionStockBundle,
 
-    getJournees() {
-      return requestGet("getJournees");
+    getJournees(options = {}) {
+      return requestGet("getJournees", {}, options.maintenance ? { ...options, flushBeforeRead: false } : options);
     },
 
     getJourneesVente() {
@@ -2991,12 +2993,12 @@
       );
     },
 
-    getTransactions() {
-      return requestGet("getTransactions");
+    getTransactions(options = {}) {
+      return requestGet("getTransactions", {}, options.maintenance ? { ...options, flushBeforeRead: false } : options);
     },
 
-    getVentesLignes() {
-      return requestGet("getVentesLignes");
+    getVentesLignes(options = {}) {
+      return requestGet("getVentesLignes", {}, options.maintenance ? { ...options, flushBeforeRead: false } : options);
     },
 
     saveTransaction,
