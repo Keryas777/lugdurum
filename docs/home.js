@@ -1383,6 +1383,8 @@
     }
 
     if (!isCurrent() || !data) return null;
+    void window.LugdurumSalesCacheCleanup?.run();
+    if (!isCurrent()) return null;
     const rawCounts = data.__rawCounts || {};
 
     if (state.lastHomePayload) {
