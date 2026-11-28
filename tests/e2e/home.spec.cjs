@@ -138,7 +138,29 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
   }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy });
   page.__fixtureExternalRequests = [];
   page.on('request', request => {
-    if (new URL(request.url()).origin !== 'http://127.0.0.1:4173') page.__fixtureExternalRequests.push(request.url());
+    const requestUrl = new URL(request.url());
+    if (requestUrl.origin !== 'http://127.0.0.1:4173') {
+      page.__fixtureExternalRequests.push(request.url());
+      const safeParams = {};
+      for (const key of ['action', 'goal_id', 'view', 'mode']) {
+        if (requestUrl.searchParams.has(key)) safeParams[key] = requestUrl.searchParams.get(key);
+      }
+      const details = {
+        method: request.method(),
+        action: safeParams.action || '(absent)',
+        params: safeParams,
+        at: new Date().toISOString(),
+        context: request.frame()?.url() || page.url()
+      };
+      page.evaluate(() => ({
+        online: navigator.onLine,
+        pendingWrites: (() => {
+          try { return JSON.parse(localStorage.getItem('lugdurum_pending_writes') || '[]').length; }
+          catch { return 'unreadable'; }
+        })()
+      })).then(state => console.log('[E2E external API request]', JSON.stringify({ ...details, ...state })))
+        .catch(() => console.log('[E2E external API request]', JSON.stringify({ ...details, online: 'page-unavailable' })));
+    }
   });
   await page.route('**/*', async route => {
     if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4173') {
