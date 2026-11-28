@@ -92,6 +92,7 @@ jobs:
           printf '%s' "$CLASP_CREDENTIALS_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
           printf '%s' "$APPS_SCRIPT_ID" > "$RUNNER_TEMP/apps-script-id"
+          node -e 'require("node:fs").writeFileSync("candidate/.clasp.json", JSON.stringify({scriptId:process.env.APPS_SCRIPT_ID,rootDir:"apps-script"}))'
           unset CLASP_CREDENTIALS_JSON APPS_SCRIPT_ID
 
       - name: Vérifier l'URL API, le déploiement et les sources distantes avant toute écriture
@@ -159,7 +160,7 @@ jobs:
       - name: Écrire et publier sur le déploiement existant
         id: publish
         if: inputs.action == 'deploy'
-        working-directory: candidate/apps-script
+        working-directory: candidate
         run: |
           echo "write_started=true" >> "$GITHUB_OUTPUT"
           DEPLOYMENT_ID=$(cat "$RUNNER_TEMP/production-deployment-id")
