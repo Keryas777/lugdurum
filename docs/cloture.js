@@ -1711,6 +1711,9 @@
       upsertClosureLocal(closure);
       upsertMovementsLocal(movements);
       if (patch) applyDayAndMissionPatchLocal(patch);
+      if (status === "cloturee" && patch?.allClosed === true && getPendingWritesCount() === 0) {
+        void window.LugdurumSalesCacheCleanup?.run();
+      }
       cacheTargetedClosureData();
 
       const pendingCount = getPendingWritesCount();
@@ -1967,11 +1970,9 @@
     writeJson(STORAGE_KEYS.events, state.events);
     writeJson(STORAGE_KEYS.stockMissions, state.stockMissions);
     writeJson(STORAGE_KEYS.journees, state.journees);
-    writeJson(STORAGE_KEYS.ventesLignes, state.ventesLignes);
     writeJson(STORAGE_KEYS.frais, state.frais);
     writeJson(STORAGE_KEYS.mouvementsStock, state.mouvementsStock);
     writeJson(STORAGE_KEYS.clotures, state.clotures);
-    writeJson(STORAGE_KEYS.transactionsCache, state.allTransactions);
   };
 
   const cacheTargetedClosureData = () => {

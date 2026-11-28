@@ -151,16 +151,15 @@ function startClosedDaysWithStorage({ failCache = "", apiFails = false, identica
   };
 }
 
-test("Safari plein : les données API restent affichées et aucune vente en attente n'est effacée", async () => {
+test("Safari plein : les ventes distantes restent affichées sans réécrire le cache des historiques", async () => {
   const h = startClosedDaysWithStorage({ failCache: "lugdurum_transactions_cache" });
   await h.init();
   assert.equal(h.state.source, "api");
   assert.equal(h.state.transactions[0].transaction_id, "TX_ONLINE");
-  assert.match(h.status.textContent, /Données en ligne à jour/);
-  assert.match(h.status.textContent, /Cache local indisponible/);
   assert.doesNotMatch(h.status.textContent, /API indisponible/);
   assert.equal(JSON.parse(h.memory.get("lugdurum_pending_writes"))[0].id, "VENTE_A_SYNC");
-  assert.equal(h.memory.get("lugdurum_ventes_lignes_cache"), "[]");
+  assert.equal(h.memory.has("lugdurum_transactions_cache"), false);
+  assert.equal(h.memory.has("lugdurum_ventes_lignes_cache"), false);
 });
 
 test("Cache inchangé : ne réécrit pas sept historiques sur iOS", async () => {
