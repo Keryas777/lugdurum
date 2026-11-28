@@ -62,8 +62,9 @@ function getCollectiveGoal_(params) {
       return Boolean(dayIds[String(row && row.journee_id || "").trim()]);
     });
   var eligible = transactions.filter(isCollectiveGoalTransactionEligible_);
+  var contributions = { U_ANTHONY: 0, U_JEROME: 0, U_WILL: 0 };
   var amount = eligible.reduce(function (total, transaction) {
-    return total + collectiveGoalToNumber_(
+    var value = collectiveGoalToNumber_(
       transaction.total_encaisse_ttc != null && transaction.total_encaisse_ttc !== ""
         ? transaction.total_encaisse_ttc
         : transaction.total_encaisse != null && transaction.total_encaisse !== ""
@@ -73,7 +74,13 @@ function getCollectiveGoal_(params) {
             : transaction.total_catalogue,
       0
     );
+    var userId = String(transaction.user_id || "").trim();
+    if (Object.prototype.hasOwnProperty.call(contributions, userId)) contributions[userId] += value;
+    return total + value;
   }, 0);
+  Object.keys(contributions).forEach(function (id) {
+    contributions[id] = Math.round((contributions[id] + Number.EPSILON) * 100) / 100;
+  });
   amount = Math.round((amount + Number.EPSILON) * 100) / 100;
 
   return {
@@ -84,6 +91,7 @@ function getCollectiveGoal_(params) {
     ends_on: goal.ends_on,
     target: goal.target,
     amount: amount,
+    contributions: contributions,
     percent: Math.floor(amount / goal.target * 100),
     remaining: Math.max(0, Math.round((goal.target - amount + Number.EPSILON) * 100) / 100),
     eligible_day_count: goal.journee_ids.length,

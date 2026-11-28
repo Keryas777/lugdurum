@@ -105,3 +105,16 @@ test("refuse un identifiant d'objectif inconnu", () => {
   vm.runInNewContext(source, context);
   assert.throws(() => context.getCollectiveGoal_({ goal_id: "inconnu" }), /Objectif collectif inconnu/);
 });
+
+test("contributions par identifiant officiel, corrections et zéro vendeur", () => {
+  const result = calculate([
+    transaction("A", FIRST_DAY, 12.34, { user_id: "U_ANTHONY" }),
+    transaction("J", SECOND_DAY, 20, { user_id: "U_JEROME" }),
+    transaction("J", SECOND_DAY, 15.67, { user_id: "U_JEROME", updated_at: "2026-11-28T11:00:00.000Z" }),
+    transaction("W", SECOND_DAY, 100, { user_id: "U_WILL", statut: "annulee" })
+  ]);
+  assert.equal(result.amount, 28.01);
+  assert.equal(result.contributions.U_ANTHONY, 12.34);
+  assert.equal(result.contributions.U_JEROME, 15.67);
+  assert.equal(result.contributions.U_WILL, 0);
+});

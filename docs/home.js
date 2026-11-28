@@ -2341,10 +2341,17 @@
     }
   };
 
-  const saveCollectiveGoalCache = (amount, updatedAt, milestone) => {
+  const collectiveGoalSellerIds = ["U_ANTHONY", "U_JEROME", "U_WILL"];
+  const collectiveGoalSellerFormat = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
+  const normalizeCollectiveGoalContributions = (value) => {
+    if (!value || !collectiveGoalSellerIds.every(id => typeof value[id] === "number" && Number.isFinite(value[id]))) return null;
+    return Object.fromEntries(collectiveGoalSellerIds.map(id => [id, value[id]]));
+  };
+  const saveCollectiveGoalCache = (amount, updatedAt, milestone, contributions) => {
     try {
       localStorage.setItem(COLLECTIVE_GOAL.cacheKey, JSON.stringify({
         amount: Number(amount) || 0,
+        contributions: normalizeCollectiveGoalContributions(contributions),
         updated_at: updatedAt || "",
         milestone: Math.max(highestCollectiveGoalMilestone, milestone || 0)
       }));
@@ -2363,6 +2370,11 @@
     const panel = qs("#collectiveGoal");
     if (!amountNode || !fill || !progress || !percentNode || !remainingNode || !panel) return;
 
+    const contributions = normalizeCollectiveGoalContributions(payload?.contributions);
+    collectiveGoalSellerIds.forEach(id => {
+      const node = qs("#collectiveGoalSeller_" + id);
+      if (node) node.textContent = contributions ? collectiveGoalSellerFormat.format(contributions[id]) : "—";
+    });
     const amount = Number(payload?.amount);
     if (!Number.isFinite(amount)) {
       amountNode.textContent = "—";
@@ -2428,7 +2440,7 @@
     highestCollectiveGoalMilestone = Math.max(highestCollectiveGoalMilestone, milestone);
 
     lastCollectiveGoalAmount = safeAmount;
-    saveCollectiveGoalCache(safeAmount, payload.updated_at || "", highestCollectiveGoalMilestone);
+    saveCollectiveGoalCache(safeAmount, payload.updated_at || "", highestCollectiveGoalMilestone, contributions);
   };
 
   const refreshCollectiveGoal = async ({ force = false } = {}) => {
@@ -2478,6 +2490,14 @@
   };
 
   const initCollectiveGoal = () => {
+    const toggle = qs("#collectiveGoalToggle");
+    const details = qs("#collectiveGoalDetails");
+    if (toggle && details) toggle.addEventListener("click", () => {
+      details.hidden = !details.hidden;
+      toggle.setAttribute("aria-expanded", String(!details.hidden));
+      const chevron = qs("#collectiveGoalChevron");
+      if (chevron) chevron.textContent = details.hidden ? "⌄" : "⌃";
+    });
     const cached = readCollectiveGoalCache();
     if (cached) renderCollectiveGoal(cached, { cached: true });
     else if (!navigator.onLine) renderCollectiveGoal(null);
