@@ -130,7 +130,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
         fixtureState.sellerDetailsCalls.push(seller_id);
         return Promise.resolve({ available:true, seller_id, daily_date:'2026-11-28', periods:{
           total:{revenue:12345.67,card:11234.56,cash:1111.11,other:0,bottles:{'50':10,'20':8},products:[
-            {format_cl:50,code:'VB',name:'Vanille Bleue',quantity:2},
+            {format_cl:50,code:'VB',name:'Vanille Bleue',quantity:1},
             {format_cl:50,code:'MV',name:'Mirabelle Vanille',quantity:1},
             {format_cl:50,code:'VT',name:'Vanille Tonka',quantity:1},
             {format_cl:50,code:'CG',name:'Citron Gingembre',quantity:1},
