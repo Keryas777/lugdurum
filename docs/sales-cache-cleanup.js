@@ -23,9 +23,9 @@
     return { exists: true, raw, value };
   };
 
-  const getArray = async (api, name) => {
+  const getArray = async (api, name, options = {}) => {
     if (typeof api?.[name] !== "function") throw new Error(`API indisponible : ${name}`);
-    const value = await api[name]();
+    const value = await api[name](options);
     if (!Array.isArray(value) || value.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
       throw new Error(`Réponse API incomplète : ${name}`);
     }
@@ -63,16 +63,28 @@
     return ids;
   };
 
-  const run = async () => {
+  const clean = async () => {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return { skipped: "offline" };
 
     try {
+      // No cache rows means there is nothing to reclaim. This also keeps the
+      // routine from adding background API traffic to ordinary page loads.
+      const cachedTransactions = readArray(KEYS.transactions);
+      const cachedLines = readArray(KEYS.lines);
+      if (cachedTransactions.value.length === 0 && cachedLines.value.length === 0) {
+        return { skipped: "empty-cache" };
+      }
+
+      // Never start maintenance reads while business writes are waiting.
+      const pendingBeforeRead = getPendingTransactionIds(window.LugdurumAPI);
+      if (pendingBeforeRead === null) return { skipped: "writes-pending-or-uncertain" };
+
       const api = window.LugdurumAPI;
       const [transactions, lines, stockMissions, days] = await Promise.all([
-        getArray(api, "getTransactions"),
-        getArray(api, "getVentesLignes"),
-        getArray(api, "getMissionsStock"),
-        getArray(api, "getJournees")
+        getArray(api, "getTransactions", { maintenance: true }),
+        getArray(api, "getVentesLignes", { maintenance: true }),
+        getArray(api, "getMissionsStock", { maintenance: true }),
+        getArray(api, "getJournees", { maintenance: true })
       ]);
 
       // A valid empty response is safe only when all required tables were returned.
@@ -149,15 +161,22 @@
       }
 
       // Parse and validate both keys before changing either one.
-      const cachedTransactions = readArray(KEYS.transactions);
-      const cachedLines = readArray(KEYS.lines);
-      const safeTransactions = cachedTransactions.value.filter((row) => {
+      // A sale may have been queued while the remote tables were loading.
+      // Recheck immediately before mutating either operational cache.
+      const pendingBeforeWrite = getPendingTransactionIds(api);
+      if (pendingBeforeWrite === null) return { skipped: "writes-pending-or-uncertain" };
+      for (const id of pendingBeforeWrite) pendingIds.add(id);
+
+      const currentCachedTransactions = readArray(KEYS.transactions);
+      const currentCachedLines = readArray(KEYS.lines);
+      const safeTransactions = currentCachedTransactions.value.filter((row) => {
         const id = getTransactionId(row);
-        return !id || !confirmedClosedTransactionIds.has(id);
+        return !id || !confirmedClosedTransactionIds.has(id) || pendingIds.has(id);
       });
-      const safeLines = cachedLines.value.filter((row) => {
+      const safeLines = currentCachedLines.value.filter((row) => {
         const id = getLineId(row);
-        return !id || !confirmedClosedLineIds.has(id);
+        const transactionId = getLineTransactionId(row);
+        return !id || !confirmedClosedLineIds.has(id) || pendingIds.has(transactionId);
       });
 
       const nextTransactions = safeTransactions;
@@ -167,8 +186,8 @@
       let removedLines = 0;
       const transactionJson = JSON.stringify(nextTransactions);
       const lineJson = JSON.stringify(nextLines);
-      const transactionChanged = cachedTransactions.exists && transactionJson !== cachedTransactions.raw;
-      const linesChanged = cachedLines.exists && lineJson !== cachedLines.raw;
+      const transactionChanged = currentCachedTransactions.exists && transactionJson !== currentCachedTransactions.raw;
+      const linesChanged = currentCachedLines.exists && lineJson !== currentCachedLines.raw;
       const shouldMarkPartial = (confirmedClosedTransactionIds.size > 0 || confirmedClosedLineIds.size > 0) &&
         (cachedTransactions.exists || cachedLines.exists);
       const markPartial = () => {
@@ -179,7 +198,7 @@
       // Shrink a target cache first to free quota, then persist the marker before proceeding.
       if (transactionChanged) {
         localStorage.setItem(KEYS.transactions, transactionJson);
-        removedTransactions = cachedTransactions.value.filter((row) => {
+        removedTransactions = currentCachedTransactions.value.filter((row) => {
           const id = getTransactionId(row);
           return id && confirmedClosedTransactionIds.has(id);
         }).length;
@@ -187,7 +206,7 @@
       }
       if (linesChanged) {
         localStorage.setItem(KEYS.lines, lineJson);
-        removedLines = cachedLines.value.filter((row) => {
+        removedLines = currentCachedLines.value.filter((row) => {
           const id = getLineId(row);
           return id && confirmedClosedLineIds.has(id);
         }).length;
@@ -195,7 +214,7 @@
       }
       markPartial();
       const removedBytes = removedTransactions || removedLines
-        ? Math.max(0, JSON.stringify(cachedTransactions.value).length + JSON.stringify(cachedLines.value).length -
+        ? Math.max(0, JSON.stringify(currentCachedTransactions.value).length + JSON.stringify(currentCachedLines.value).length -
           JSON.stringify(nextTransactions).length - JSON.stringify(nextLines).length) * 2
         : 0;
       return { removedTransactions, removedLines, removedBytes };
@@ -204,6 +223,13 @@
       console.warn("Nettoyage automatique du cache des ventes ignoré", error);
       return { skipped: "error" };
     }
+  };
+
+  let inFlight = null;
+  const run = () => {
+    if (inFlight) return inFlight;
+    inFlight = clean().finally(() => { inFlight = null; });
+    return inFlight;
   };
 
   window.LugdurumSalesCacheCleanup = Object.freeze({

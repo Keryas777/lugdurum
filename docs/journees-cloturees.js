@@ -984,7 +984,6 @@
       callArray("getCatalogue")
     ]);
 
-    void window.LugdurumSalesCacheCleanup?.run();
     state.transactions = transactions;
     state.lignes = lignes;
     state.frais = frais;

@@ -814,7 +814,6 @@
       }
     }
 
-    void window.LugdurumSalesCacheCleanup?.run();
     applyRemoteData(data);
   };
 

@@ -1000,7 +1000,6 @@
       callArray("getMissions")
     ]);
 
-    void window.LugdurumSalesCacheCleanup?.run();
     state.transactions = transactions;
     state.frais = frais;
     state.journees = journees;

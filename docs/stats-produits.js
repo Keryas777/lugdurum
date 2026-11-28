@@ -1229,7 +1229,6 @@
       }
     }
 
-    void window.LugdurumSalesCacheCleanup?.run();
     state.transactions = data.transactions;
     state.lignes = data.lignes;
     state.catalogue = data.catalogue;

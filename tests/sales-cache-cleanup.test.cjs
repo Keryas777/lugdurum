@@ -14,6 +14,7 @@ const makeHarness = ({
 } = {}) => {
   const data = new Map();
   let used = 0;
+  let apiCalls = 0;
   const storage = {
     getItem(key) { return data.has(key) ? data.get(key) : null; },
     setItem(key, value) {
@@ -33,13 +34,14 @@ const makeHarness = ({
     }
   };
   const api = {
-    async getTransactions() { return transactions; },
+    async getTransactions() { apiCalls += 1; return transactions; },
     async getVentesLignes() {
+      apiCalls += 1;
       if (failLineRead) return { error: "partial" };
       return lines;
     },
-    async getMissionsStock() { return missions; },
-    async getJournees() { return days; },
+    async getMissionsStock() { apiCalls += 1; return missions; },
+    async getJournees() { apiCalls += 1; return days; },
     getPendingWritesCount() { return pendingWrites; },
     getLegacyPendingTransactions() { return []; }
   };
@@ -50,7 +52,7 @@ const makeHarness = ({
     navigator: { onLine: online },
     console
   });
-  return { storage, api, cleanup: window.LugdurumSalesCacheCleanup };
+  return { storage, api, cleanup: window.LugdurumSalesCacheCleanup, get apiCalls() { return apiCalls; } };
 };
 
 const setJson = (storage, key, value) => storage.setItem(key, JSON.stringify(value));
@@ -130,6 +132,27 @@ const day = (journee_id, mission_id, stock_mission_id = "MST-1") => ({ journee_i
   }
 
   {
+    const h = makeHarness();
+    assert.equal((await h.cleanup.run()).skipped, "empty-cache");
+    assert.equal(h.apiCalls, 0, "une ouverture ordinaire sans cache n'ajoute aucune lecture API");
+  }
+
+  {
+    const h = makeHarness({
+      transactions: [{ transaction_id: "tx", stock_mission_id: "MST-1" }],
+      lines: [{ ligne_id: "line", transaction_id: "tx" }],
+      missions: [closedMission("MST-1")], days: [day("J1", "EVT-1")]
+    });
+    setJson(h.storage, txKey, [{ transaction_id: "tx", stock_mission_id: "MST-1" }]);
+    setJson(h.storage, lineKey, [{ ligne_id: "line", transaction_id: "tx" }]);
+    const first = h.cleanup.run();
+    const concurrent = h.cleanup.run();
+    assert.equal(first, concurrent, "les appels concurrents partagent le même nettoyage");
+    await Promise.all([first, concurrent]);
+    assert.equal(h.apiCalls, 4, "un seul lot de lectures de vérification est lancé");
+  }
+
+  {
     const h = makeHarness({ failLineRead: true });
     setJson(h.storage, txKey, [{ transaction_id: "keep" }]);
     assert.equal((await h.cleanup.run()).skipped, "error");
@@ -151,13 +174,12 @@ const day = (journee_id, mission_id, stock_mission_id = "MST-1") => ({ journee_i
     const afterFirst = [h.storage.getItem(txKey), h.storage.getItem(lineKey)];
     const second = await h.cleanup.run();
     assert.deepEqual([h.storage.getItem(txKey), h.storage.getItem(lineKey)], afterFirst);
-    assert.equal(second.removedTransactions, 0);
-    assert.equal(second.removedLines, 0);
+    assert.equal(second.skipped, "empty-cache");
   }
 
   for (const file of ["dashboard.js", "stats-annee.js", "stats-evenements.js", "stats-produits.js", "journees-cloturees.js"]) {
     const page = fs.readFileSync(path.join(__dirname, `../docs/${file}`), "utf8");
-    assert.match(page, /LugdurumSalesCacheCleanup\?\.run\(\)/, `${file} must clean before refresh caches`);
+    assert.doesNotMatch(page, /LugdurumSalesCacheCleanup\?\.run\(\)/, `${file} must not trigger redundant maintenance reads`);
     assert.doesNotMatch(page, /writeJson\(CACHE_KEYS\.(transactions|ventesLignes),/, `${file} must not refill the operational caches`);
   }
   for (const file of ["dashboard.js", "stats-annee.js", "stats-evenements.js", "stats-produits.js", "journees-cloturees.js"]) {

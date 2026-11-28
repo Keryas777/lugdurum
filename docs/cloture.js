@@ -2305,7 +2305,6 @@
     ], "salon_id");
 
     state.dataLoaded = true;
-    void window.LugdurumSalesCacheCleanup?.run();
     if (targeted) {
       cacheTargetedClosureData();
     } else {
