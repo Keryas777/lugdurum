@@ -34,10 +34,10 @@ const users = [
   { user_id: U.w, nom: 'William', role: 'vendeur', actif: true }
 ];
 
-async function installFixture(page, { selected = D.ch, offline = false, delayed = false, legacy = false } = {}) {
-  await page.addInitScript(({ userId, staleDay, users, events, days, ids, delayed, legacy }) => {
+async function installFixture(page, { selected = D.ch, offline = false, delayed = false, legacy = false, today = '2026-11-26' } = {}) {
+  await page.addInitScript(({ userId, staleDay, users, events, days, ids, delayed, legacy, today }) => {
     const NativeDate = globalThis.Date;
-    let fixedNow = NativeDate.parse(`${localStorage.getItem('__lugdurum_e2e_today') || '2026-11-26'}T11:00:00.000Z`);
+    let fixedNow = NativeDate.parse(`${localStorage.getItem('__lugdurum_e2e_today') || today}T11:00:00.000Z`);
     globalThis.Date = class extends NativeDate {
       constructor(...args) { super(...(args.length ? args : [fixedNow])); }
       static now() { return fixedNow; }
@@ -146,7 +146,7 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
     globalThis.__LUGDURUM_FIXTURE_VENTE_RAPIDE__ = fixtureApi.getVenteRapideData;
     globalThis.__LUGDURUM_FIXTURE_COLLECTIVE_GOAL__ = fixtureApi.getCollectiveGoal;
     globalThis.__LUGDURUM_FIXTURE_SELLER_DETAILS__ = fixtureApi.getCollectiveGoalSellerDetails;
-  }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy });
+  }, { userId: U.j, staleDay: selected, users, events, days, ids: D, delayed, legacy, today });
   page.__fixtureExternalRequests = [];
   page.on('request', request => {
     const requestUrl = new URL(request.url());
@@ -199,7 +199,8 @@ async function installFixture(page, { selected = D.ch, offline = false, delayed 
 
 test.beforeEach(async ({ page }, testInfo) => installFixture(page, {
   delayed: testInfo.title.includes('réseau retardée') || testInfo.title.includes('réponse retardée'),
-  legacy: testInfo.title.includes('ancien Apps Script')
+  legacy: testInfo.title.includes('ancien Apps Script'),
+  today: /progression collective|modale vendeur/.test(testInfo.title) ? '2026-11-28' : '2026-11-26'
 }));
 
 test.afterEach(async ({ page }) => {
